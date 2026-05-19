@@ -1,0 +1,54 @@
+services:
+  # Your main application
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=fake_api_key_for_testing
+    networks:
+      - app-network
+    depends_on:
+      mock-google-api:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+
+  # PostgreSQL database service
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=dbname
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d dbname"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Mock Google API service
+  mock-google-api:
+    build:
+      context: .
+      dockerfile: google_api_mock/Dockerfile
+    networks:
+      app-network:
+        aliases:
+          - generativelanguage.googleapis.com
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
