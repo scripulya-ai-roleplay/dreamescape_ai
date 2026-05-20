@@ -1,3 +1,5 @@
+import os
+
 import pytest
 import requests
 
@@ -7,7 +9,7 @@ def client():
 	"""HTTP client for e2e tests with 30-second timeout."""
 	session = requests.Session()
 	session.timeout = 30.0  # 30 seconds timeout as requested
-	session.base_url = "http://localhost:8000"
+	session.base_url = os.getenv("BACKEND_HOST", "http://localhost:8000")
 
 	# Create a wrapper class to handle base URL
 	class ClientWrapper:
