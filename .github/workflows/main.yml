@@ -78,7 +78,7 @@ jobs:
             -e POSTGRES_USER=user \
             -e POSTGRES_PASSWORD=password \
             -e POSTGRES_DB=dbname \
-            -e POSTGRES_HOST=postgres \
+            -e DATABASE_URL=127.0.0.1 \
             main-app
 
       - name: Wait for application to be ready
