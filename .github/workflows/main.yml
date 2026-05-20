@@ -1,0 +1,72 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    # Define pre-built images as native pipeline services
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: dbname
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        # Standard healthcheck for native services
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # WORKAROUND: Initialize DB
+      # Since we cannot mount init.sql in the services block, apply it now.
+      - name: Initialize PostgreSQL Database
+        env:
+          PGPASSWORD: password
+        run: |
+          psql -h 127.0.0.1 -U user -d dbname -f ./scripts/init.sql
+
+      # WORKAROUND: Mock API Build & Alias
+      - name: Map Google API alias to localhost
+        run: echo "127.0.0.1 generativelanguage.googleapis.com" | sudo tee -a /etc/hosts
+
+      - name: Build and start Mock Google API
+        # Builds the local Dockerfile and runs it in the background.
+        # Ensure the port mapped (443 here) matches what your app expects.
+        run: |
+          docker build -t mock-api -f google_api_mock/Dockerfile .
+          docker run -d --name mock-google-api -p 443:443 mock-api
+
+      # STAGE 1: Build
+      - name: Stage 1 - Build App Image
+        run: docker build -t main-app .
+
+      # STAGE 2: Unit Tests
+      - name: Stage 2 - Run Unit Tests
+        # Runs in isolation. No database or network connections provided.
+        run: |
+          docker run --rm main-app pytest tests/unit
+
+      # STAGE 3: End-to-End Tests
+      - name: Stage 3 - Run E2E Tests
+        # --network host allows the container to access localhost:5432 (Postgres native service)
+        # and respect the modified /etc/hosts for the mock API.
+        run: |
+          docker run --rm --network host \
+            -e GEMINI_API_KEY=fake_api_key_for_testing \
+            -e POSTGRES_USER=user \
+            -e POSTGRES_PASSWORD=password \
+            -e POSTGRES_DB=dbname \
+            -e POSTGRES_HOST=127.0.0.1 \
+            main-app pytest tests/e2e
