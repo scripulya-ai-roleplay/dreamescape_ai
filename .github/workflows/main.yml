@@ -92,6 +92,20 @@ jobs:
             -e BACKEND_HOST=http://127.0.0.1:8000 \
             main-app pytest tests/e2e
 
+      - name: Dump Application Logs
+        if: always() # Ensures this runs even if Stage 3 fails
+        # Redirects both stdout and stderr to a file.
+        # The || true prevents the pipeline from failing if the container crashed early.
+        run: docker logs running-app > running-app.log 2>&1 || true
+
+      - name: Upload Application Logs as Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-running-app-logs
+          path: running-app.log
+          retention-days: 5 # Keeps your GitHub storage clean
+
       # Cleanup
       - name: Stop Background Services
         if: always()
