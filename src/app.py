@@ -6,6 +6,7 @@ from asgi_correlation_id import CorrelationIdMiddleware
 from src.conf import settings
 from src.controllers.api.v1.auth import set_token_to_request_state
 from src.controllers.api.v1.chats import router as chat_router
+from src.controllers.api.v1.scenes import router as scenes_router
 from src.controllers.api.v1.users import router as users_router
 from src.infrastructure.web.global_exceptions_handler import global_exception_handler
 from src.infrastructure.web.middlewares import TraceAndLogRequestsMiddleware
@@ -34,6 +35,7 @@ def create_app() -> FastAPI:
 	logger.info("Global exception handler registered")
 
 	app.include_router(chat_router)
+	app.include_router(scenes_router)
 	app.include_router(users_router)
 	logger.info("API routes registered")
 

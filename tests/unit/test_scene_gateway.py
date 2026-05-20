@@ -1,0 +1,341 @@
+import pytest
+from unittest.mock import AsyncMock, Mock
+from uuid import uuid4
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.infrastructure.gateways.scenes_gateway import SceneGateway
+from src.domain.models import Scene
+from src.application.ports import Page
+from src.application.scene.schemas import SceneFilterDTO
+
+
+@pytest.mark.unit
+class TestSceneGateway:
+	"""Unit tests for SceneGateway"""
+
+	@pytest.fixture
+	def mock_session(self):
+		"""Mock AsyncSession for testing"""
+		mock = AsyncMock(spec=AsyncSession)
+		mock.add = Mock()
+		mock.commit = AsyncMock()
+		mock.execute = AsyncMock()
+		mock.refresh = AsyncMock()
+		return mock
+
+	@pytest.fixture
+	def scene_gateway(self, mock_session):
+		"""SceneGateway instance with mocked session"""
+		return SceneGateway(mock_session)
+
+	@pytest.fixture
+	def sample_scene_model(self):
+		"""Sample SceneModel for testing"""
+		scene_model = Mock()
+		scene_model.id = uuid4()
+		scene_model.title = "Test Scene"
+		scene_model.description = "Test scene description"
+		scene_model.background_prompt = "Test background prompt"
+		scene_model.owner_id = uuid4()
+		scene_model.characters = []
+		return scene_model
+
+	@pytest.fixture
+	def sample_scene_filter_dto(self):
+		"""Sample SceneFilterDTO for filtering"""
+		return SceneFilterDTO(ids=[uuid4()], title=["Test Scene"], owner=[uuid4()], characters=[uuid4()])
+
+	@pytest.fixture
+	def sample_domain_scene(self):
+		"""Sample domain Scene for testing"""
+		return Scene(
+			id=uuid4(),
+			title="Test Scene",
+			description="Test scene description",
+			background_prompt="Test background prompt",
+			owner_id=uuid4(),
+		)
+
+	@pytest.mark.asyncio
+	async def test_get_one_success(self, scene_gateway, mock_session, sample_scene_model):
+		"""Test successful scene retrieval by ID"""
+		# Arrange
+		scene_id = uuid4()
+		mock_result = Mock()
+		mock_result.scalar_one.return_value = sample_scene_model
+		mock_session.execute.return_value = mock_result
+
+		# Act
+		result = await scene_gateway.get_one(scene_id)
+
+		# Assert
+		assert isinstance(result, Scene)
+		assert result.id == sample_scene_model.id
+		assert result.title == sample_scene_model.title
+		assert result.description == sample_scene_model.description
+		mock_session.execute.assert_called_once()
+
+	@pytest.mark.asyncio
+	async def test_get_one_not_found(self, scene_gateway, mock_session):
+		"""Test scene retrieval when scene doesn't exist"""
+		# Arrange
+		scene_id = uuid4()
+		mock_result = Mock()
+		from sqlalchemy.exc import NoResultFound
+
+		mock_result.scalar_one.side_effect = NoResultFound()
+		mock_session.execute.return_value = mock_result
+
+		# Act & Assert
+		with pytest.raises(NoResultFound):
+			await scene_gateway.get_one(scene_id)
+
+	@pytest.mark.asyncio
+	async def test_create_success(self, scene_gateway, mock_session, sample_domain_scene):
+		"""Test successful scene creation"""
+		# Arrange
+		expected_id = uuid4()
+		mock_session.refresh.side_effect = lambda model: setattr(model, "id", expected_id)
+
+		# Act
+		result = await scene_gateway.create(sample_domain_scene)
+
+		# Assert
+		assert result == expected_id
+		mock_session.add.assert_called_once()
+		mock_session.refresh.assert_called_once()
+
+	@pytest.mark.asyncio
+	async def test_delete_success(self, scene_gateway, mock_session):
+		"""Test successful scene deletion"""
+		# Arrange
+		scene_id = uuid4()
+		mock_result = Mock()
+		mock_result.rowcount = 1
+		mock_session.execute.return_value = mock_result
+
+		# Act
+		await scene_gateway.delete(scene_id)
+
+		# Assert
+		mock_session.execute.assert_called_once()
+
+	@pytest.mark.asyncio
+	async def test_delete_not_found(self, scene_gateway, mock_session):
+		"""Test scene deletion when scene doesn't exist"""
+		# Arrange
+		scene_id = uuid4()
+		mock_result = Mock()
+		mock_result.rowcount = 0
+		mock_session.execute.return_value = mock_result
+
+		# Act (no exception expected - gateway doesn't validate)
+		await scene_gateway.delete(scene_id)
+
+		# Assert
+		mock_session.execute.assert_called_once()
+
+	@pytest.mark.asyncio
+	async def test_update_success(self, scene_gateway, mock_session, sample_domain_scene):
+		"""Test successful scene update"""
+		# Arrange
+		scene_id = uuid4()
+		mock_result = Mock()
+		mock_result.rowcount = 1
+		mock_session.execute.return_value = mock_result
+
+		# Act
+		await scene_gateway.update(scene_id, sample_domain_scene)
+
+		# Assert
+		mock_session.execute.assert_called_once()
+
+	@pytest.mark.asyncio
+	async def test_update_not_found(self, scene_gateway, mock_session, sample_domain_scene):
+		"""Test scene update when scene doesn't exist"""
+		# Arrange
+		scene_id = uuid4()
+		mock_result = Mock()
+		mock_result.rowcount = 0
+		mock_session.execute.return_value = mock_result
+
+		# Act (no exception expected - gateway doesn't validate)
+		await scene_gateway.update(scene_id, sample_domain_scene)
+
+		# Assert
+		mock_session.execute.assert_called_once()
+
+	@pytest.mark.asyncio
+	async def test_search_success(self, scene_gateway, mock_session, sample_scene_model, sample_scene_filter_dto):
+		"""Test successful scene search with filters"""
+		# Arrange
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_session.execute.return_value = mock_result
+
+		# Mock count query
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
+
+		# Act
+		result = await scene_gateway.search(sample_scene_filter_dto)
+
+		# Assert
+		assert isinstance(result, Page)
+		assert result.count == 1
+		assert result.offset == 0
+		assert len(result.items) == 1
+		assert result.items[0].title == sample_scene_model.title
+		assert mock_session.execute.call_count == 2
+
+	@pytest.mark.asyncio
+	async def test_search_with_id_filter(self, scene_gateway, mock_session, sample_scene_model):
+		"""Test scene search with ID filter"""
+		# Arrange
+		scene_id = uuid4()
+		filters = SceneFilterDTO(ids=[scene_id], title=[], owner=[], characters=[])
+
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_session.execute.return_value = mock_result
+
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
+
+		# Act
+		result = await scene_gateway.search(filters)
+
+		# Assert
+		assert result.count == 1
+		assert len(result.items) == 1
+
+	@pytest.mark.asyncio
+	async def test_search_with_title_filter(self, scene_gateway, mock_session, sample_scene_model):
+		"""Test scene search with title filter"""
+		# Arrange
+		filters = SceneFilterDTO(ids=[], title=["Test Scene"], owner=[], characters=[])
+
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_session.execute.return_value = mock_result
+
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
+
+		# Act
+		result = await scene_gateway.search(filters)
+
+		# Assert
+		assert result.count == 1
+		assert len(result.items) == 1
+
+	@pytest.mark.asyncio
+	async def test_search_with_owner_filter(self, scene_gateway, mock_session, sample_scene_model):
+		"""Test scene search with owner filter"""
+		# Arrange
+		owner_id = uuid4()
+		filters = SceneFilterDTO(ids=[], title=[], owner=[owner_id], characters=[])
+
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_session.execute.return_value = mock_result
+
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
+
+		# Act
+		result = await scene_gateway.search(filters)
+
+		# Assert
+		assert result.count == 1
+		assert len(result.items) == 1
+
+	@pytest.mark.asyncio
+	async def test_search_with_character_filter(self, scene_gateway, mock_session, sample_scene_model):
+		"""Test scene search with character filter"""
+		# Arrange
+		character_id = uuid4()
+		filters = SceneFilterDTO(ids=[], title=[], owner=[], characters=[character_id])
+
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_session.execute.return_value = mock_result
+
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
+
+		# Act
+		result = await scene_gateway.search(filters)
+
+		# Assert
+		assert result.count == 1
+		assert len(result.items) == 1
+
+	@pytest.mark.asyncio
+	async def test_search_no_results(self, scene_gateway, mock_session, sample_scene_filter_dto):
+		"""Test scene search with no results"""
+		# Arrange
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = []
+		mock_session.execute.return_value = mock_result
+
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 0
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
+
+		# Act
+		result = await scene_gateway.search(sample_scene_filter_dto)
+
+		# Assert
+		assert result.count == 0
+		assert len(result.items) == 0
+
+	@pytest.mark.asyncio
+	async def test_search_empty_filters(self, scene_gateway, mock_session, sample_scene_model):
+		"""Test scene search with empty filters"""
+		# Arrange
+		filters = SceneFilterDTO(ids=[], title=[], owner=[], characters=[])
+
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_session.execute.return_value = mock_result
+
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
+
+		# Act
+		result = await scene_gateway.search(filters)
+
+		# Assert
+		assert result.count == 1
+		assert len(result.items) == 1
+
+	def test_to_domain_scene_conversion(self, scene_gateway, sample_scene_model):
+		"""Test conversion from SceneModel to domain Scene"""
+		# Act
+		result = scene_gateway._to_domain_scene(sample_scene_model)
+
+		# Assert
+		assert isinstance(result, Scene)
+		assert result.id == sample_scene_model.id
+		assert result.title == sample_scene_model.title
+		assert result.description == sample_scene_model.description
+		assert result.background_prompt == sample_scene_model.background_prompt
+		assert result.owner_id == sample_scene_model.owner_id
+
+	@pytest.mark.asyncio
+	async def test_session_error_handling(self, scene_gateway, mock_session):
+		"""Test error handling when session raises exception"""
+		# Arrange
+		scene_id = uuid4()
+		mock_session.execute.side_effect = Exception("Database connection error")
+
+		# Act & Assert
+		with pytest.raises(Exception, match="Database connection error"):
+			await scene_gateway.get_one(scene_id)
