@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class UserGateway(IUserGateway):
 	_session: AsyncSession
 
-	async def find_users_by_filters(self, filters: UserDTO, limit: int = 10, offset: int = 0) -> Page[User]:
+	async def find_users_by_filters(self, filters: UserDTO, offset: int = 10, limit: int = 0) -> Page[User]:
 		logger.info(f"Finding users with filters: {filters}")
 
 		# Build query with filters
