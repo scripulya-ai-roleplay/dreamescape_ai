@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, Mock, MagicMock
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,367 +12,359 @@ from src.infrastructure.database.models import User as UserModel
 
 @pytest.mark.unit
 class TestUserGateway:
-    """Unit tests for UserGateway"""
+	"""Unit tests for UserGateway"""
 
-    @pytest.fixture
-    def mock_session(self):
-        """Mock AsyncSession for testing"""
-        return AsyncMock(spec=AsyncSession)
+	@pytest.fixture
+	def mock_session(self):
+		"""Mock AsyncSession for testing"""
+		return AsyncMock(spec=AsyncSession)
 
-    @pytest.fixture
-    def user_gateway(self, mock_session):
-        """UserGateway instance with mocked dependencies"""
-        return UserGateway(mock_session)
+	@pytest.fixture
+	def user_gateway(self, mock_session):
+		"""UserGateway instance with mocked dependencies"""
+		return UserGateway(mock_session)
 
-    @pytest.fixture
-    def sample_user_model(self):
-        """Sample UserModel for testing"""
-        user_model = Mock(spec=UserModel)
-        user_model.id = uuid4()
-        user_model.test_username = "test_user"
-        user_model.google_id = "google123"
-        user_model.crystal_balance = 1000
-        user_model.characters = []
-        user_model.scenes = []
-        user_model.chats = []
-        return user_model
+	@pytest.fixture
+	def sample_user_model(self):
+		"""Sample UserModel for testing"""
+		user_model = Mock(spec=UserModel)
+		user_model.id = uuid4()
+		user_model.test_username = "test_user"
+		user_model.google_id = "google123"
+		user_model.crystal_balance = 1000
+		user_model.characters = []
+		user_model.scenes = []
+		user_model.chats = []
+		return user_model
 
-    @pytest.fixture
-    def sample_user_dto(self):
-        """Sample UserDTO for filtering"""
-        return UserDTO(
-            username=["test_user"],
-            role=[UserRole.API]
-        )
+	@pytest.fixture
+	def sample_user_dto(self):
+		"""Sample UserDTO for filtering"""
+		return UserDTO(usernames=["test_user"], roles=[UserRole.API])
 
-    @pytest.fixture
-    def sample_domain_user(self):
-        """Sample domain User for testing"""
-        return User(
-            id=uuid4(),
-            test_username="test_user",
-            google_id="google123",
-            role=UserRole.API,
-            crystal_balance=1000
-        )
+	@pytest.fixture
+	def sample_domain_user(self):
+		"""Sample domain User for testing"""
+		return User(
+			id=uuid4(), test_username="test_user", google_id="google123", role=UserRole.API, crystal_balance=1000
+		)
 
-    @pytest.mark.asyncio
-    async def test_find_users_by_filters_success(self, user_gateway, mock_session, sample_user_model, sample_user_dto):
-        """Test successful user search with filters"""
-        # Arrange
-        mock_result = Mock()
-        mock_result.scalars.return_value.all.return_value = [sample_user_model]
-        mock_session.execute.return_value = mock_result
+	@pytest.mark.asyncio
+	async def test_find_users_by_filters_success(self, user_gateway, mock_session, sample_user_model, sample_user_dto):
+		"""Test successful user search with filters"""
+		# Arrange
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_user_model]
+		mock_session.execute.return_value = mock_result
 
-        # Mock count query
-        mock_count_result = Mock()
-        mock_count_result.scalar.return_value = 1
-        mock_session.execute.side_effect = [mock_count_result, mock_result]
+		# Mock count query
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
 
-        # Act
-        result = await user_gateway.find_users_by_filters(sample_user_dto, limit=10, offset=0)
+		# Act
+		result = await user_gateway.find_users_by_filters(sample_user_dto, limit=10, offset=0)
 
-        # Assert
-        assert isinstance(result, Page)
-        assert result.count == 1
-        assert result.offset == 0
-        assert result.limit == 10
-        assert len(result.result) == 1
-        assert result.result[0].test_username == "test_user"
-        assert mock_session.execute.call_count == 2
+		# Assert
+		assert isinstance(result, Page)
+		assert result.count == 1
+		assert result.offset == 0
+		assert result.limit == 10
+		assert len(result.items) == 1
+		assert result.items[0].test_username == "test_user"
+		assert mock_session.execute.call_count == 2
 
-    @pytest.mark.asyncio
-    async def test_find_users_by_filters_with_id_filter(self, user_gateway, mock_session, sample_user_model):
-        """Test user search with ID filter"""
-        # Arrange
-        user_id = uuid4()
-        filters = UserDTO(id=[user_id])
-        
-        mock_result = Mock()
-        mock_result.scalars.return_value.all.return_value = [sample_user_model]
-        mock_session.execute.return_value = mock_result
+	@pytest.mark.asyncio
+	async def test_find_users_by_filters_with_id_filter(self, user_gateway, mock_session, sample_user_model):
+		"""Test user search with ID filter"""
+		# Arrange
+		user_id = uuid4()
+		filters = UserDTO(user_ids=[user_id])
 
-        mock_count_result = Mock()
-        mock_count_result.scalar.return_value = 1
-        mock_session.execute.side_effect = [mock_count_result, mock_result]
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_user_model]
+		mock_session.execute.return_value = mock_result
 
-        # Act
-        result = await user_gateway.find_users_by_filters(filters)
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
 
-        # Assert
-        assert result.count == 1
-        assert len(result.result) == 1
+		# Act
+		result = await user_gateway.find_users_by_filters(filters)
 
-    @pytest.mark.asyncio
-    async def test_find_users_by_filters_with_google_id_filter(self, user_gateway, mock_session, sample_user_model):
-        """Test user search with Google ID filter"""
-        # Arrange
-        filters = UserDTO(google_id=["google123"])
-        
-        mock_result = Mock()
-        mock_result.scalars.return_value.all.return_value = [sample_user_model]
-        mock_session.execute.return_value = mock_result
+		# Assert
+		assert result.count == 1
+		assert len(result.items) == 1
 
-        mock_count_result = Mock()
-        mock_count_result.scalar.return_value = 1
-        mock_session.execute.side_effect = [mock_count_result, mock_result]
+	@pytest.mark.asyncio
+	async def test_find_users_by_filters_with_google_id_filter(self, user_gateway, mock_session, sample_user_model):
+		"""Test user search with Google ID filter"""
+		# Arrange
+		filters = UserDTO(google_ids=["google123"])
 
-        # Act
-        result = await user_gateway.find_users_by_filters(filters)
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_user_model]
+		mock_session.execute.return_value = mock_result
 
-        # Assert
-        assert result.count == 1
-        assert len(result.result) == 1
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
 
-    @pytest.mark.asyncio
-    async def test_find_users_by_filters_no_results(self, user_gateway, mock_session, sample_user_dto):
-        """Test user search with no results"""
-        # Arrange
-        mock_result = Mock()
-        mock_result.scalars.return_value.all.return_value = []
-        mock_session.execute.return_value = mock_result
+		# Act
+		result = await user_gateway.find_users_by_filters(filters)
 
-        mock_count_result = Mock()
-        mock_count_result.scalar.return_value = 0
-        mock_session.execute.side_effect = [mock_count_result, mock_result]
+		# Assert
+		assert result.count == 1
+		assert len(result.items) == 1
 
-        # Act
-        result = await user_gateway.find_users_by_filters(sample_user_dto)
+	@pytest.mark.asyncio
+	async def test_find_users_by_filters_no_results(self, user_gateway, mock_session, sample_user_dto):
+		"""Test user search with no results"""
+		# Arrange
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = []
+		mock_session.execute.return_value = mock_result
 
-        # Assert
-        assert result.count == 0
-        assert len(result.result) == 0
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 0
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
 
-    @pytest.mark.asyncio
-    async def test_find_users_by_filters_pagination(self, user_gateway, mock_session, sample_user_model, sample_user_dto):
-        """Test user search with pagination"""
-        # Arrange
-        mock_result = Mock()
-        mock_result.scalars.return_value.all.return_value = [sample_user_model]
-        mock_session.execute.return_value = mock_result
+		# Act
+		result = await user_gateway.find_users_by_filters(sample_user_dto)
 
-        mock_count_result = Mock()
-        mock_count_result.scalar.return_value = 25
-        mock_session.execute.side_effect = [mock_count_result, mock_result]
+		# Assert
+		assert result.count == 0
+		assert len(result.items) == 0
 
-        # Act
-        result = await user_gateway.find_users_by_filters(sample_user_dto, limit=5, offset=10)
+	@pytest.mark.asyncio
+	async def test_find_users_by_filters_pagination(
+		self, user_gateway, mock_session, sample_user_model, sample_user_dto
+	):
+		"""Test user search with pagination"""
+		# Arrange
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_user_model]
+		mock_session.execute.return_value = mock_result
 
-        # Assert
-        assert result.count == 25
-        assert result.offset == 10
-        assert result.limit == 5
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 25
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
 
-    @pytest.mark.asyncio
-    async def test_create_user_success(self, user_gateway, mock_session, sample_domain_user, sample_user_model):
-        """Test successful user creation"""
-        # Arrange
-        mock_session.refresh = AsyncMock()
-        mock_session.refresh.side_effect = lambda model: setattr(model, 'id', uuid4())
+		# Act
+		result = await user_gateway.find_users_by_filters(sample_user_dto, limit=5, offset=10)
 
-        # Act
-        result = await user_gateway.create_user(sample_domain_user)
+		# Assert
+		assert result.count == 25
+		assert result.offset == 10
+		assert result.limit == 5
 
-        # Assert
-        assert isinstance(result, User)
-        mock_session.add.assert_called_once()
-        mock_session.commit.assert_called_once()
-        mock_session.refresh.assert_called_once()
+	@pytest.mark.asyncio
+	async def test_create_user_success(self, user_gateway, mock_session, sample_domain_user, sample_user_model):
+		"""Test successful user creation"""
+		# Arrange
+		mock_session.refresh = AsyncMock()
+		mock_session.refresh.side_effect = lambda model: setattr(model, "id", uuid4())
 
-    @pytest.mark.asyncio
-    async def test_create_user_minimal_data(self, user_gateway, mock_session):
-        """Test user creation with minimal required data"""
-        # Arrange
-        minimal_user = User(
-            role=UserRole.API,
-            crystal_balance=500
-        )
-        mock_session.refresh = AsyncMock()
+		# Act
+		result = await user_gateway.create_user(sample_domain_user)
 
-        # Act
-        result = await user_gateway.create_user(minimal_user)
+		# Assert
+		assert isinstance(result, User)
+		mock_session.add.assert_called_once()
+		mock_session.commit.assert_called_once()
+		mock_session.refresh.assert_called_once()
 
-        # Assert
-        assert isinstance(result, User)
-        mock_session.add.assert_called_once()
-        mock_session.commit.assert_called_once()
+	@pytest.mark.asyncio
+	async def test_create_user_minimal_data(self, user_gateway, mock_session):
+		"""Test user creation with minimal required data"""
+		# Arrange
+		minimal_user = User(role=UserRole.API, crystal_balance=500)
+		mock_session.refresh = AsyncMock()
 
-    @pytest.mark.asyncio
-    async def test_delete_user_success(self, user_gateway, mock_session):
-        """Test successful user deletion"""
-        # Arrange
-        user_id = uuid4()
-        mock_result = Mock()
-        mock_result.rowcount = 1
-        mock_session.execute.return_value = mock_result
+		# Act
+		result = await user_gateway.create_user(minimal_user)
 
-        # Act
-        await user_gateway.delete_user(user_id)
+		# Assert
+		assert isinstance(result, User)
+		mock_session.add.assert_called_once()
+		mock_session.commit.assert_called_once()
 
-        # Assert
-        mock_session.execute.assert_called_once()
-        mock_session.commit.assert_called_once()
+	@pytest.mark.asyncio
+	async def test_delete_user_success(self, user_gateway, mock_session):
+		"""Test successful user deletion"""
+		# Arrange
+		user_id = uuid4()
+		mock_result = Mock()
+		mock_result.rowcount = 1
+		mock_session.execute.return_value = mock_result
 
-    @pytest.mark.asyncio
-    async def test_delete_user_not_found(self, user_gateway, mock_session):
-        """Test deletion of non-existent user"""
-        # Arrange
-        user_id = uuid4()
-        mock_result = Mock()
-        mock_result.rowcount = 0
-        mock_session.execute.return_value = mock_result
+		# Act
+		await user_gateway.delete_user(user_id)
 
-        # Act & Assert
-        with pytest.raises(ValueError, match=f"User with ID {user_id} not found"):
-            await user_gateway.delete_user(user_id)
+		# Assert
+		mock_session.execute.assert_called_once()
+		mock_session.commit.assert_called_once()
 
-        mock_session.execute.assert_called_once()
-        mock_session.commit.assert_not_called()
+	@pytest.mark.asyncio
+	async def test_delete_user_not_found(self, user_gateway, mock_session):
+		"""Test deletion of non-existent user"""
+		# Arrange
+		user_id = uuid4()
+		mock_result = Mock()
+		mock_result.rowcount = 0
+		mock_session.execute.return_value = mock_result
 
-    @pytest.mark.asyncio
-    async def test_get_user_by_id_success(self, user_gateway, mock_session, sample_user_model):
-        """Test successful user retrieval by ID"""
-        # Arrange
-        user_id = uuid4()
-        mock_result = Mock()
-        mock_result.scalar_one_or_none.return_value = sample_user_model
-        mock_session.execute.return_value = mock_result
+		# Act & Assert
+		with pytest.raises(ValueError, match=f"User with ID {user_id} not found"):
+			await user_gateway.delete_user(user_id)
 
-        # Act
-        result = await user_gateway.get_user_by_id(user_id)
+		mock_session.execute.assert_called_once()
+		mock_session.commit.assert_not_called()
 
-        # Assert
-        assert isinstance(result, User)
-        assert result.test_username == "test_user"
-        mock_session.execute.assert_called_once()
+	@pytest.mark.asyncio
+	async def test_get_user_by_id_success(self, user_gateway, mock_session, sample_user_model):
+		"""Test successful user retrieval by ID"""
+		# Arrange
+		user_id = uuid4()
+		mock_result = Mock()
+		mock_result.scalar_one_or_none.return_value = sample_user_model
+		mock_session.execute.return_value = mock_result
 
-    @pytest.mark.asyncio
-    async def test_get_user_by_id_not_found(self, user_gateway, mock_session):
-        """Test user retrieval when user doesn't exist"""
-        # Arrange
-        user_id = uuid4()
-        mock_result = Mock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
+		# Act
+		result = await user_gateway.get_user_by_id(user_id)
 
-        # Act
-        result = await user_gateway.get_user_by_id(user_id)
+		# Assert
+		assert isinstance(result, User)
+		assert result.test_username == "test_user"
+		mock_session.execute.assert_called_once()
 
-        # Assert
-        assert result is None
-        mock_session.execute.assert_called_once()
+	@pytest.mark.asyncio
+	async def test_get_user_by_id_not_found(self, user_gateway, mock_session):
+		"""Test user retrieval when user doesn't exist"""
+		# Arrange
+		user_id = uuid4()
+		mock_result = Mock()
+		mock_result.scalar_one_or_none.return_value = None
+		mock_session.execute.return_value = mock_result
 
-    def test_to_domain_user_conversion(self, user_gateway, sample_user_model):
-        """Test conversion from database model to domain model"""
-        # Arrange - Create mock character, scene, and chat models
-        char_model = Mock()
-        char_model.id = uuid4()
-        char_model.owner_id = sample_user_model.id
-        char_model.name = "Test Character"
-        char_model.system_prompt = "Test prompt"
-        char_model.is_public = False
+		# Act
+		result = await user_gateway.get_user_by_id(user_id)
 
-        scene_model = Mock()
-        scene_model.id = uuid4()
-        scene_model.owner_id = sample_user_model.id
-        scene_model.title = "Test Scene"
-        scene_model.background_prompt = "Test background"
+		# Assert
+		assert result is None
+		mock_session.execute.assert_called_once()
 
-        chat_model = Mock()
-        chat_model.id = uuid4()
-        chat_model.user_id = sample_user_model.id
-        chat_model.character_id = char_model.id
-        chat_model.scene_id = scene_model.id
+	def test_to_domain_user_conversion(self, user_gateway, sample_user_model):
+		"""Test conversion from database model to domain model"""
+		# Arrange - Create mock character, scene, and chat models
+		char_model = Mock()
+		char_model.id = uuid4()
+		char_model.owner_id = sample_user_model.id
+		char_model.name = "Test Character"
+		char_model.system_prompt = "Test prompt"
+		char_model.is_public = False
 
-        sample_user_model.characters = [char_model]
-        sample_user_model.scenes = [scene_model]
-        sample_user_model.chats = [chat_model]
+		scene_model = Mock()
+		scene_model.id = uuid4()
+		scene_model.owner_id = sample_user_model.id
+		scene_model.title = "Test Scene"
+		scene_model.background_prompt = "Test background"
 
-        # Act
-        result = user_gateway._to_domain_user(sample_user_model)
+		chat_model = Mock()
+		chat_model.id = uuid4()
+		chat_model.user_id = sample_user_model.id
+		chat_model.character_id = char_model.id
+		chat_model.scene_id = scene_model.id
 
-        # Assert
-        assert isinstance(result, User)
-        assert result.id == sample_user_model.id
-        assert result.test_username == "test_user"
-        assert result.google_id == "google123"
-        assert result.crystal_balance == 1000
-        assert len(result.characters) == 1
-        assert len(result.scenes) == 1
-        assert len(result.chats) == 1
-        assert result.characters[0].name == "Test Character"
-        assert result.scenes[0].title == "Test Scene"
+		sample_user_model.characters = [char_model]
+		sample_user_model.scenes = [scene_model]
+		sample_user_model.chats = [chat_model]
 
-    def test_to_domain_user_with_default_role(self, user_gateway):
-        """Test conversion with default role when role attribute is missing"""
-        # Arrange
-        user_model_without_role = Mock()
-        user_model_without_role.id = uuid4()
-        user_model_without_role.test_username = "test_user"
-        user_model_without_role.google_id = None
-        user_model_without_role.crystal_balance = 1000
-        user_model_without_role.characters = []
-        user_model_without_role.scenes = []
-        user_model_without_role.chats = []
-        # Simulate missing role attribute
-        del user_model_without_role.role
+		# Act
+		result = user_gateway._to_domain_user(sample_user_model)
 
-        # Act
-        result = user_gateway._to_domain_user(user_model_without_role)
+		# Assert
+		assert isinstance(result, User)
+		assert result.id == sample_user_model.id
+		assert result.test_username == "test_user"
+		assert result.google_id == "google123"
+		assert result.crystal_balance == 1000
+		assert len(result.characters) == 1
+		assert len(result.scenes) == 1
+		assert len(result.chats) == 1
+		assert result.characters[0].name == "Test Character"
+		assert result.scenes[0].title == "Test Scene"
 
-        # Assert
-        assert result.role == UserRole.API  # Default role
+	def test_to_domain_user_with_default_role(self, user_gateway):
+		"""Test conversion with default role when role attribute is missing"""
+		# Arrange
+		user_model_without_role = Mock()
+		user_model_without_role.id = uuid4()
+		user_model_without_role.test_username = "test_user"
+		user_model_without_role.google_id = None
+		user_model_without_role.crystal_balance = 1000
+		user_model_without_role.characters = []
+		user_model_without_role.scenes = []
+		user_model_without_role.chats = []
+		# Simulate missing role attribute
+		del user_model_without_role.role
 
-    def test_to_domain_user_empty_collections(self, user_gateway):
-        """Test conversion with empty character, scene, and chat collections"""
-        # Arrange
-        user_model = Mock()
-        user_model.id = uuid4()
-        user_model.test_username = "test_user"
-        user_model.google_id = None
-        user_model.crystal_balance = 1000
-        user_model.characters = []
-        user_model.scenes = []
-        user_model.chats = []
-        # Simulate missing role attribute to trigger default role
-        del user_model.role
+		# Act
+		result = user_gateway._to_domain_user(user_model_without_role)
 
-        # Act
-        result = user_gateway._to_domain_user(user_model)
+		# Assert
+		assert result.role == UserRole.API  # Default role
 
-        # Assert
-        assert len(result.characters) == 0
-        assert len(result.scenes) == 0
-        assert len(result.chats) == 0
-        assert result.role == UserRole.API  # Default role
+	def test_to_domain_user_empty_collections(self, user_gateway):
+		"""Test conversion with empty character, scene, and chat collections"""
+		# Arrange
+		user_model = Mock()
+		user_model.id = uuid4()
+		user_model.test_username = "test_user"
+		user_model.google_id = None
+		user_model.crystal_balance = 1000
+		user_model.characters = []
+		user_model.scenes = []
+		user_model.chats = []
+		# Simulate missing role attribute to trigger default role
+		del user_model.role
 
-    @pytest.mark.asyncio
-    async def test_find_users_empty_filters(self, user_gateway, mock_session, sample_user_model):
-        """Test user search with empty filters (should return all users)"""
-        # Arrange
-        empty_filters = UserDTO()
-        
-        mock_result = Mock()
-        mock_result.scalars.return_value.all.return_value = [sample_user_model]
-        mock_session.execute.return_value = mock_result
+		# Act
+		result = user_gateway._to_domain_user(user_model)
 
-        mock_count_result = Mock()
-        mock_count_result.scalar.return_value = 1
-        mock_session.execute.side_effect = [mock_count_result, mock_result]
+		# Assert
+		assert len(result.characters) == 0
+		assert len(result.scenes) == 0
+		assert len(result.chats) == 0
+		assert result.role == UserRole.API  # Default role
 
-        # Act
-        result = await user_gateway.find_users_by_filters(empty_filters)
+	@pytest.mark.asyncio
+	async def test_find_users_empty_filters(self, user_gateway, mock_session, sample_user_model):
+		"""Test user search with empty filters (should return all users)"""
+		# Arrange
+		empty_filters = UserDTO()
 
-        # Assert
-        assert result.count == 1
-        assert len(result.result) == 1
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_user_model]
+		mock_session.execute.return_value = mock_result
 
-    @pytest.mark.asyncio
-    async def test_session_error_handling(self, user_gateway, mock_session):
-        """Test that database errors are propagated correctly"""
-        # Arrange
-        mock_session.execute.side_effect = Exception("Database connection error")
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
 
-        # Act & Assert
-        with pytest.raises(Exception, match="Database connection error"):
-            await user_gateway.find_users_by_filters(UserDTO())
+		# Act
+		result = await user_gateway.find_users_by_filters(empty_filters)
+
+		# Assert
+		assert result.count == 1
+		assert len(result.items) == 1
+
+	@pytest.mark.asyncio
+	async def test_session_error_handling(self, user_gateway, mock_session):
+		"""Test that database errors are propagated correctly"""
+		# Arrange
+		mock_session.execute.side_effect = Exception("Database connection error")
+
+		# Act & Assert
+		with pytest.raises(Exception, match="Database connection error"):
+			await user_gateway.find_users_by_filters(UserDTO())
