@@ -36,7 +36,7 @@ class TestChatsAPI:
 		# Should still work with empty message
 		assert response.status_code == 200
 		data = response.json()
-		assert "text" in data
+		assert "text" in data["result"]
 
 	def test_send_message_missing_fields(self, client):
 		"""Test sending message with missing required fields."""
@@ -57,5 +57,5 @@ class TestChatsAPI:
 
 		assert response.status_code == 200
 		data = response.json()
-		assert "text" in data
-		assert isinstance(data["text"], str)
+		assert "text" in data["result"]
+		assert isinstance(data["result"]["text"], str)
