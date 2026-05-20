@@ -41,6 +41,18 @@ jobs:
       - name: Map Google API alias to localhost
         run: echo "127.0.0.1 generativelanguage.googleapis.com" | sudo tee -a /etc/hosts
 
+      # STAGE 0: Linting & Formatting
+      - name: Stage 0a - Ruff Linter
+        uses: astral-sh/ruff-action@v1
+        with:
+          # Pin version here if needed, e.g., version: "0.3.5"
+          args: "check ."
+
+      - name: Stage 0b - Ruff Formatter
+        uses: astral-sh/ruff-action@v1
+        with:
+          args: "format --check ."
+
       - name: Build and start Mock Google API
         # Builds the local Dockerfile and runs it in the background.
         # Ensure the port mapped (443 here) matches what your app expects.
