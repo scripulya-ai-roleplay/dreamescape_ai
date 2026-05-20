@@ -42,6 +42,7 @@ class Scene(BaseModel):
 	model_config = ConfigDict(frozen=True)
 
 	id: Optional[UUID] = None
+	description: str | None = None
 	owner_id: Optional[UUID] = None
 	title: str
 	background_prompt: str
