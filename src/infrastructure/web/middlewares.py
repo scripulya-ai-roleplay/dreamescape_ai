@@ -8,7 +8,7 @@ from jwt import InvalidTokenError
 from starlette import status
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from settings.conf import settings
+from src.conf import settings
 from src.application.auth.jwt_service import JWTService
 from src.domain.models import User, UserRole
 from src.infrastructure.logging import trace
@@ -18,117 +18,117 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 class TraceAndLogRequestsMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app: FastAPI):
-        super().__init__(app)
-        self._public_key = settings.JWT_PUBLIC_KEY
-        self._algorithm = settings.JWT_ALGORITHM
+	def __init__(self, app: FastAPI):
+		super().__init__(app)
+		self._public_key = settings.JWT_PUBLIC_KEY
+		self._algorithm = settings.JWT_ALGORITHM
 
-    async def _get_current_user(
-        self,
-        request: Request,
-        credentials: HTTPAuthorizationCredentials,
-        jwt_service: JWTService,
-    ) -> User:
-        if credentials is None:
-            logger.warning("Missing Authorization header")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Missing authentication credentials",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+	async def _get_current_user(
+		self,
+		request: Request,
+		credentials: HTTPAuthorizationCredentials,
+		jwt_service: JWTService,
+	) -> User:
+		if credentials is None:
+			logger.warning("Missing Authorization header")
+			raise HTTPException(
+				status_code=status.HTTP_401_UNAUTHORIZED,
+				detail="Missing authentication credentials",
+				headers={"WWW-Authenticate": "Bearer"},
+			)
 
-        token = credentials.credentials
+		token = credentials.credentials
 
-        try:
-            user = jwt_service.verify_token(token)
+		try:
+			user = jwt_service.verify_token(token)
 
-            trace.set_username(user.username)
+			trace.set_username(user.username)
 
-            request.state.username = user.username
+			request.state.username = user.username
 
-            logger.info(
-                "User authenticated successfully: %s (role: %s)",
-                user.username,
-                user.role,
-            )
-            return user
-        except Exception as e:
-            logger.warning("Authentication failed: %s", e)
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials",
-                headers={"WWW-Authenticate": "Bearer"},
-            ) from e
+			logger.info(
+				"User authenticated successfully: %s (role: %s)",
+				user.username,
+				user.role,
+			)
+			return user
+		except Exception as e:
+			logger.warning("Authentication failed: %s", e)
+			raise HTTPException(
+				status_code=status.HTTP_401_UNAUTHORIZED,
+				detail="Invalid authentication credentials",
+				headers={"WWW-Authenticate": "Bearer"},
+			) from e
 
-    async def get_current_user(self, request) -> User | None:
-        if getattr(request.state, "credentials", None) is not None:
-            token = request.state.credentials.credentials
+	async def get_current_user(self, request) -> User | None:
+		if getattr(request.state, "credentials", None) is not None:
+			token = request.state.credentials.credentials
 
-            try:
-                payload = jwt.decode(token, self._public_key, algorithms=[self._algorithm])
+			try:
+				payload = jwt.decode(token, self._public_key, algorithms=[self._algorithm])
 
-                user = User(
-                    username=payload["username"],
-                    role=UserRole(payload["role"]),
-                )
+				user = User(
+					username=payload["username"],
+					role=UserRole(payload["role"]),
+				)
 
-                return user
+				return user
 
-            except InvalidTokenError:
-                raise
-            except (KeyError, ValueError) as e:
-                msg = "Invalid token payload"
-                raise InvalidTokenError(msg) from e
+			except InvalidTokenError:
+				raise
+			except (KeyError, ValueError) as e:
+				msg = "Invalid token payload"
+				raise InvalidTokenError(msg) from e
 
-    async def dispatch(
-        self,
-        request: Request,
-        call_next,
-        credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    ):
-        start_time = time.time()
+	async def dispatch(
+		self,
+		request: Request,
+		call_next,
+		credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+	):
+		start_time = time.time()
 
-        logger.info(
-            "Request started",
-            extra={
-                "method": request.method,
-                "path": request.url.path,
-                "client_host": request.client.host if request.client else None,
-            },
-        )
+		logger.info(
+			"Request started",
+			extra={
+				"method": request.method,
+				"path": request.url.path,
+				"client_host": request.client.host if request.client else None,
+			},
+		)
 
-        try:
-            response = await call_next(request)
-            process_time = time.time() - start_time
+		try:
+			response = await call_next(request)
+			process_time = time.time() - start_time
 
-            log_extra = {
-                "method": request.method,
-                "path": request.url.path,
-                "status_code": response.status_code,
-                "duration": round(process_time, 3),
-            }
+			log_extra = {
+				"method": request.method,
+				"path": request.url.path,
+				"status_code": response.status_code,
+				"duration": round(process_time, 3),
+			}
 
-            user = await self.get_current_user(request)
-            if user is not None:
-                log_extra["username"] = user.username
-                log_extra["user_role"] = user.role
-                logger.info("Request completed", extra=log_extra)
+			user = await self.get_current_user(request)
+			if user is not None:
+				log_extra["username"] = user.username
+				log_extra["user_role"] = user.role
+				logger.info("Request completed", extra=log_extra)
 
-            return response
-        except Exception as e:
-            process_time = time.time() - start_time
+			return response
+		except Exception as e:
+			process_time = time.time() - start_time
 
-            username = trace.get_username()
+			username = trace.get_username()
 
-            log_extra = {
-                "method": request.method,
-                "path": request.url.path,
-                "duration": round(process_time, 3),
-                "error": str(e),
-            }
+			log_extra = {
+				"method": request.method,
+				"path": request.url.path,
+				"duration": round(process_time, 3),
+				"error": str(e),
+			}
 
-            if username:
-                log_extra["username"] = username
+			if username:
+				log_extra["username"] = username
 
-            logger.error("Request failed", extra=log_extra, exc_info=True)
-            raise e
+			logger.error("Request failed", extra=log_extra, exc_info=True)
+			raise e

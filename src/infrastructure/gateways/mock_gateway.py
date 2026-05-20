@@ -5,12 +5,8 @@ from src.application.ports import ILLMChatGateway
 
 @dataclass
 class MockGateway(ILLMChatGateway):
-    logger: Logger
+	logger: Logger
 
-    async def generate_response(self, user_message: str) -> dict:
-        self.logger.info(f"Mock gateway received: {user_message}")
-        return {
-            "text": f"Mock response for: {user_message}",
-            "model": "testing_mock",
-            "usage": {"tokens": 10}
-        }
+	async def generate_response(self, user_message: str) -> dict:
+		self.logger.info(f"Mock gateway received: {user_message}")
+		return {"text": f"Mock response for: {user_message}", "model": "testing_mock", "usage": {"tokens": 10}}
