@@ -75,10 +75,7 @@ jobs:
         run: |
           docker run -d --name running-app --network host \
             -e GEMINI_API_KEY=fake_api_key_for_testing \
-            -e POSTGRES_USER=user \
-            -e POSTGRES_PASSWORD=password \
-            -e POSTGRES_DB=dbname \
-            -e DATABASE_URL=127.0.0.1 \
+            -e DATABASE_URL=postgresql+asyncpg://user:password@127.0.0.1:5432/dbname \
             main-app
 
       - name: Wait for application to be ready
