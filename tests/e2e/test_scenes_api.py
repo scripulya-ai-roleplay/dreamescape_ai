@@ -6,15 +6,21 @@ import uuid
 class TestScenesAPI:
 	"""End-to-end tests for scenes API endpoints."""
 
-	def test_create_scene_with_valid_data(self, client):
+	def test_create_scene_with_valid_data(self, client, auth_headers):
 		"""Test creating a scene with valid data."""
 		payload = {
 			"title": "Test Scene",
 			"background_prompt": "A beautiful fantasy world with magic",
 			"description": "A test scene for e2e testing",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
 		}
 
-		response = client.post("/api/v1/scenes/", json=payload)
+		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
+
+		# Debug: Print response details if not 200
+		if response.status_code != 200:
+			print(f"Response status: {response.status_code}")
+			print(f"Response content: {response.text}")
 
 		assert response.status_code == 200
 		data = response.json()
@@ -22,54 +28,82 @@ class TestScenesAPI:
 		assert "correlation_id" in data
 		assert isinstance(data["result"], list)
 
-	def test_create_scene_with_minimal_data(self, client):
+	def test_create_scene_with_minimal_data(self, client, auth_headers):
 		"""Test creating a scene with only required fields."""
-		payload = {"title": "Minimal Scene", "background_prompt": "Simple background"}
+		payload = {
+			"title": "Minimal Scene",
+			"background_prompt": "Simple background",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+		}
 
-		response = client.post("/api/v1/scenes/", json=payload)
+		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
 
 		assert response.status_code == 200
 		data = response.json()
 		assert "result" in data
 		assert "correlation_id" in data
 
-	def test_create_scene_missing_required_fields(self, client):
+	def test_create_scene_missing_required_fields(self, client, auth_headers):
 		"""Test creating a scene with missing required fields."""
 		# Missing title
-		payload = {"background_prompt": "Background without title"}
+		payload = {
+			"background_prompt": "Background without title",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+		}
 
-		response = client.post("/api/v1/scenes/", json=payload)
+		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
 
 		assert response.status_code == 422
 
-	def test_create_scene_missing_background_prompt(self, client):
+	def test_create_scene_missing_background_prompt(self, client, auth_headers):
 		"""Test creating a scene without background_prompt."""
-		payload = {"title": "Scene without background"}
+		payload = {
+			"title": "Scene without background",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+		}
 
-		response = client.post("/api/v1/scenes/", json=payload)
+		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
 
 		assert response.status_code == 422
 
-	def test_create_scene_with_empty_title(self, client):
+	def test_create_scene_with_empty_title(self, client, auth_headers):
 		"""Test creating a scene with empty title."""
-		payload = {"title": "", "background_prompt": "Background with empty title"}
+		payload = {
+			"title": "",
+			"background_prompt": "Background with empty title",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+		}
 
-		response = client.post("/api/v1/scenes/", json=payload)
+		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
 
 		# Should work with empty title (no validation constraint shown in model)
 		assert response.status_code == 200
 
-	def test_create_scene_with_long_data(self, client):
+	def test_create_scene_with_long_data(self, client, auth_headers):
 		"""Test creating a scene with very long data."""
 		payload = {
 			"title": "Very long title " * 100,
 			"background_prompt": "Very long background prompt " * 200,
 			"description": "Very long description " * 150,
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+		}
+
+		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
+
+		assert response.status_code == 200
+
+	def test_create_scene_without_authentication(self, client):
+		"""Test creating a scene without authentication should return 401."""
+		payload = {
+			"title": "Test Scene",
+			"background_prompt": "A beautiful fantasy world with magic",
+			"description": "A test scene for e2e testing",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload)
 
-		assert response.status_code == 200
+		assert response.status_code == 401
 
 	def test_search_scenes_without_filters(self, client):
 		"""Test searching scenes without any filters."""
@@ -252,6 +286,7 @@ class TestScenesAPI:
 			"title": "Updated Scene Title",
 			"background_prompt": "Updated background prompt",
 			"description": "Updated description",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
 		}
 
 		response = client.post(f"/api/v1/scenes/update/{test_uuid}", json=payload)

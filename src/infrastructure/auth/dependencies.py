@@ -7,10 +7,10 @@ from src.infrastructure.auth.jwt_utils import verify_token
 oauth2_scheme = HTTPBearer()
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
+async def get_current_user(credentials=Depends(oauth2_scheme)) -> Dict[str, Any]:
 	"""Dependency to get current authenticated user from JWT token."""
 
-	payload = verify_token(token)
+	payload = verify_token(credentials.credentials)
 	if payload is None:
 		raise HTTPException(
 			status_code=status.HTTP_401_UNAUTHORIZED,

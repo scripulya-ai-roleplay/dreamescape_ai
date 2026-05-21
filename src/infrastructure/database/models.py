@@ -60,7 +60,7 @@ class Scene(Base):
 		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
 	)
 	owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-	title: Mapped[str] = mapped_column(String(255))
+	title: Mapped[str] = mapped_column(Text)
 	description: Mapped[str] = mapped_column(Text)
 	background_prompt: Mapped[str] = mapped_column(Text)
 

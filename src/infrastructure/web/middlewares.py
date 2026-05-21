@@ -20,6 +20,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 class TraceAndLogRequestsMiddleware(BaseHTTPMiddleware):
 	def __init__(self, app: FastAPI):
 		super().__init__(app)
+		self._secret_key = settings.JWT_SECRET_KEY
 		self._public_key = settings.JWT_PUBLIC_KEY
 		self._algorithm = settings.JWT_ALGORITHM
 
@@ -65,11 +66,21 @@ class TraceAndLogRequestsMiddleware(BaseHTTPMiddleware):
 			token = request.state.credentials.credentials
 
 			try:
-				payload = jwt.decode(token, self._public_key, algorithms=[self._algorithm])
+				# For HS256, use secret key; for ES256, use public key
+				if self._algorithm.startswith("HS"):
+					key = self._secret_key
+				else:
+					key = self._public_key
+
+				payload = jwt.decode(token, key, algorithms=[self._algorithm])
+
+				# Handle different token payload formats
+				from uuid import UUID
 
 				user = User(
-					username=payload["username"],
-					role=UserRole(payload["role"]),
+					id=UUID(payload.get("sub")) if payload.get("sub") else None,
+					username=payload.get("username"),
+					role=UserRole(payload["role"]) if payload.get("role") else UserRole.API,
 				)
 
 				return user

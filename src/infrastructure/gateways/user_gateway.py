@@ -32,7 +32,7 @@ class UserGateway(IUserGateway):
 		conditions = []
 
 		if filters.user_ids:
-			conditions.append(UserModel.id.in_(filters.user_ids))
+			conditions.append(UserModel.id.in_([str(id_) for id_ in filters.user_ids]))
 
 		if filters.usernames:
 			conditions.append(UserModel.test_username.in_(filters.usernames))
