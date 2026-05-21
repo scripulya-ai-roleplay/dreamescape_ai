@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 import jwt
 from unittest.mock import Mock
@@ -34,7 +36,9 @@ class TestJWTService:
 	@pytest.fixture
 	def sample_user(self):
 		"""Sample user for testing"""
-		return User(username="test_user", role=UserRole.API, crystal_balance=1000)
+		user_id = uuid.uuid4()
+
+		return User(id=user_id, username="test_user", role=UserRole.API, crystal_balance=1000)
 
 	def test_create_token_success(self, jwt_service, mock_logger, sample_user, private_key):
 		"""Test successful token creation"""

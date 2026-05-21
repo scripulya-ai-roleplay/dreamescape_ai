@@ -8,6 +8,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 DROP TABLE IF EXISTS media_assets CASCADE;
 DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS chats CASCADE;
+DROP TABLE IF EXISTS character_scene CASCADE;
 DROP TABLE IF EXISTS scenes CASCADE;
 DROP TABLE IF EXISTS characters CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
@@ -33,8 +34,16 @@ CREATE TABLE characters (
 CREATE TABLE scenes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    title VARCHAR(255) NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
     background_prompt TEXT NOT NULL
+);
+
+-- Create character_scene junction table for many-to-many relationship
+CREATE TABLE character_scene (
+    character_id UUID NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+    scene_id UUID NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+    PRIMARY KEY (character_id, scene_id)
 );
 
 -- Create chats table
@@ -88,11 +97,29 @@ INSERT INTO characters (id, owner_id, name, system_prompt, is_public) VALUES
     ('660e8400-e29b-41d4-a716-446655440003', '550e8400-e29b-41d4-a716-446655440003', 'Math Tutor', 'You are a patient math tutor who explains mathematical concepts clearly and helps students solve problems step by step.', true);
 
 -- Insert test scenes
-INSERT INTO scenes (id, owner_id, title, background_prompt) VALUES
-    ('770e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655440000', 'Office Environment', 'You are in a modern office setting with computers, whiteboards, and a collaborative atmosphere. The conversation takes place during work hours.'),
-    ('770e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440001', 'Cozy Coffee Shop', 'You are sitting in a warm, cozy coffee shop with soft lighting, the aroma of fresh coffee, and gentle background music. Perfect for casual conversations.'),
-    ('770e8400-e29b-41d4-a716-446655440002', '550e8400-e29b-41d4-a716-446655440002', 'Library Study Room', 'You are in a quiet library study room surrounded by books and academic resources. The atmosphere is focused and conducive to learning.'),
-    ('770e8400-e29b-41d4-a716-446655440003', '550e8400-e29b-41d4-a716-446655440003', 'Virtual Reality Space', 'You are in a futuristic virtual reality environment where anything is possible. The digital landscape can change based on the conversation.');
+INSERT INTO scenes (id, owner_id, title, description, background_prompt) VALUES
+    ('770e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655440000', 'Office Environment', 'A professional workspace designed for productive conversations and collaborative work sessions.', 'You are in a modern office setting with computers, whiteboards, and a collaborative atmosphere. The conversation takes place during work hours.'),
+    ('770e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440001', 'Cozy Coffee Shop', 'A warm and inviting café atmosphere perfect for relaxed, informal conversations over coffee.', 'You are sitting in a warm, cozy coffee shop with soft lighting, the aroma of fresh coffee, and gentle background music. Perfect for casual conversations.'),
+    ('770e8400-e29b-41d4-a716-446655440002', '550e8400-e29b-41d4-a716-446655440002', 'Library Study Room', 'A quiet academic environment ideal for focused learning and educational discussions.', 'You are in a quiet library study room surrounded by books and academic resources. The atmosphere is focused and conducive to learning.'),
+    ('770e8400-e29b-41d4-a716-446655440003', '550e8400-e29b-41d4-a716-446655440003', 'Virtual Reality Space', 'An immersive digital environment where imagination and technology merge for limitless possibilities.', 'You are in a futuristic virtual reality environment where anything is possible. The digital landscape can change based on the conversation.');
+
+-- Insert test character_scene associations
+INSERT INTO character_scene (character_id, scene_id) VALUES
+    -- Helpful Assistant works well in office and coffee shop environments
+    ('660e8400-e29b-41d4-a716-446655440000', '770e8400-e29b-41d4-a716-446655440000'), -- Helpful Assistant + Office Environment
+    ('660e8400-e29b-41d4-a716-446655440000', '770e8400-e29b-41d4-a716-446655440001'), -- Helpful Assistant + Cozy Coffee Shop
+    
+    -- Code Mentor is perfect for office and virtual reality environments
+    ('660e8400-e29b-41d4-a716-446655440001', '770e8400-e29b-41d4-a716-446655440000'), -- Code Mentor + Office Environment
+    ('660e8400-e29b-41d4-a716-446655440001', '770e8400-e29b-41d4-a716-446655440003'), -- Code Mentor + Virtual Reality Space
+    
+    -- Creative Writer thrives in coffee shop and virtual reality spaces
+    ('660e8400-e29b-41d4-a716-446655440002', '770e8400-e29b-41d4-a716-446655440001'), -- Creative Writer + Cozy Coffee Shop
+    ('660e8400-e29b-41d4-a716-446655440002', '770e8400-e29b-41d4-a716-446655440003'), -- Creative Writer + Virtual Reality Space
+    
+    -- Math Tutor is ideal for library and office environments
+    ('660e8400-e29b-41d4-a716-446655440003', '770e8400-e29b-41d4-a716-446655440002'), -- Math Tutor + Library Study Room
+    ('660e8400-e29b-41d4-a716-446655440003', '770e8400-e29b-41d4-a716-446655440000'); -- Math Tutor + Office Environment
 
 -- Insert test chats
 INSERT INTO chats (id, user_id, character_id, scene_id, created_at) VALUES
@@ -139,6 +166,8 @@ UNION ALL
 SELECT 'characters', COUNT(*) FROM characters
 UNION ALL  
 SELECT 'scenes', COUNT(*) FROM scenes
+UNION ALL
+SELECT 'character_scene', COUNT(*) FROM character_scene
 UNION ALL
 SELECT 'chats', COUNT(*) FROM chats
 UNION ALL

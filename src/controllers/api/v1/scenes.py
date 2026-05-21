@@ -1,30 +1,74 @@
 import logging
 from uuid import UUID
+from typing import Dict, Any
 
-from fastapi import APIRouter
-from pydantic import BaseModel
+from asgi_correlation_id import correlation_id
+from dishka import FromDishka
+from dishka.integrations.fastapi import inject
+from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 
+from src.application.ports import ISceneService, ApiResponse, Page
+from src.application.scene.schemas import SceneFilterDTO
+from src.domain.models import Scene
+from src.infrastructure.auth.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 
 
-router = APIRouter(prefix="/api/v1/chats", tags=["networks"])
+router = APIRouter(prefix="/api/v1/scenes", tags=["scenes"])
 
 
-class SceneCreatiobDTO(BaseModel):
-	owner_id: UUID
-	title: str
-	background_prompt: str
+@router.post("/")
+@inject
+async def create_scene(
+	scenes_service: FromDishka[ISceneService],
+	scene: Scene = Body(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse:
+	logger.info(f"Current user payload: {current_user}")
+	user_id = UUID(current_user["sub"])
+	logger.info(f"Extracted user ID: {user_id}")
+
+	# Validate that the Scene's owner_id matches the authenticated user
+	if scene.owner_id != user_id:
+		logger.warning(f"Owner ID mismatch: scene.owner_id={scene.owner_id}, user_id={user_id}")
+		raise HTTPException(status_code=403, detail="Scene owner_id must match authenticated user")
+
+	logger.info(f"Scene object validation passed with owner_id: {scene.owner_id}")
+
+	await scenes_service.create_scene(scene)
+	return ApiResponse(result=[], correlation_id=correlation_id.get())
 
 
-# TODO: got distracted by linting and test fixing. Gonnna implement aftter that
-# @router.post("/")
-# @inject
-# async def create_scene(
-# 	scene_dto: SceneCreatiobDTO,
-# 	gateway_factory: FromDishka[IGatewayFactory],
-# ) -> APIResponseDTO:
-# 	# noinspection PyTypeChecker
-# 	gateway = gateway_factory.create_gateway(user_message_dto.llm_model.value)
-# 	json_data = gateway.generate_response(user_message_dto.message)
-# 	return APIResponseDTO.model_validate(json_data)
+@router.get("/{scene_id}")
+@inject
+async def get_scene_details(scenes_service: FromDishka[ISceneService], scene_id: UUID = Path()) -> ApiResponse[Scene]:
+	result = await scenes_service.get_one(scene_id)
+	return ApiResponse(result=result, correlation_id=correlation_id.get())
+
+
+@router.get("/")
+@inject
+async def search_scene(
+	scene_service: FromDishka[ISceneService], dto: SceneFilterDTO = Query(SceneFilterDTO())
+) -> ApiResponse[Page[Scene]]:
+	result = await scene_service.search(dto)
+	return ApiResponse(result=result, correlation_id=correlation_id.get())
+
+
+@router.delete("/{scene_id}")
+@inject
+async def delete_scene(scene_service: FromDishka[ISceneService], scene_id: UUID = Path()) -> ApiResponse:
+	await scene_service.delete(scene_id)
+	return ApiResponse(result=[], correlation_id=correlation_id.get())
+
+
+@router.post("/update/{scene_id}")
+@inject
+async def update_scene(
+	scene_service: FromDishka[ISceneService],
+	scene_id: UUID = Path(),
+	update_data: Scene = Body(),
+) -> ApiResponse:
+	await scene_service.update(scene_id, update_data)
+	return ApiResponse(result=[], correlation_id=correlation_id.get())

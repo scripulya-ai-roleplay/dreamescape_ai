@@ -31,7 +31,13 @@ def client():
 
 @pytest.fixture
 def auth_headers():
-	"""Mock authentication headers for testing."""
-	# For now, return empty headers since we don't have a clear auth endpoint
-	# This can be updated when auth is properly implemented
-	return {}
+	"""Authentication headers with JWT token for testing."""
+	from src.infrastructure.auth.jwt_utils import create_test_token
+
+	# Use a test user ID from init.sql (admin_test)
+	test_user_id = "550e8400-e29b-41d4-a716-446655440000"
+
+	# Create a proper test token using the jwt_utils function
+	token = create_test_token(test_user_id)
+
+	return {"Authorization": f"Bearer {token}"}

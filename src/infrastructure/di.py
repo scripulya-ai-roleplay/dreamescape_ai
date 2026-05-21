@@ -7,11 +7,21 @@ from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, create_async_engin
 from src.conf import settings
 from src.infrastructure.database.postgresqluow import PostgresqlUOW
 from src.infrastructure.gateways.google_gateway import GoogleGateway
-from src.application.ports import IUserService, IUserGateway, IJWTService, IGatewayFactory, IChatsService
+from src.application.ports import (
+	IUserService,
+	IUserGateway,
+	IJWTService,
+	IGatewayFactory,
+	IChatsService,
+	ISceneService,
+	ISceneGateway,
+)
 from src.infrastructure.gateways.mock_gateway import MockGateway
 from src.infrastructure.gateways.gateway_factory import GatewayFactory
 from src.infrastructure.gateways.user_gateway import UserGateway
+from src.infrastructure.gateways.scenes_gateway import SceneGateway
 from src.application.user.user_service import UserService
+from src.application.scene.service import SceneService
 from src.application.auth.jwt_service import JWTService
 from src.application.chats.service import ChatsService
 
@@ -20,18 +30,18 @@ logger = logging.getLogger(__name__)
 
 
 class GatewayProvider(Provider):
-	@provide(scope=Scope.APP)
+	@provide(scope=Scope.REQUEST)
 	def provide_google_gateway(self) -> GoogleGateway:
 		return GoogleGateway(
 			logger=logger,
 			chat=settings.CHAT,
 		)
 
-	@provide(scope=Scope.APP)
+	@provide(scope=Scope.REQUEST)
 	def provide_mock_gateway(self) -> MockGateway:
 		return MockGateway(logger=logger)
 
-	@provide(scope=Scope.APP)
+	@provide(scope=Scope.REQUEST)
 	def provide_gateway_factory(self, google_gateway: GoogleGateway, mock_gateway: MockGateway) -> IGatewayFactory:
 		gateways = {
 			"gemini-3-flash-preview": google_gateway,
@@ -40,20 +50,20 @@ class GatewayProvider(Provider):
 		return GatewayFactory(gateways)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_chats_service(self, gateway_factory: IGatewayFactory) -> IChatsService:
-		return ChatsService(gateway_factory=gateway_factory)
-
-
-class UserProvider(Provider):
-	@provide(scope=Scope.REQUEST)
 	def provide_user_gateway(self, session: AsyncSession) -> IUserGateway:
 		return UserGateway(session)
 
 	@provide(scope=Scope.REQUEST)
+	def provide_scene_gateway(self, session: AsyncSession) -> ISceneGateway:
+		return SceneGateway(session)
+
+
+class ServiceProvider(Provider):
+	@provide(scope=Scope.REQUEST)
 	def provide_user_service(self, user_gateway: IUserGateway, uow: PostgresqlUOW) -> IUserService:
 		return UserService(user_gateway, uow)
 
-	@provide(scope=Scope.APP)
+	@provide(scope=Scope.REQUEST)
 	def provide_jwt_service(self) -> IJWTService:
 		return JWTService(
 			private_key=settings.JWT_SECRET_KEY,
@@ -61,6 +71,14 @@ class UserProvider(Provider):
 			algorithm=settings.JWT_ALGORITHM,
 			logger=logger,
 		)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_chats_service(self, gateway_factory: IGatewayFactory) -> IChatsService:
+		return ChatsService(gateway_factory=gateway_factory)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_scene_service(self, scene_gateway: ISceneGateway, uow: PostgresqlUOW) -> ISceneService:
+		return SceneService(uow=uow, gateway=scene_gateway)
 
 
 class DatabaseProvider(Provider):
@@ -100,5 +118,5 @@ def create_container():
 		GatewayProvider(),
 		DatabaseProvider(),
 		UoWProvider(),
-		UserProvider(),
+		ServiceProvider(),
 	)

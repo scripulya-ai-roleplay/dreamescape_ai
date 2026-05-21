@@ -87,6 +87,7 @@ jobs:
         run: |
           docker run --rm --network host \
             -e BACKEND_HOST=http://127.0.0.1:8000 \
+            -e GEMINI_API_KEY=fake_api_key_for_testing \
             main-app pytest tests/e2e
 
       - name: Dump Application Logs

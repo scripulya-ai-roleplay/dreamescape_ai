@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 
 from fastapi import HTTPException
 from fastapi.exception_handlers import http_exception_handler
+from sqlalchemy.exc import NoResultFound, MultipleResultsFound, IntegrityError
 
 from starlette import status
 from starlette.requests import Request
@@ -46,6 +47,46 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 	# Handle FastAPI HTTPException
 	if isinstance(exc, HTTPException):
 		return await http_exception_handler(request, exc)
+
+	# Handle SQLAlchemy exceptions
+	if isinstance(exc, NoResultFound):
+		logger.warning("Database record not found: %s", str(exc))
+		return JSONResponse(
+			status_code=status.HTTP_404_NOT_FOUND,
+			content={
+				"error": {
+					"code": "RECORD_NOT_FOUND",
+					"message": "The requested resource was not found",
+					"details": {},
+				}
+			},
+		)
+
+	if isinstance(exc, MultipleResultsFound):
+		logger.error("Multiple database records found when expecting one: %s", str(exc))
+		return JSONResponse(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			content={
+				"error": {
+					"code": "MULTIPLE_RECORDS_FOUND",
+					"message": "Database query returned multiple records when expecting one",
+					"details": {},
+				}
+			},
+		)
+
+	if isinstance(exc, IntegrityError):
+		logger.error("Database integrity error: %s", str(exc))
+		return JSONResponse(
+			status_code=status.HTTP_409_CONFLICT,
+			content={
+				"error": {
+					"code": "INTEGRITY_ERROR",
+					"message": "Database constraint violation",
+					"details": {"constraint_error": str(exc.orig) if hasattr(exc, "orig") else str(exc)},
+				}
+			},
+		)
 
 	# Handle Google API specific exceptions
 	if "google.api_core.exceptions" in str(type(exc)):
