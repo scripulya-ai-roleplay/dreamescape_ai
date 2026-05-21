@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import String, Text, Boolean, Integer, ForeignKey, CheckConstraint, Index
+from sqlalchemy import String, Text, Boolean, Integer, ForeignKey, CheckConstraint, Index, Table, Column
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
 from sqlalchemy.dialects.postgresql import UUID
@@ -9,6 +9,15 @@ from sqlalchemy.dialects.postgresql import UUID
 
 class Base(DeclarativeBase):
 	pass
+
+
+# Association table for many-to-many relationship between Character and Scene
+character_scene = Table(
+	"character_scene",
+	Base.metadata,
+	Column("character_id", UUID(as_uuid=True), ForeignKey("characters.id", ondelete="CASCADE"), primary_key=True),
+	Column("scene_id", UUID(as_uuid=True), ForeignKey("scenes.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class User(Base):
@@ -39,6 +48,9 @@ class Character(Base):
 
 	owner: Mapped["User"] = relationship(back_populates="characters")
 	chats: Mapped[List["Chat"]] = relationship(back_populates="character", cascade="all, delete-orphan")
+	scenes: Mapped[List["Scene"]] = relationship(
+		back_populates="characters", secondary="character_scene", cascade="all, delete"
+	)
 
 
 class Scene(Base):
@@ -48,11 +60,15 @@ class Scene(Base):
 		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
 	)
 	owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-	title: Mapped[str] = mapped_column(String(255))
+	title: Mapped[str] = mapped_column(Text)
+	description: Mapped[str] = mapped_column(Text)
 	background_prompt: Mapped[str] = mapped_column(Text)
 
 	owner: Mapped["User"] = relationship(back_populates="scenes")
 	chats: Mapped[List["Chat"]] = relationship(back_populates="scene", cascade="all, delete-orphan")
+	characters: Mapped[List["Character"]] = relationship(
+		back_populates="scenes", secondary="character_scene", cascade="all, delete"
+	)
 
 
 class Chat(Base):

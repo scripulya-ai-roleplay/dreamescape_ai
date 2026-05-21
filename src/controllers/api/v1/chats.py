@@ -10,7 +10,7 @@ from src.application.ports import LLMResponse, UserMessageDTO, IChatsService, Ap
 logger = logging.getLogger(__name__)
 
 
-router = APIRouter(prefix="/api/v1/chats", tags=["networks"])
+router = APIRouter(prefix="/api/v1/chats", tags=["chats"])
 
 
 @router.post("/")
