@@ -43,7 +43,7 @@ class Scene(BaseModel):
 
 	id: Optional[UUID] = None
 	description: str | None = None
-	owner_id: Optional[UUID] = None
+	owner_id: UUID  # Required - scenes must have an owner
 	title: str
 	background_prompt: str
 

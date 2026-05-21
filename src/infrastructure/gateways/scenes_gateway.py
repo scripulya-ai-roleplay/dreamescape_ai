@@ -90,6 +90,12 @@ class SceneGateway(ISceneGateway):
 		if conditions:
 			count_query = count_query.where(and_(*conditions))
 
+		if dto.limit:
+			query = query.limit(dto.limit)
+
+		if dto.offset:
+			query = query.offset(dto.offset)
+
 		count_result = await self.session.execute(count_query)
 		total_count = count_result.scalar() or 0
 
@@ -115,6 +121,7 @@ class SceneGateway(ISceneGateway):
 		)
 
 		self.session.add(scene_model)
+		await self.session.flush()
 		await self.session.refresh(scene_model)
 
 		logger.info(f"Successfully created scene with ID: {scene_model.id}")

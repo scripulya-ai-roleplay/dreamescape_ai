@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SceneFilterDTO(BaseModel):
@@ -13,5 +13,5 @@ class SceneFilterDTO(BaseModel):
 	# character is involved in
 	characters: list[UUID] | None = None
 
-	offset: int = 0
-	limit: int = 50
+	offset: int = Field(default=0, ge=0)
+	limit: int = Field(default=50, ge=0)
