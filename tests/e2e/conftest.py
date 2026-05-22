@@ -3,10 +3,11 @@ import os
 import pytest
 import requests
 
+from src.infrastructure.auth.jwt_utils import create_test_token
+
 
 @pytest.fixture(scope="function")
 def client():
-	"""HTTP client for e2e tests with 30-second timeout."""
 	session = requests.Session()
 	session.timeout = 30.0  # 30 seconds timeout as requested
 	session.base_url = os.getenv("BACKEND_HOST", "http://localhost:8000")
@@ -31,13 +32,48 @@ def client():
 
 @pytest.fixture
 def auth_headers():
-	"""Authentication headers with JWT token for testing."""
-	from src.infrastructure.auth.jwt_utils import create_test_token
-
-	# Use a test user ID from init.sql (admin_test)
 	test_user_id = "550e8400-e29b-41d4-a716-446655440000"
 
-	# Create a proper test token using the jwt_utils function
 	token = create_test_token(test_user_id)
 
 	return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(scope="function")
+def cleanup_test_characters(client):
+	"""Fixture that cleans up test characters after each test."""
+	# This runs after the test
+	yield
+
+	# Clean up any characters with test-related names
+	test_name_patterns = [
+		"Test Character",
+		"Minimal Character",
+		"Character without",
+		"Character with wrong owner",
+		"Unauthorized Character",
+		"Very long character name",
+		"Test Character for Details",
+		"Updated Character Name",
+		"Updated Name Only",
+	]
+
+	try:
+		# Get all characters
+		response = client.get("/api/v1/characters/?limit=100&offset=0")
+		if response.status_code == 200:
+			data = response.json()
+			characters = data.get("result", {}).get("items", [])
+
+			# Delete characters with test names
+			for character in characters:
+				character_name = character.get("name", "")
+				for pattern in test_name_patterns:
+					if pattern in character_name:
+						character_id = character.get("id")
+						if character_id:
+							client.delete(f"/api/v1/characters/{character_id}")
+							print(f"Cleaned up test character: {character_name} (ID: {character_id})")
+						break
+	except Exception as e:
+		print(f"Error during character cleanup: {e}")
