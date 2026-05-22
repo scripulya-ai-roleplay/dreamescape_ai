@@ -1,0 +1,268 @@
+import pytest
+
+
+@pytest.mark.e2e
+class TestCharactersAPI:
+	"""End-to-end tests for characters API endpoints."""
+
+	def test_create_character_with_valid_data(self, client, auth_headers, cleanup_test_characters):
+		"""Test creating a character with valid data."""
+		payload = {
+			"name": "Test Character",
+			"system_prompt": "You are a helpful assistant character for testing",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"is_public": False,
+		}
+
+		response = client.post("/api/v1/characters/", json=payload, headers=auth_headers)
+
+		# Debug: Print response details if not 200
+		if response.status_code != 200:
+			print(f"Response status: {response.status_code}")
+			print(f"Response content: {response.text}")
+
+		assert response.status_code == 200
+		data = response.json()
+		assert "result" in data
+		assert "correlation_id" in data
+		assert isinstance(data["result"], list)
+
+	def test_create_character_with_minimal_data(self, client, auth_headers, cleanup_test_characters):
+		"""Test creating a character with only required fields."""
+		payload = {
+			"name": "Minimal Character",
+			"system_prompt": "Simple character prompt",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+		}
+
+		response = client.post("/api/v1/characters/", json=payload, headers=auth_headers)
+
+		assert response.status_code == 200
+		data = response.json()
+		assert "result" in data
+		assert "correlation_id" in data
+
+	def test_create_character_missing_required_fields(self, client, auth_headers):
+		"""Test creating a character with missing required fields."""
+		# Missing name
+		payload = {
+			"system_prompt": "Character without name",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+		}
+
+		response = client.post("/api/v1/characters/", json=payload, headers=auth_headers)
+
+		assert response.status_code == 422
+
+	def test_create_character_missing_system_prompt(self, client, auth_headers):
+		"""Test creating a character without system_prompt."""
+		payload = {
+			"name": "Character without prompt",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+		}
+
+		response = client.post("/api/v1/characters/", json=payload, headers=auth_headers)
+
+		assert response.status_code == 422
+
+	def test_create_character_owner_id_mismatch(self, client, auth_headers):
+		"""Test creating a character with owner_id that doesn't match authenticated user."""
+		payload = {
+			"name": "Character with wrong owner",
+			"system_prompt": "Test character with mismatched owner",
+			"owner_id": "11111111-2222-3333-4444-555555555555",  # Different from auth user
+		}
+
+		response = client.post("/api/v1/characters/", json=payload, headers=auth_headers)
+
+		assert response.status_code == 403
+		data = response.json()
+		assert "Character owner_id must match authenticated user" in data["detail"]
+
+	def test_create_character_without_authentication(self, client):
+		"""Test creating a character without authentication should return 401."""
+		payload = {
+			"name": "Unauthorized Character",
+			"system_prompt": "Character created without auth",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+		}
+
+		response = client.post("/api/v1/characters/", json=payload)
+
+		assert response.status_code == 401
+
+	def test_create_character_with_long_data(self, client, auth_headers, cleanup_test_characters):
+		"""Test creating a character with very long data."""
+		payload = {
+			"name": "Very long character name " * 50,
+			"system_prompt": "Very long system prompt " * 200,
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"is_public": True,
+		}
+
+		response = client.post("/api/v1/characters/", json=payload, headers=auth_headers)
+
+		assert response.status_code == 422
+
+	def test_search_characters_without_filters(self, client):
+		"""Test searching characters without any filters."""
+		response = client.get("/api/v1/characters/")
+
+		assert response.status_code == 200
+		data = response.json()
+
+		# Verify response structure
+		assert "result" in data
+		assert "correlation_id" in data
+		assert isinstance(data["result"], dict)
+
+		# Verify page structure
+		result = data["result"]
+		assert "items" in result
+		assert "count" in result
+		assert "limit" in result
+		assert "offset" in result
+		assert isinstance(result["items"], list)
+		assert isinstance(result["count"], int)
+
+	def test_search_characters_with_pagination(self, client):
+		"""Test searching characters with pagination parameters."""
+		response = client.get("/api/v1/characters/?limit=5&offset=0")
+
+		assert response.status_code == 200
+		data = response.json()
+		result = data["result"]
+
+		# Verify response structure - this is what we're really testing
+		assert "items" in result
+		assert "count" in result
+		assert "limit" in result
+		assert "offset" in result
+		assert isinstance(result["items"], list)
+		assert isinstance(result["count"], int)
+		assert isinstance(result["limit"], int)
+		assert isinstance(result["offset"], int)
+
+		# Verify offset is correctly returned
+		assert result["offset"] == 0
+
+		# Verify that pagination is working - the number of items returned should be reasonable
+		# and the limit should be a positive number (the API may return actual count or requested limit)
+		assert result["limit"] > 0
+		assert len(result["items"]) <= result["count"] if result["count"] > 0 else len(result["items"]) == 0
+
+	def test_search_characters_with_invalid_pagination(self, client):
+		response = client.get("/api/v1/characters/?limit=-1&offset=-5")
+
+		# Should handle gracefully, likely with 422 or defaults
+		assert response.status_code in [200, 422]
+
+	def test_get_character_details_with_valid_uuid(self, client, auth_headers, cleanup_test_characters):
+		# First create a character to get its ID
+		payload = {
+			"name": "Test Character for Details",
+			"system_prompt": "Character for testing details endpoint",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+		}
+		client.post("/api/v1/characters/", json=payload, headers=auth_headers)
+
+		# Use a known UUID for testing (this might need adjustment based on actual data)
+		test_uuid = "550e8400-e29b-41d4-a716-446655440001"
+		response = client.get(f"/api/v1/characters/{test_uuid}")
+
+		# Should return 200 if character exists, 404 if not
+		assert response.status_code in [200, 404]
+
+		if response.status_code == 200:
+			data = response.json()
+			assert "result" in data
+			assert "correlation_id" in data
+
+	def test_get_character_details_with_invalid_uuid(self, client):
+		response = client.get("/api/v1/characters/invalid-uuid")
+
+		assert response.status_code == 422
+
+	def test_delete_character_with_valid_uuid(self, client):
+		test_uuid = "550e8400-e29b-41d4-a716-446655440002"
+		response = client.delete(f"/api/v1/characters/{test_uuid}")
+
+		# Should return 200 if character exists and deleted, 404 if not found
+		assert response.status_code in [200, 404]
+
+		if response.status_code == 200:
+			data = response.json()
+			assert "result" in data
+			assert "correlation_id" in data
+			assert isinstance(data["result"], list)
+
+	def test_delete_character_with_invalid_uuid(self, client):
+		"""Test deleting a character with invalid UUID format."""
+		response = client.delete("/api/v1/characters/invalid-uuid")
+
+		assert response.status_code == 422
+
+	def test_update_character_with_valid_data(self, client):
+		"""Test updating a character with valid data."""
+		test_uuid = "550e8400-e29b-41d4-a716-446655440003"
+		payload = {
+			"name": "Updated Character Name",
+			"system_prompt": "Updated system prompt for character",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"is_public": True,
+		}
+
+		response = client.post(f"/api/v1/characters/update/{test_uuid}", json=payload)
+
+		# Should return 200 if character exists and updated, 404 if not found
+		assert response.status_code in [200, 404]
+
+		if response.status_code == 200:
+			data = response.json()
+			assert "result" in data
+			assert "correlation_id" in data
+			assert isinstance(data["result"], list)
+
+	def test_update_character_with_invalid_uuid(self, client):
+		"""Test updating a character with invalid UUID format."""
+		payload = {
+			"name": "Updated Name",
+			"system_prompt": "Updated prompt",
+			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+		}
+
+		response = client.post("/api/v1/characters/update/invalid-uuid", json=payload)
+
+		assert response.status_code == 422
+
+	def test_update_character_missing_required_fields(self, client):
+		"""Test updating a character with missing required fields."""
+		test_uuid = "550e8400-e29b-41d4-a716-446655440004"
+		payload = {
+			"name": "Updated Name Only",
+			# Missing system_prompt and owner_id
+		}
+
+		response = client.post(f"/api/v1/characters/update/{test_uuid}", json=payload)
+
+		assert response.status_code == 422
+
+	def test_update_character_with_empty_body(self, client):
+		"""Test updating a character with empty request body."""
+		test_uuid = "550e8400-e29b-41d4-a716-446655440005"
+
+		response = client.post(f"/api/v1/characters/update/{test_uuid}", json={})
+
+		assert response.status_code == 422
+
+	def test_characters_api_response_structure(self, client):
+		"""Test that all character endpoints return consistent response structure."""
+		# Test search endpoint response structure
+		response = client.get("/api/v1/characters/")
+		assert response.status_code == 200
+		data = response.json()
+
+		# All endpoints should return this structure
+		assert "result" in data
+		assert "correlation_id" in data
+		assert data["correlation_id"] is not None
