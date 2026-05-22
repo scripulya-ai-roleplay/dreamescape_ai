@@ -1,5 +1,6 @@
 import logging
 import time
+from uuid import UUID
 
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -73,9 +74,6 @@ class TraceAndLogRequestsMiddleware(BaseHTTPMiddleware):
 					key = self._public_key
 
 				payload = jwt.decode(token, key, algorithms=[self._algorithm])
-
-				# Handle different token payload formats
-				from uuid import UUID
 
 				user = User(
 					id=UUID(payload.get("sub")) if payload.get("sub") else None,
