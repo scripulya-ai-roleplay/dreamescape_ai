@@ -33,7 +33,7 @@ class Character(BaseModel):
 
 	id: Optional[UUID] = None
 	owner_id: Optional[UUID] = None
-	name: str
+	name: str = Field(min_length=1, max_length=254)
 	system_prompt: str
 	is_public: bool = False
 

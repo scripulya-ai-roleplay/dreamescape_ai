@@ -7,8 +7,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.application.character.schemas import CharacterFilterDTO
 from src.application.scene.schemas import SceneFilterDTO
-from src.domain.models import User, Scene
+from src.domain.models import User, Scene, Character
 from src.application.user.schemas import UserDTO
 
 
@@ -84,6 +85,23 @@ class IChatsService(abc.ABC):
 	async def send_message(self, chat_dto: UserMessageDTO) -> dict: ...
 
 
+class ICharacterService(abc.ABC):
+	@abc.abstractmethod
+	async def create_character(self, character: Character) -> UUID: ...
+
+	@abc.abstractmethod
+	async def get_one(self, character_uuid: UUID) -> Character: ...
+
+	@abc.abstractmethod
+	async def search(self, dto: CharacterFilterDTO) -> Page[Character]: ...
+
+	@abc.abstractmethod
+	async def delete(self, scene_uuid: UUID): ...
+
+	@abc.abstractmethod
+	async def update(self, target_scene_uuid: UUID, new_scene_data: Character): ...
+
+
 class ISceneService(abc.ABC):
 	@abc.abstractmethod
 	async def create_scene(self, scene: Scene) -> UUID: ...
@@ -116,6 +134,23 @@ class ISceneGateway(abc.ABC):
 
 	@abc.abstractmethod
 	async def update(self, target_scene_uuid: UUID, new_scene_data: Scene): ...
+
+
+class ICharacterGateway(abc.ABC):
+	@abc.abstractmethod
+	async def create(self, character: Character) -> UUID: ...
+
+	@abc.abstractmethod
+	async def get_one(self, character_uuid: UUID) -> Character: ...
+
+	@abc.abstractmethod
+	async def search(self, dto: CharacterFilterDTO) -> Page[Character]: ...
+
+	@abc.abstractmethod
+	async def delete(self, scene_uuid: UUID): ...
+
+	@abc.abstractmethod
+	async def update(self, target_scene_uuid: UUID, new_scene_data: Character): ...
 
 
 class LLMResponse(BaseModel):
