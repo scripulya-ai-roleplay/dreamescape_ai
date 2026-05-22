@@ -15,13 +15,17 @@ from src.application.ports import (
 	IChatsService,
 	ISceneService,
 	ISceneGateway,
+	ICharacterService,
+	ICharacterGateway,
 )
 from src.infrastructure.gateways.mock_gateway import MockGateway
 from src.infrastructure.gateways.gateway_factory import GatewayFactory
 from src.infrastructure.gateways.user_gateway import UserGateway
 from src.infrastructure.gateways.scenes_gateway import SceneGateway
+from src.infrastructure.gateways.character_gateway import CharacterGateway
 from src.application.user.user_service import UserService
 from src.application.scene.service import SceneService
+from src.application.character.service import CharacterService
 from src.application.auth.jwt_service import JWTService
 from src.application.chats.service import ChatsService
 
@@ -57,6 +61,10 @@ class GatewayProvider(Provider):
 	def provide_scene_gateway(self, session: AsyncSession) -> ISceneGateway:
 		return SceneGateway(session)
 
+	@provide(scope=Scope.REQUEST)
+	def provide_character_gateway(self, session: AsyncSession) -> ICharacterGateway:
+		return CharacterGateway(session)
+
 
 class ServiceProvider(Provider):
 	@provide(scope=Scope.REQUEST)
@@ -79,6 +87,10 @@ class ServiceProvider(Provider):
 	@provide(scope=Scope.REQUEST)
 	def provide_scene_service(self, scene_gateway: ISceneGateway, uow: PostgresqlUOW) -> ISceneService:
 		return SceneService(uow=uow, gateway=scene_gateway)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_character_service(self, character_gateway: ICharacterGateway, uow: PostgresqlUOW) -> ICharacterService:
+		return CharacterService(uow=uow, gateway=character_gateway)
 
 
 class DatabaseProvider(Provider):
