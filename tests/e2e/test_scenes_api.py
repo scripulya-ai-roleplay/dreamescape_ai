@@ -13,6 +13,7 @@ class TestScenesAPI:
 			"background_prompt": "A beautiful fantasy world with magic",
 			"description": "A test scene for e2e testing",
 			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"initial_message_text": "Welcome to this magical world! What adventure awaits you today?",
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
@@ -34,6 +35,7 @@ class TestScenesAPI:
 			"title": "Minimal Scene",
 			"background_prompt": "Simple background",
 			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"initial_message_text": "Hello! Let's begin our conversation.",
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
@@ -72,6 +74,7 @@ class TestScenesAPI:
 			"title": "",
 			"background_prompt": "Background with empty title",
 			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"initial_message_text": "Welcome! Ready to start our conversation?",
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
@@ -86,6 +89,7 @@ class TestScenesAPI:
 			"background_prompt": "Very long background prompt " * 200,
 			"description": "Very long description " * 150,
 			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"initial_message_text": "Very long initial message " * 100,
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
@@ -99,6 +103,7 @@ class TestScenesAPI:
 			"background_prompt": "A beautiful fantasy world with magic",
 			"description": "A test scene for e2e testing",
 			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"initial_message_text": "Welcome to this magical world! What adventure awaits you today?",
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload)
@@ -287,6 +292,7 @@ class TestScenesAPI:
 			"background_prompt": "Updated background prompt",
 			"description": "Updated description",
 			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"initial_message_text": "Welcome to the updated scene! How can I help you today?",
 		}
 
 		response = client.post(f"/api/v1/scenes/update/{test_uuid}", json=payload)
@@ -303,7 +309,11 @@ class TestScenesAPI:
 	def test_update_scene_with_invalid_uuid(self, client):
 		"""Test updating a scene with invalid UUID format."""
 		invalid_uuid = "not-a-uuid"
-		payload = {"title": "Updated Title", "background_prompt": "Updated prompt"}
+		payload = {
+			"title": "Updated Title",
+			"background_prompt": "Updated prompt",
+			"initial_message_text": "Welcome to the updated scene!",
+		}
 
 		response = client.post(f"/api/v1/scenes/update/{invalid_uuid}", json=payload)
 

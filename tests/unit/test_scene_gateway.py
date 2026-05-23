@@ -38,6 +38,7 @@ class TestSceneGateway:
 		scene_model.background_prompt = "Test background prompt"
 		scene_model.owner_id = uuid4()
 		scene_model.characters = []
+		scene_model.initial_message_text = "Welcome to the test scene!"
 		return scene_model
 
 	@pytest.fixture
@@ -54,6 +55,7 @@ class TestSceneGateway:
 			description="Test scene description",
 			background_prompt="Test background prompt",
 			owner_id=uuid4(),
+			initial_message_text="Welcome to the test scene!",
 		)
 
 	@pytest.mark.asyncio

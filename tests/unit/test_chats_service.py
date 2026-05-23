@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.application.chats.service import ChatsService
+from src.application.chats.llm_service import LLMChatsService
 from src.application.ports import UserMessageDTO, LLMModelType, IGatewayFactory, ILLMChatGateway
 
 
@@ -26,8 +26,8 @@ class TestChatsService:
 
 	@pytest.fixture
 	def chats_service(self, mock_gateway_factory):
-		"""ChatsService instance with mocked dependencies."""
-		return ChatsService(gateway_factory=mock_gateway_factory)
+		"""LLMChatsService instance with mocked dependencies."""
+		return LLMChatsService(gateway_factory=mock_gateway_factory)
 
 	@pytest.fixture
 	def sample_user_message_dto(self):
@@ -115,7 +115,7 @@ class TestChatsService:
 		"""Test error handling when gateway factory fails."""
 		# Arrange
 		mock_gateway_factory.create_gateway.side_effect = Exception("Gateway creation failed")
-		chats_service = ChatsService(gateway_factory=mock_gateway_factory)
+		chats_service = LLMChatsService(gateway_factory=mock_gateway_factory)
 
 		# Act & Assert
 		with pytest.raises(Exception) as exc_info:

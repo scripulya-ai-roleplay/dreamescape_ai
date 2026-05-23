@@ -13,6 +13,10 @@ from src.application.ports import (
 	IJWTService,
 	IGatewayFactory,
 	IChatsService,
+	IChatService,
+	IChatGateway,
+	IMessageService,
+	IMessageGateway,
 	ISceneService,
 	ISceneGateway,
 	ICharacterService,
@@ -23,11 +27,15 @@ from src.infrastructure.gateways.gateway_factory import GatewayFactory
 from src.infrastructure.gateways.user_gateway import UserGateway
 from src.infrastructure.gateways.scenes_gateway import SceneGateway
 from src.infrastructure.gateways.character_gateway import CharacterGateway
+from src.infrastructure.gateways.chat_gateway import ChatGateway
+from src.infrastructure.gateways.message_gateway import MessageGateway
 from src.application.user.user_service import UserService
 from src.application.scene.service import SceneService
 from src.application.character.service import CharacterService
+from src.application.chats.service import ChatService
+from src.application.chats.llm_service import LLMChatsService
+from src.application.message.service import MessageService
 from src.application.auth.jwt_service import JWTService
-from src.application.chats.service import ChatsService
 
 
 logger = logging.getLogger(__name__)
@@ -65,6 +73,14 @@ class GatewayProvider(Provider):
 	def provide_character_gateway(self, session: AsyncSession) -> ICharacterGateway:
 		return CharacterGateway(session)
 
+	@provide(scope=Scope.REQUEST)
+	def provide_chat_gateway(self, session: AsyncSession) -> IChatGateway:
+		return ChatGateway(session)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_message_gateway(self, session: AsyncSession) -> IMessageGateway:
+		return MessageGateway(session)
+
 
 class ServiceProvider(Provider):
 	@provide(scope=Scope.REQUEST)
@@ -82,7 +98,15 @@ class ServiceProvider(Provider):
 
 	@provide(scope=Scope.REQUEST)
 	def provide_chats_service(self, gateway_factory: IGatewayFactory) -> IChatsService:
-		return ChatsService(gateway_factory=gateway_factory)
+		return LLMChatsService(gateway_factory=gateway_factory)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_chat_service(self, chat_gateway: IChatGateway) -> IChatService:
+		return ChatService(chat_gateway=chat_gateway)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_message_service(self, message_gateway: IMessageGateway) -> IMessageService:
+		return MessageService(message_gateway=message_gateway)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_scene_service(self, scene_gateway: ISceneGateway, uow: PostgresqlUOW) -> ISceneService:
