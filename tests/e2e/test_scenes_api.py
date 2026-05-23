@@ -12,7 +12,7 @@ class TestScenesAPI:
 			"title": "Test Scene",
 			"background_prompt": "A beautiful fantasy world with magic",
 			"description": "A test scene for e2e testing",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 			"initial_message_text": "Welcome to this magical world! What adventure awaits you today?",
 		}
 
@@ -34,7 +34,7 @@ class TestScenesAPI:
 		payload = {
 			"title": "Minimal Scene",
 			"background_prompt": "Simple background",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 			"initial_message_text": "Hello! Let's begin our conversation.",
 		}
 
@@ -50,7 +50,7 @@ class TestScenesAPI:
 		# Missing title
 		payload = {
 			"background_prompt": "Background without title",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
@@ -61,7 +61,7 @@ class TestScenesAPI:
 		"""Test creating a scene without background_prompt."""
 		payload = {
 			"title": "Scene without background",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
@@ -73,7 +73,7 @@ class TestScenesAPI:
 		payload = {
 			"title": "",
 			"background_prompt": "Background with empty title",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 			"initial_message_text": "Welcome! Ready to start our conversation?",
 		}
 
@@ -88,7 +88,7 @@ class TestScenesAPI:
 			"title": "Very long title " * 100,
 			"background_prompt": "Very long background prompt " * 200,
 			"description": "Very long description " * 150,
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 			"initial_message_text": "Very long initial message " * 100,
 		}
 
@@ -102,7 +102,7 @@ class TestScenesAPI:
 			"title": "Test Scene",
 			"background_prompt": "A beautiful fantasy world with magic",
 			"description": "A test scene for e2e testing",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 			"initial_message_text": "Welcome to this magical world! What adventure awaits you today?",
 		}
 
@@ -291,7 +291,7 @@ class TestScenesAPI:
 			"title": "Updated Scene Title",
 			"background_prompt": "Updated background prompt",
 			"description": "Updated description",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 			"initial_message_text": "Welcome to the updated scene! How can I help you today?",
 		}
 
