@@ -9,8 +9,8 @@ class TestChatsAPI:
 		"""Test creating a chat with valid data."""
 		payload = {
 			"title": "Test Chat",
-			"user_id": "550e8400-e29b-41d4-a716-446655440000",
-			"scene_id": "550e8400-e29b-41d4-a716-446655440001",
+			"user_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
+			"scene_id": "5c194d75-401f-4fa2-808c-7092153135b7",
 		}
 
 		response = client.post("/api/v1/chats/", json=payload, headers=auth_headers)
@@ -30,8 +30,8 @@ class TestChatsAPI:
 		"""Test creating a chat with only required fields."""
 		payload = {
 			"title": "Minimal Chat",
-			"user_id": "550e8400-e29b-41d4-a716-446655440000",
-			"scene_id": "550e8400-e29b-41d4-a716-446655440001",
+			"user_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
+			"scene_id": "5c194d75-401f-4fa2-808c-7092153135b7",
 		}
 
 		response = client.post("/api/v1/chats/", json=payload, headers=auth_headers)
@@ -45,8 +45,8 @@ class TestChatsAPI:
 		"""Test creating a chat with missing required fields."""
 		# Missing title
 		payload = {
-			"user_id": "550e8400-e29b-41d4-a716-446655440000",
-			"scene_id": "550e8400-e29b-41d4-a716-446655440001",
+			"user_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
+			"scene_id": "5c194d75-401f-4fa2-808c-7092153135b7",
 		}
 
 		response = client.post("/api/v1/chats/", json=payload, headers=auth_headers)
@@ -57,7 +57,7 @@ class TestChatsAPI:
 		"""Test creating a chat without user_id."""
 		payload = {
 			"title": "Chat without user",
-			"scene_id": "550e8400-e29b-41d4-a716-446655440001",
+			"scene_id": "5c194d75-401f-4fa2-808c-7092153135b7",
 		}
 
 		response = client.post("/api/v1/chats/", json=payload, headers=auth_headers)
@@ -69,7 +69,7 @@ class TestChatsAPI:
 		payload = {
 			"title": "Chat with wrong user",
 			"user_id": "11111111-2222-3333-4444-555555555555",  # Different from auth user
-			"scene_id": "550e8400-e29b-41d4-a716-446655440001",
+			"scene_id": "5c194d75-401f-4fa2-808c-7092153135b7",
 		}
 
 		response = client.post("/api/v1/chats/", json=payload, headers=auth_headers)
@@ -82,8 +82,8 @@ class TestChatsAPI:
 		"""Test creating a chat without authentication should return 401."""
 		payload = {
 			"title": "Unauthorized Chat",
-			"user_id": "550e8400-e29b-41d4-a716-446655440000",
-			"scene_id": "550e8400-e29b-41d4-a716-446655440001",
+			"user_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
+			"scene_id": "5c194d75-401f-4fa2-808c-7092153135b7",
 		}
 
 		response = client.post("/api/v1/chats/", json=payload)
@@ -146,13 +146,13 @@ class TestChatsAPI:
 		# First create a chat to get its ID
 		payload = {
 			"title": "Test Chat for Details",
-			"user_id": "550e8400-e29b-41d4-a716-446655440000",
-			"scene_id": "550e8400-e29b-41d4-a716-446655440001",
+			"user_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
+			"scene_id": "5c194d75-401f-4fa2-808c-7092153135b7",
 		}
 		client.post("/api/v1/chats/", json=payload, headers=auth_headers)
 
 		# Use a known UUID for testing (this might need adjustment based on actual data)
-		test_uuid = "550e8400-e29b-41d4-a716-446655440002"
+		test_uuid = "048a7fe5-f4c2-40ef-9745-7d85d7c4c5fb"
 		response = client.get(f"/api/v1/chats/{test_uuid}")
 
 		# Should return 200 if chat exists, 404 if not
@@ -168,18 +168,77 @@ class TestChatsAPI:
 
 		assert response.status_code == 422
 
-	def test_delete_chat_with_valid_uuid(self, client):
-		test_uuid = "550e8400-e29b-41d4-a716-446655440003"
-		response = client.delete(f"/api/v1/chats/{test_uuid}")
+	def test_delete_chat_with_valid_uuid(self, client, auth_headers, cleanup_test_chats):
+		test_uuid = "90d27426-7b7a-4a4d-ba17-6f98b7c29c5e"
 
-		# Should return 200 if chat exists and deleted, 404 if not found
-		assert response.status_code in [200, 404]
+		# First, check if the chat exists
+		get_response = client.get(f"/api/v1/chats/{test_uuid}")
+		chat_exists = get_response.status_code == 200
 
-		if response.status_code == 200:
+		# Only proceed with deletion if chat exists
+		if chat_exists:
+			response = client.delete(f"/api/v1/chats/{test_uuid}")
+			# Should return 200 if chat exists and deleted
+			assert response.status_code == 200
 			data = response.json()
 			assert "result" in data
 			assert "correlation_id" in data
 			assert isinstance(data["result"], list)
+		else:
+			# If chat doesn't exist, we can still test the delete endpoint behavior
+			response = client.delete(f"/api/v1/chats/{test_uuid}")
+			# Should return 404 if not found
+			assert response.status_code == 404
+
+		# Create the chat back after deleting it
+		chat_payload = {
+			"title": "Recreated Test Chat",
+			"user_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
+			"scene_id": "5c194d75-401f-4fa2-808c-7092153135b7",
+		}
+
+		create_response = client.post("/api/v1/chats/", json=chat_payload, headers=auth_headers)
+		assert create_response.status_code == 200
+		create_data = create_response.json()
+		assert "result" in create_data
+		assert "correlation_id" in create_data
+
+		# Get the created chat ID from the response
+		created_chat = create_data["result"]
+		if isinstance(created_chat, list) and len(created_chat) > 0:
+			chat_id = created_chat[0].get("id") if isinstance(created_chat[0], dict) else None
+		elif isinstance(created_chat, dict):
+			chat_id = created_chat.get("id")
+		else:
+			chat_id = None
+
+		# If we have a chat ID, create messages for it
+		if chat_id:
+			# Create first message (user message)
+			user_message_payload = {
+				"message": "Hello, this is a test user message",
+				"chat_id": chat_id,
+				"role": "user",
+			}
+
+			user_msg_response = client.post("/api/v1/messages/", json=user_message_payload, headers=auth_headers)
+			assert user_msg_response.status_code == 200
+			user_msg_data = user_msg_response.json()
+			assert "result" in user_msg_data
+			assert "correlation_id" in user_msg_data
+
+			# Create second message (model response)
+			model_message_payload = {
+				"message": "Hello! This is a test AI response message",
+				"chat_id": chat_id,
+				"role": "model",
+			}
+
+			model_msg_response = client.post("/api/v1/messages/", json=model_message_payload, headers=auth_headers)
+			assert model_msg_response.status_code == 200
+			model_msg_data = model_msg_response.json()
+			assert "result" in model_msg_data
+			assert "correlation_id" in model_msg_data
 
 	def test_delete_chat_with_invalid_uuid(self, client):
 		"""Test deleting a chat with invalid UUID format."""
@@ -189,7 +248,7 @@ class TestChatsAPI:
 
 	def test_update_chat_with_valid_data(self, client):
 		"""Test updating a chat with valid data."""
-		test_uuid = "550e8400-e29b-41d4-a716-446655440004"
+		test_uuid = "d99678f7-bb8c-41f4-9726-4722b44a5649"
 		payload = "Updated Chat Name"
 
 		response = client.post(f"/api/v1/chats/update/{test_uuid}", json=payload)
@@ -213,7 +272,7 @@ class TestChatsAPI:
 
 	def test_update_chat_with_empty_body(self, client):
 		"""Test updating a chat with empty request body."""
-		test_uuid = "550e8400-e29b-41d4-a716-446655440005"
+		test_uuid = "ad8b09b7-1723-4459-ba61-5bf3a2699c11"
 
 		response = client.post(f"/api/v1/chats/update/{test_uuid}", json={})
 
@@ -240,7 +299,6 @@ def cleanup_test_chats(client):
 
 	# Clean up any chats with test-related names
 	test_name_patterns = [
-		"Test Chat",
 		"Minimal Chat",
 		"Chat without user",
 		"Chat with wrong user",

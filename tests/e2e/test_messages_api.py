@@ -9,7 +9,7 @@ class TestMessagesAPI:
 		"""Test creating a message with valid data."""
 		payload = {
 			"message": "Hello, this is a test message",
-			"chat_id": "550e8400-e29b-41d4-a716-446655440001",
+			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
 			"role": "user",
 		}
 
@@ -35,7 +35,7 @@ class TestMessagesAPI:
 		"""Test creating a message with model role."""
 		payload = {
 			"message": "AI response message",
-			"chat_id": "550e8400-e29b-41d4-a716-446655440001",
+			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
 			"role": "model",
 		}
 
@@ -51,7 +51,7 @@ class TestMessagesAPI:
 		"""Test creating a message with empty content."""
 		payload = {
 			"message": "",
-			"chat_id": "550e8400-e29b-41d4-a716-446655440001",
+			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
 			"role": "user",
 		}
 
@@ -66,7 +66,7 @@ class TestMessagesAPI:
 		"""Test creating a message with missing required fields."""
 		# Missing message content
 		payload = {
-			"chat_id": "550e8400-e29b-41d4-a716-446655440001",
+			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
 			"role": "user",
 		}
 
@@ -89,7 +89,7 @@ class TestMessagesAPI:
 		"""Test creating a message with invalid role."""
 		payload = {
 			"message": "Message with invalid role",
-			"chat_id": "550e8400-e29b-41d4-a716-446655440001",
+			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
 			"role": "invalid_role",
 		}
 
@@ -101,7 +101,7 @@ class TestMessagesAPI:
 		"""Test creating a message without authentication should return 401."""
 		payload = {
 			"message": "Unauthorized message",
-			"chat_id": "550e8400-e29b-41d4-a716-446655440001",
+			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
 			"role": "user",
 		}
 
@@ -157,7 +157,7 @@ class TestMessagesAPI:
 
 	def test_search_messages_with_chat_filter(self, client):
 		"""Test searching messages with chat_id filter."""
-		chat_id = "550e8400-e29b-41d4-a716-446655440001"
+		chat_id = "82dc4309-0ab2-4a9d-86c9-a49f8931494a"
 		response = client.get(f"/api/v1/messages/?chats_ids={chat_id}")
 
 		assert response.status_code == 200
@@ -198,7 +198,7 @@ class TestMessagesAPI:
 		# First create a message to get its ID
 		payload = {
 			"message": "Test Message for Details",
-			"chat_id": "550e8400-e29b-41d4-a716-446655440001",
+			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
 			"role": "user",
 		}
 		create_response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
@@ -217,7 +217,7 @@ class TestMessagesAPI:
 			assert data["result"]["id"] == message_id
 		else:
 			# Use a known UUID for testing if creation fails
-			test_uuid = "550e8400-e29b-41d4-a716-446655440002"
+			test_uuid = "048a7fe5-f4c2-40ef-9745-7d85d7c4c5fb"
 			response = client.get(f"/api/v1/messages/{test_uuid}")
 
 			# Should return 200 if message exists, 404 if not
@@ -233,7 +233,7 @@ class TestMessagesAPI:
 		# First create a message
 		payload = {
 			"message": "Original message content",
-			"chat_id": "550e8400-e29b-41d4-a716-446655440001",
+			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
 			"role": "user",
 		}
 		create_response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
@@ -243,7 +243,7 @@ class TestMessagesAPI:
 			message_id = created_message["id"]
 
 			# Update the message
-			updated_text = "Updated message content"
+			updated_text = {"updated_text": "Updated message content"}
 			response = client.put(f"/api/v1/messages/{message_id}", json=updated_text)
 
 			assert response.status_code == 200
@@ -253,7 +253,7 @@ class TestMessagesAPI:
 			assert isinstance(data["result"], list)
 		else:
 			# Use a known UUID for testing if creation fails
-			test_uuid = "550e8400-e29b-41d4-a716-446655440003"
+			test_uuid = "90d27426-7b7a-4a4d-ba17-6f98b7c29c5e"
 			updated_text = "Updated message content"
 			response = client.put(f"/api/v1/messages/{test_uuid}", json=updated_text)
 
@@ -270,7 +270,7 @@ class TestMessagesAPI:
 
 	def test_update_message_with_empty_body(self, client):
 		"""Test updating a message with empty request body."""
-		test_uuid = "550e8400-e29b-41d4-a716-446655440004"
+		test_uuid = "d99678f7-bb8c-41f4-9726-4722b44a5649"
 
 		response = client.put(f"/api/v1/messages/{test_uuid}", json={})
 
@@ -281,7 +281,7 @@ class TestMessagesAPI:
 		# First create a message
 		payload = {
 			"message": "Message to be deleted",
-			"chat_id": "550e8400-e29b-41d4-a716-446655440001",
+			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
 			"role": "user",
 		}
 		create_response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
@@ -300,7 +300,7 @@ class TestMessagesAPI:
 			assert isinstance(data["result"], list)
 		else:
 			# Use a known UUID for testing if creation fails
-			test_uuid = "550e8400-e29b-41d4-a716-446655440005"
+			test_uuid = "ad8b09b7-1723-4459-ba61-5bf3a2699c11"
 			response = client.delete(f"/api/v1/messages/{test_uuid}")
 
 			# Should return 200 if message exists and deleted, 404 if not found
@@ -329,7 +329,7 @@ class TestMessagesAPI:
 		long_message = "Very long message content " * 1000
 		payload = {
 			"message": long_message,
-			"chat_id": "550e8400-e29b-41d4-a716-446655440001",
+			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
 			"role": "user",
 		}
 

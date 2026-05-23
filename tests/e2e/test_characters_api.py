@@ -10,7 +10,7 @@ class TestCharactersAPI:
 		payload = {
 			"name": "Test Character",
 			"system_prompt": "You are a helpful assistant character for testing",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 			"is_public": False,
 		}
 
@@ -32,7 +32,7 @@ class TestCharactersAPI:
 		payload = {
 			"name": "Minimal Character",
 			"system_prompt": "Simple character prompt",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 		}
 
 		response = client.post("/api/v1/characters/", json=payload, headers=auth_headers)
@@ -47,7 +47,7 @@ class TestCharactersAPI:
 		# Missing name
 		payload = {
 			"system_prompt": "Character without name",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 		}
 
 		response = client.post("/api/v1/characters/", json=payload, headers=auth_headers)
@@ -58,7 +58,7 @@ class TestCharactersAPI:
 		"""Test creating a character without system_prompt."""
 		payload = {
 			"name": "Character without prompt",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 		}
 
 		response = client.post("/api/v1/characters/", json=payload, headers=auth_headers)
@@ -84,7 +84,7 @@ class TestCharactersAPI:
 		payload = {
 			"name": "Unauthorized Character",
 			"system_prompt": "Character created without auth",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 		}
 
 		response = client.post("/api/v1/characters/", json=payload)
@@ -96,7 +96,7 @@ class TestCharactersAPI:
 		payload = {
 			"name": "Very long character name " * 50,
 			"system_prompt": "Very long system prompt " * 200,
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 			"is_public": True,
 		}
 
@@ -162,12 +162,12 @@ class TestCharactersAPI:
 		payload = {
 			"name": "Test Character for Details",
 			"system_prompt": "Character for testing details endpoint",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 		}
 		client.post("/api/v1/characters/", json=payload, headers=auth_headers)
 
 		# Use a known UUID for testing (this might need adjustment based on actual data)
-		test_uuid = "550e8400-e29b-41d4-a716-446655440001"
+		test_uuid = "43341001-4ea1-4f03-b315-811d3264b6a3"
 		response = client.get(f"/api/v1/characters/{test_uuid}")
 
 		# Should return 200 if character exists, 404 if not
@@ -184,7 +184,7 @@ class TestCharactersAPI:
 		assert response.status_code == 422
 
 	def test_delete_character_with_valid_uuid(self, client):
-		test_uuid = "550e8400-e29b-41d4-a716-446655440002"
+		test_uuid = "048a7fe5-f4c2-40ef-9745-7d85d7c4c5fb"
 		response = client.delete(f"/api/v1/characters/{test_uuid}")
 
 		# Should return 200 if character exists and deleted, 404 if not found
@@ -204,11 +204,11 @@ class TestCharactersAPI:
 
 	def test_update_character_with_valid_data(self, client):
 		"""Test updating a character with valid data."""
-		test_uuid = "550e8400-e29b-41d4-a716-446655440003"
+		test_uuid = "90d27426-7b7a-4a4d-ba17-6f98b7c29c5e"
 		payload = {
 			"name": "Updated Character Name",
 			"system_prompt": "Updated system prompt for character",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 			"is_public": True,
 		}
 
@@ -228,7 +228,7 @@ class TestCharactersAPI:
 		payload = {
 			"name": "Updated Name",
 			"system_prompt": "Updated prompt",
-			"owner_id": "550e8400-e29b-41d4-a716-446655440000",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 		}
 
 		response = client.post("/api/v1/characters/update/invalid-uuid", json=payload)
@@ -237,7 +237,7 @@ class TestCharactersAPI:
 
 	def test_update_character_missing_required_fields(self, client):
 		"""Test updating a character with missing required fields."""
-		test_uuid = "550e8400-e29b-41d4-a716-446655440004"
+		test_uuid = "d99678f7-bb8c-41f4-9726-4722b44a5649"
 		payload = {
 			"name": "Updated Name Only",
 			# Missing system_prompt and owner_id
@@ -249,7 +249,7 @@ class TestCharactersAPI:
 
 	def test_update_character_with_empty_body(self, client):
 		"""Test updating a character with empty request body."""
-		test_uuid = "550e8400-e29b-41d4-a716-446655440005"
+		test_uuid = "ad8b09b7-1723-4459-ba61-5bf3a2699c11"
 
 		response = client.post(f"/api/v1/characters/update/{test_uuid}", json={})
 
