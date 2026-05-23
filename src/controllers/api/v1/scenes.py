@@ -29,6 +29,13 @@ async def create_scene(
 	user_id = UUID(current_user["sub"])
 	logger.info(f"Extracted user ID: {user_id}")
 
+	# Debug: Log the received scene object
+	logger.info(f"Received scene object: {scene}")
+	logger.info(f"Scene title: {scene.title}")
+	logger.info(f"Scene background_prompt: {scene.background_prompt}")
+	logger.info(f"Scene initial_message_text: {scene.initial_message_text}")
+	logger.info(f"Scene owner_id: {scene.owner_id}")
+
 	# Validate that the Scene's owner_id matches the authenticated user
 	if scene.owner_id != user_id:
 		logger.warning(f"Owner ID mismatch: scene.owner_id={scene.owner_id}, user_id={user_id}")

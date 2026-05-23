@@ -36,7 +36,8 @@ CREATE TABLE scenes (
     owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     description TEXT,
-    background_prompt TEXT NOT NULL
+    background_prompt TEXT NOT NULL,
+    initial_message_text TEXT NOT NULL
 );
 
 -- Create character_scene junction table for many-to-many relationship
@@ -49,8 +50,8 @@ CREATE TABLE character_scene (
 -- Create chats table
 CREATE TABLE chats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    character_id UUID NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
     scene_id UUID REFERENCES scenes(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -62,7 +63,7 @@ CREATE INDEX idx_chats_user_id ON chats(user_id);
 CREATE TABLE messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-    role VARCHAR(50) NOT NULL CHECK (role IN ('user', 'model', 'system')),
+    role VARCHAR(50) NOT NULL CHECK (role IN ('user', 'model')),
     content TEXT NOT NULL,
     cost_crystals INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -107,16 +108,17 @@ INSERT INTO characters (id, owner_id, name, system_prompt, is_public) VALUES
     ('660e8400-e29b-41d4-a716-446655440008', '550e8400-e29b-41d4-a716-446655440008', 'Travel Advisor', 'You are a knowledgeable travel advisor with expertise in destinations worldwide. Help users plan amazing trips and adventures.', true);
 
 -- Insert test scenes
-INSERT INTO scenes (id, owner_id, title, description, background_prompt) VALUES
-    ('770e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655440000', 'Office Environment', 'A professional workspace designed for productive conversations and collaborative work sessions.', 'You are in a modern office setting with computers, whiteboards, and a collaborative atmosphere. The conversation takes place during work hours.'),
-    ('770e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440001', 'Cozy Coffee Shop', 'A warm and inviting café atmosphere perfect for relaxed, informal conversations over coffee.', 'You are sitting in a warm, cozy coffee shop with soft lighting, the aroma of fresh coffee, and gentle background music. Perfect for casual conversations.'),
-    ('770e8400-e29b-41d4-a716-446655440002', '550e8400-e29b-41d4-a716-446655440002', 'Library Study Room', 'A quiet academic environment ideal for focused learning and educational discussions.', 'You are in a quiet library study room surrounded by books and academic resources. The atmosphere is focused and conducive to learning.'),
-    ('770e8400-e29b-41d4-a716-446655440003', '550e8400-e29b-41d4-a716-446655440003', 'Virtual Reality Space', 'An immersive digital environment where imagination and technology merge for limitless possibilities.', 'You are in a futuristic virtual reality environment where anything is possible. The digital landscape can change based on the conversation.'),
-    ('770e8400-e29b-41d4-a716-446655440004', '550e8400-e29b-41d4-a716-446655440004', 'Minimalist Scene', NULL, 'Simple background.'),
-    ('770e8400-e29b-41d4-a716-446655440005', '550e8400-e29b-41d4-a716-446655440005', 'Epic Fantasy Adventure Scene With Extremely Long Title That Tests The Maximum Length Limits', 'This is an extremely detailed and comprehensive scene description that goes on for a very long time to test the database storage capabilities and API handling of large text fields. The scene depicts a vast fantasy realm filled with magical creatures, ancient castles, mystical forests, flowing rivers, towering mountains, and endless adventures waiting to be discovered. Heroes from all walks of life gather here to embark on epic quests, forge legendary weapons, learn powerful spells, and create lasting friendships. The atmosphere is rich with magic, wonder, and endless possibilities for storytelling and character development.', 'You find yourself in a breathtaking fantasy realm where magic flows through every blade of grass, every stone, and every breath of wind. Ancient dragons soar overhead, their scales glinting in the eternal twilight. Mystical forests whisper secrets of ages past, while crystal-clear streams carry the songs of woodland spirits. Here, time moves differently, and every choice you make shapes the very fabric of this magical world.'),
-    ('770e8400-e29b-41d4-a716-446655440006', '550e8400-e29b-41d4-a716-446655440006', 'Beach Resort Paradise', 'Tropical paradise with white sand beaches, crystal clear waters, and endless sunshine.', 'You are relaxing on a pristine tropical beach with gentle waves lapping at the shore, palm trees swaying in the warm breeze, and the sound of seagulls in the distance.'),
-    ('770e8400-e29b-41d4-a716-446655440007', '550e8400-e29b-41d4-a716-446655440007', 'Space Station Alpha', 'Advanced space station orbiting Earth with cutting-edge technology and stunning views.', 'You are aboard a sophisticated space station with panoramic views of Earth below, advanced control systems, and the vastness of space surrounding you.'),
-    ('770e8400-e29b-41d4-a716-446655440008', '550e8400-e29b-41d4-a716-446655440008', 'Underground Laboratory', 'Secret research facility beneath the city for conducting advanced experiments.', 'You are in a high-tech underground laboratory filled with mysterious equipment, glowing screens, and the hum of advanced machinery.');
+INSERT INTO scenes (id, owner_id, title, description, background_prompt, initial_message_text) VALUES
+    ('550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440000', 'E2E Test Scene', 'A test scene specifically for e2e tests', 'This is a test scene for e2e testing purposes.', 'Welcome to the e2e test scene!'),
+    ('770e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655440000', 'Office Environment', 'A professional workspace designed for productive conversations and collaborative work sessions.', 'You are in a modern office setting with computers, whiteboards, and a collaborative atmosphere. The conversation takes place during work hours.', 'Welcome to our professional workspace! I''m here to help you with any business-related questions or collaborative projects. What can I assist you with today?'),
+    ('770e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440001', 'Cozy Coffee Shop', 'A warm and inviting café atmosphere perfect for relaxed, informal conversations over coffee.', 'You are sitting in a warm, cozy coffee shop with soft lighting, the aroma of fresh coffee, and gentle background music. Perfect for casual conversations.', 'Welcome to our cozy corner of the coffee shop! The aroma of freshly brewed coffee fills the air. What would you like to chat about while we enjoy this peaceful atmosphere?'),
+    ('770e8400-e29b-41d4-a716-446655440002', '550e8400-e29b-41d4-a716-446655440002', 'Library Study Room', 'A quiet academic environment ideal for focused learning and educational discussions.', 'You are in a quiet library study room surrounded by books and academic resources. The atmosphere is focused and conducive to learning.', 'Welcome to our quiet study sanctuary! I''m here to help you explore knowledge and dive deep into learning. What subject would you like to discuss today?'),
+    ('770e8400-e29b-41d4-a716-446655440003', '550e8400-e29b-41d4-a716-446655440003', 'Virtual Reality Space', 'An immersive digital environment where imagination and technology merge for limitless possibilities.', 'You are in a futuristic virtual reality environment where anything is possible. The digital landscape can change based on the conversation.', 'Welcome to the infinite possibilities of virtual reality! Here, we can explore any concept, simulate any scenario, or create anything you can imagine. What digital adventure shall we embark on?'),
+    ('770e8400-e29b-41d4-a716-446655440004', '550e8400-e29b-41d4-a716-446655440004', 'Minimalist Scene', NULL, 'Simple background.', 'Hello.'),
+    ('770e8400-e29b-41d4-a716-446655440005', '550e8400-e29b-41d4-a716-446655440005', 'Epic Fantasy Adventure Scene With Extremely Long Title That Tests The Maximum Length Limits', 'This is an extremely detailed and comprehensive scene description that goes on for a very long time to test the database storage capabilities and API handling of large text fields. The scene depicts a vast fantasy realm filled with magical creatures, ancient castles, mystical forests, flowing rivers, towering mountains, and endless adventures waiting to be discovered. Heroes from all walks of life gather here to embark on epic quests, forge legendary weapons, learn powerful spells, and create lasting friendships. The atmosphere is rich with magic, wonder, and endless possibilities for storytelling and character development.', 'You find yourself in a breathtaking fantasy realm where magic flows through every blade of grass, every stone, and every breath of wind. Ancient dragons soar overhead, their scales glinting in the eternal twilight. Mystical forests whisper secrets of ages past, while crystal-clear streams carry the songs of woodland spirits. Here, time moves differently, and every choice you make shapes the very fabric of this magical world.', 'Greetings, brave adventurer! You have crossed the mystical threshold into our enchanted realm, where ancient magic still flows through the very air you breathe. The great library of spells awaits your discovery, legendary quests call out for heroes, and mythical creatures seek worthy companions. Your epic journey begins now - what path will you choose to walk in this realm of infinite wonder and boundless adventure?'),
+    ('770e8400-e29b-41d4-a716-446655440006', '550e8400-e29b-41d4-a716-446655440006', 'Beach Resort Paradise', 'Tropical paradise with white sand beaches, crystal clear waters, and endless sunshine.', 'You are relaxing on a pristine tropical beach with gentle waves lapping at the shore, palm trees swaying in the warm breeze, and the sound of seagulls in the distance.', 'Welcome to paradise! Feel the warm sand between your toes and breathe in the fresh ocean air. This tropical haven is the perfect place to unwind and let your worries drift away with the waves. What brings you to our peaceful shore today?'),
+    ('770e8400-e29b-41d4-a716-446655440007', '550e8400-e29b-41d4-a716-446655440007', 'Space Station Alpha', 'Advanced space station orbiting Earth with cutting-edge technology and stunning views.', 'You are aboard a sophisticated space station with panoramic views of Earth below, advanced control systems, and the vastness of space surrounding you.', 'Welcome aboard Space Station Alpha! From our orbital vantage point, Earth appears as a beautiful blue marble suspended in the cosmic void. Our advanced systems are at your disposal for any space-related inquiries or cosmic conversations. What aspects of space exploration interest you most?'),
+    ('770e8400-e29b-41d4-a716-446655440008', '550e8400-e29b-41d4-a716-446655440008', 'Underground Laboratory', 'Secret research facility beneath the city for conducting advanced experiments.', 'You are in a high-tech underground laboratory filled with mysterious equipment, glowing screens, and the hum of advanced machinery.', 'Welcome to Laboratory Complex Omega! You''ve gained access to our most advanced research facility. The equipment around us represents the cutting edge of scientific innovation. What experiments or research topics would you like to explore in our secure environment?');
 
 -- Insert test character_scene associations
 INSERT INTO character_scene (character_id, scene_id) VALUES
@@ -162,18 +164,19 @@ INSERT INTO character_scene (character_id, scene_id) VALUES
     ('660e8400-e29b-41d4-a716-446655440008', '770e8400-e29b-41d4-a716-446655440001'); -- Travel Advisor + Coffee Shop
 
 -- Insert test chats
-INSERT INTO chats (id, user_id, character_id, scene_id, created_at) VALUES
-    ('880e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655440000', '660e8400-e29b-41d4-a716-446655440000', '770e8400-e29b-41d4-a716-446655440000', NOW() - INTERVAL '2 days'),
-    ('880e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440001', '660e8400-e29b-41d4-a716-446655440001', '770e8400-e29b-41d4-a716-446655440001', NOW() - INTERVAL '1 day'),
-    ('880e8400-e29b-41d4-a716-446655440002', '550e8400-e29b-41d4-a716-446655440002', '660e8400-e29b-41d4-a716-446655440002', '770e8400-e29b-41d4-a716-446655440002', NOW() - INTERVAL '12 hours'),
-    ('880e8400-e29b-41d4-a716-446655440003', '550e8400-e29b-41d4-a716-446655440003', '660e8400-e29b-41d4-a716-446655440003', NULL, NOW() - INTERVAL '6 hours'),
-    ('880e8400-e29b-41d4-a716-446655440004', '550e8400-e29b-41d4-a716-446655440004', '660e8400-e29b-41d4-a716-446655440004', '770e8400-e29b-41d4-a716-446655440005', NOW() - INTERVAL '3 hours'),
-    ('880e8400-e29b-41d4-a716-446655440005', '550e8400-e29b-41d4-a716-446655440005', '660e8400-e29b-41d4-a716-446655440005', NULL, NOW() - INTERVAL '1 hour'),
-    ('880e8400-e29b-41d4-a716-446655440006', '550e8400-e29b-41d4-a716-446655440006', '660e8400-e29b-41d4-a716-446655440006', '770e8400-e29b-41d4-a716-446655440003', NOW() - INTERVAL '30 minutes'),
-    ('880e8400-e29b-41d4-a716-446655440007', '550e8400-e29b-41d4-a716-446655440007', '660e8400-e29b-41d4-a716-446655440007', '770e8400-e29b-41d4-a716-446655440006', NOW() - INTERVAL '15 minutes'),
-    ('880e8400-e29b-41d4-a716-446655440008', '550e8400-e29b-41d4-a716-446655440008', '660e8400-e29b-41d4-a716-446655440008', NULL, NOW() - INTERVAL '5 minutes'),
-    ('880e8400-e29b-41d4-a716-446655440009', '550e8400-e29b-41d4-a716-446655440000', '660e8400-e29b-41d4-a716-446655440008', '770e8400-e29b-41d4-a716-446655440007', NOW() - INTERVAL '7 days'),
-    ('880e8400-e29b-41d4-a716-446655440010', '550e8400-e29b-41d4-a716-446655440001', '660e8400-e29b-41d4-a716-446655440005', NULL, NOW() - INTERVAL '10 days');
+INSERT INTO chats (id, name, user_id, scene_id, created_at) VALUES
+    ('550e8400-e29b-41d4-a716-446655440001', 'E2E Test Chat', '550e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655440001', NOW()),
+    ('880e8400-e29b-41d4-a716-446655440000', 'Project Help Chat', '550e8400-e29b-41d4-a716-446655440000', '770e8400-e29b-41d4-a716-446655440000', NOW() - INTERVAL '2 days'),
+    ('880e8400-e29b-41d4-a716-446655440001', 'Python Recursion Chat', '550e8400-e29b-41d4-a716-446655440001', '770e8400-e29b-41d4-a716-446655440001', NOW() - INTERVAL '1 day'),
+    ('880e8400-e29b-41d4-a716-446655440002', 'Space Story Writing', '550e8400-e29b-41d4-a716-446655440002', '770e8400-e29b-41d4-a716-446655440002', NOW() - INTERVAL '12 hours'),
+    ('880e8400-e29b-41d4-a716-446655440003', 'Calculus Help', '550e8400-e29b-41d4-a716-446655440003', '770e8400-e29b-41d4-a716-446655440002', NOW() - INTERVAL '6 hours'),
+    ('880e8400-e29b-41d4-a716-446655440004', 'Fantasy ML Discussion', '550e8400-e29b-41d4-a716-446655440004', '770e8400-e29b-41d4-a716-446655440005', NOW() - INTERVAL '3 hours'),
+    ('880e8400-e29b-41d4-a716-446655440005', 'Simple Chat', '550e8400-e29b-41d4-a716-446655440005', '770e8400-e29b-41d4-a716-446655440004', NOW() - INTERVAL '1 hour'),
+    ('880e8400-e29b-41d4-a716-446655440006', 'RPG Strategy Chat', '550e8400-e29b-41d4-a716-446655440006', '770e8400-e29b-41d4-a716-446655440003', NOW() - INTERVAL '30 minutes'),
+    ('880e8400-e29b-41d4-a716-446655440007', 'Stress Relief Session', '550e8400-e29b-41d4-a716-446655440007', '770e8400-e29b-41d4-a716-446655440006', NOW() - INTERVAL '15 minutes'),
+    ('880e8400-e29b-41d4-a716-446655440008', 'Space Travel Planning', '550e8400-e29b-41d4-a716-446655440008', '770e8400-e29b-41d4-a716-446655440007', NOW() - INTERVAL '5 minutes'),
+    ('880e8400-e29b-41d4-a716-446655440009', 'Mars Mission Chat', '550e8400-e29b-41d4-a716-446655440000', '770e8400-e29b-41d4-a716-446655440007', NOW() - INTERVAL '7 days'),
+    ('880e8400-e29b-41d4-a716-446655440010', 'Quantum Computing Analysis', '550e8400-e29b-41d4-a716-446655440001', '770e8400-e29b-41d4-a716-446655440008', NOW() - INTERVAL '10 days');
 
 -- Insert test messages
 INSERT INTO messages (id, chat_id, role, content, cost_crystals, created_at) VALUES
@@ -195,7 +198,7 @@ INSERT INTO messages (id, chat_id, role, content, cost_crystals, created_at) VAL
     ('990e8400-e29b-41d4-a716-446655440008', '880e8400-e29b-41d4-a716-446655440003', 'model', 'I would be happy to help you with calculus derivatives! What specific topic would you like to focus on?', 12, NOW() - INTERVAL '6 hours' + INTERVAL '20 seconds'),
     
     -- Chat 5 messages (Dr. Sophisticated)
-    ('990e8400-e29b-41d4-a716-446655440009', '880e8400-e29b-41d4-a716-446655440004', 'system', 'Welcome to the Epic Fantasy Adventure Scene. Your conversation will be enhanced by magical elements and rich storytelling.', 0, NOW() - INTERVAL '3 hours'),
+    ('990e8400-e29b-41d4-a716-446655440009', '880e8400-e29b-41d4-a716-446655440004', 'model', 'Welcome to the Epic Fantasy Adventure Scene. Your conversation will be enhanced by magical elements and rich storytelling.', 0, NOW() - INTERVAL '3 hours'),
     ('990e8400-e29b-41d4-a716-446655440010', '880e8400-e29b-41d4-a716-446655440004', 'user', 'Tell me about advanced machine learning techniques.', 0, NOW() - INTERVAL '3 hours' + INTERVAL '1 minute'),
     ('990e8400-e29b-41d4-a716-446655440011', '880e8400-e29b-41d4-a716-446655440004', 'model', 'Greetings! I shall illuminate the magnificent realm of advanced machine learning for you. In this magical domain of artificial intelligence, we encounter sophisticated techniques such as deep neural networks, transformer architectures, and reinforcement learning algorithms. These powerful methodologies represent the cutting edge of computational intelligence, capable of solving complex problems that were once thought impossible. Allow me to elaborate on each of these fascinating approaches...', 50, NOW() - INTERVAL '3 hours' + INTERVAL '2 minutes'),
     
@@ -216,7 +219,7 @@ INSERT INTO messages (id, chat_id, role, content, cost_crystals, created_at) VAL
     ('990e8400-e29b-41d4-a716-446655440019', '880e8400-e29b-41d4-a716-446655440008', 'model', 'For space enthusiasts, I highly recommend visiting Kennedy Space Center in Florida, NASA Johnson Space Center in Houston, and the Griffith Observatory in Los Angeles for stunning astronomical views.', 35, NOW() - INTERVAL '5 minutes' + INTERVAL '1 minute'),
     
     -- Chat 10 messages (Long conversation)
-    ('990e8400-e29b-41d4-a716-446655440020', '880e8400-e29b-41d4-a716-446655440009', 'system', 'This is a system message to initialize the space station environment for enhanced conversation context.', 0, NOW() - INTERVAL '7 days'),
+    ('990e8400-e29b-41d4-a716-446655440020', '880e8400-e29b-41d4-a716-446655440009', 'model', 'This is a system message to initialize the space station environment for enhanced conversation context.', 0, NOW() - INTERVAL '7 days'),
     ('990e8400-e29b-41d4-a716-446655440021', '880e8400-e29b-41d4-a716-446655440009', 'user', 'How do you plan a trip to Mars?', 0, NOW() - INTERVAL '7 days' + INTERVAL '2 minutes'),
     ('990e8400-e29b-41d4-a716-446655440022', '880e8400-e29b-41d4-a716-446655440009', 'model', 'Planning a trip to Mars involves numerous complex considerations including launch windows, spacecraft design, life support systems, radiation protection, and mission duration. Current estimates suggest a journey would take 6-9 months each way.', 100, NOW() - INTERVAL '7 days' + INTERVAL '3 minutes'),
     ('990e8400-e29b-41d4-a716-446655440023', '880e8400-e29b-41d4-a716-446655440009', 'user', 'What about the psychological challenges?', 0, NOW() - INTERVAL '7 days' + INTERVAL '5 minutes'),

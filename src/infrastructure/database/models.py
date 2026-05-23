@@ -30,9 +30,9 @@ class User(Base):
 	google_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
 	crystal_balance: Mapped[int] = mapped_column(Integer, server_default="1000", default=1000)
 
-	characters: Mapped[List["Character"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
-	scenes: Mapped[List["Scene"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
-	chats: Mapped[List["Chat"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+	characters: Mapped[List["Character"]] = relationship(back_populates="owner")
+	scenes: Mapped[List["Scene"]] = relationship(back_populates="owner")
+	chats: Mapped[List["Chat"]] = relationship(back_populates="user")
 
 
 class Character(Base):
@@ -47,10 +47,7 @@ class Character(Base):
 	is_public: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
 
 	owner: Mapped["User"] = relationship(back_populates="characters")
-	chats: Mapped[List["Chat"]] = relationship(back_populates="character", cascade="all, delete-orphan")
-	scenes: Mapped[List["Scene"]] = relationship(
-		back_populates="characters", secondary="character_scene", cascade="all, delete"
-	)
+	scenes: Mapped[List["Scene"]] = relationship(back_populates="characters", secondary="character_scene")
 
 
 class Scene(Base):
@@ -62,13 +59,12 @@ class Scene(Base):
 	owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
 	title: Mapped[str] = mapped_column(Text)
 	description: Mapped[str] = mapped_column(Text)
+	initial_message_text: Mapped[str] = mapped_column(Text)
 	background_prompt: Mapped[str] = mapped_column(Text)
 
 	owner: Mapped["User"] = relationship(back_populates="scenes")
-	chats: Mapped[List["Chat"]] = relationship(back_populates="scene", cascade="all, delete-orphan")
-	characters: Mapped[List["Character"]] = relationship(
-		back_populates="scenes", secondary="character_scene", cascade="all, delete"
-	)
+	chats: Mapped[List["Chat"]] = relationship(back_populates="scene")
+	characters: Mapped[List["Character"]] = relationship(back_populates="scenes", secondary="character_scene")
 
 
 class Chat(Base):
@@ -77,20 +73,19 @@ class Chat(Base):
 	id: Mapped[uuid.UUID] = mapped_column(
 		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
 	)
+	name: Mapped[str] = mapped_column(Text)
 	user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-	character_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("characters.id", ondelete="CASCADE"))
 	scene_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("scenes.id", ondelete="SET NULL"))
 	created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 	user: Mapped["User"] = relationship(back_populates="chats")
-	character: Mapped["Character"] = relationship(back_populates="chats")
 	scene: Mapped[Optional["Scene"]] = relationship(back_populates="chats")
-	messages: Mapped[List["Message"]] = relationship(back_populates="chat", cascade="all, delete-orphan")
+	messages: Mapped[List["Message"]] = relationship(back_populates="chat")
 
 
 class Message(Base):
 	__tablename__ = "messages"
-	__table_args__ = (CheckConstraint("role IN ('user', 'model', 'system')", name="check_role_valid"),)
+	__table_args__ = (CheckConstraint("role IN ('user', 'model')", name="check_role_valid"),)
 
 	id: Mapped[uuid.UUID] = mapped_column(
 		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
