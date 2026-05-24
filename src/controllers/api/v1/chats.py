@@ -36,8 +36,8 @@ async def create_chat(
 
 	logger.info(f"Chat object validation passed with user_id: {chat.user_id}")
 
-	await chat_service.start_chat(chat)
-	return ApiResponse(result=[], correlation_id=correlation_id.get())
+	chat_id = await chat_service.start_chat(chat)
+	return ApiResponse(result={"id": str(chat_id)}, correlation_id=correlation_id.get())
 
 
 @router.get("/{chat_id}")

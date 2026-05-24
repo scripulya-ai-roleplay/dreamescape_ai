@@ -48,6 +48,34 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 	if isinstance(exc, HTTPException):
 		return await http_exception_handler(request, exc)
 
+	# Handle ValueError exceptions (e.g., "not found" cases)
+	if isinstance(exc, ValueError):
+		error_message = str(exc)
+		if "not found" in error_message.lower():
+			logger.warning("Resource not found: %s", error_message)
+			return JSONResponse(
+				status_code=status.HTTP_404_NOT_FOUND,
+				content={
+					"error": {
+						"code": "RESOURCE_NOT_FOUND",
+						"message": "The requested resource was not found",
+						"details": {},
+					}
+				},
+			)
+		else:
+			logger.error("ValueError occurred: %s", error_message)
+			return JSONResponse(
+				status_code=status.HTTP_400_BAD_REQUEST,
+				content={
+					"error": {
+						"code": "INVALID_REQUEST",
+						"message": "Invalid request data",
+						"details": {"error": error_message},
+					}
+				},
+			)
+
 	# Handle SQLAlchemy exceptions
 	if isinstance(exc, NoResultFound):
 		logger.warning("Database record not found: %s", str(exc))
