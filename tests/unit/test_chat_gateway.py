@@ -10,6 +10,7 @@ from src.domain.models import Chat
 from src.infrastructure.database.models import Chat as ChatModel
 
 
+@pytest.mark.unit
 class TestChatGateway:
 	@pytest.fixture
 	def mock_session(self):
@@ -43,6 +44,7 @@ class TestChatGateway:
 			scene_id=uuid4(),
 		)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_create_success(self, chat_gateway, mock_session, sample_domain_chat):
 		# Arrange
@@ -65,11 +67,12 @@ class TestChatGateway:
 		mock_session.commit.assert_called_once()
 		mock_session.refresh.assert_called_once()
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_get_one_success(self, chat_gateway, mock_session, sample_chat_model):
 		# Arrange
 		chat_id = sample_chat_model.id
-		mock_result = AsyncMock()
+		mock_result = Mock()
 		mock_result.scalar_one_or_none.return_value = sample_chat_model
 		mock_session.execute.return_value = mock_result
 
@@ -83,11 +86,12 @@ class TestChatGateway:
 		assert result.scene_id == sample_chat_model.scene_id
 		mock_session.execute.assert_called_once()
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_get_one_not_found(self, chat_gateway, mock_session):
 		# Arrange
 		chat_id = uuid4()
-		mock_result = AsyncMock()
+		mock_result = Mock()
 		mock_result.scalar_one_or_none.return_value = None
 		mock_session.execute.return_value = mock_result
 
@@ -95,13 +99,14 @@ class TestChatGateway:
 		with pytest.raises(ValueError, match="Chat with ID .* not found"):
 			await chat_gateway.get_one(chat_id)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_success(self, chat_gateway, mock_session, sample_chat_model, sample_chat_filter_dto):
 		# Arrange
-		mock_count_result = AsyncMock()
+		mock_count_result = Mock()
 		mock_count_result.scalar.return_value = 1
 
-		mock_search_result = AsyncMock()
+		mock_search_result = Mock()
 		mock_search_result.scalars.return_value.all.return_value = [sample_chat_model]
 
 		mock_session.execute.side_effect = [mock_count_result, mock_search_result]
@@ -118,6 +123,7 @@ class TestChatGateway:
 		assert result.items[0].id == sample_chat_model.id
 		assert result.items[0].title == sample_chat_model.name
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_with_filters(self, chat_gateway, mock_session, sample_chat_model):
 		# Arrange
@@ -130,10 +136,10 @@ class TestChatGateway:
 			offset=10,
 		)
 
-		mock_count_result = AsyncMock()
+		mock_count_result = Mock()
 		mock_count_result.scalar.return_value = 2
 
-		mock_search_result = AsyncMock()
+		mock_search_result = Mock()
 		mock_search_result.scalars.return_value.all.return_value = [sample_chat_model]
 
 		mock_session.execute.side_effect = [mock_count_result, mock_search_result]
@@ -147,13 +153,14 @@ class TestChatGateway:
 		assert result.limit == 20
 		assert len(result.items) == 1
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_no_results(self, chat_gateway, mock_session, sample_chat_filter_dto):
 		# Arrange
-		mock_count_result = AsyncMock()
+		mock_count_result = Mock()
 		mock_count_result.scalar.return_value = 0
 
-		mock_search_result = AsyncMock()
+		mock_search_result = Mock()
 		mock_search_result.scalars.return_value.all.return_value = []
 
 		mock_session.execute.side_effect = [mock_count_result, mock_search_result]
@@ -165,6 +172,7 @@ class TestChatGateway:
 		assert result.count == 0
 		assert len(result.items) == 0
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_delete_success(self, chat_gateway, mock_session):
 		# Arrange
@@ -182,6 +190,7 @@ class TestChatGateway:
 		mock_session.execute.assert_called_once()
 		mock_session.commit.assert_called_once()
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_delete_not_found(self, chat_gateway, mock_session):
 		# Arrange
@@ -194,6 +203,7 @@ class TestChatGateway:
 		with pytest.raises(ValueError, match="Chat with ID .* not found"):
 			await chat_gateway.delete(chat_id)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_update_success(self, chat_gateway, mock_session):
 		# Arrange
@@ -212,6 +222,7 @@ class TestChatGateway:
 		mock_session.execute.assert_called_once()
 		mock_session.commit.assert_called_once()
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_update_not_found(self, chat_gateway, mock_session):
 		# Arrange
@@ -225,6 +236,7 @@ class TestChatGateway:
 		with pytest.raises(ValueError, match="Chat with ID .* not found"):
 			await chat_gateway.update(chat_id, new_name)
 
+	@pytest.mark.unit
 	def test_to_domain_chat_conversion(self, chat_gateway, sample_chat_model):
 		# Act
 		result = chat_gateway._to_domain_chat(sample_chat_model)
@@ -235,15 +247,16 @@ class TestChatGateway:
 		assert result.user_id == sample_chat_model.user_id
 		assert result.scene_id == sample_chat_model.scene_id
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_empty_filters(self, chat_gateway, mock_session, sample_chat_model):
 		# Arrange
 		empty_filter_dto = ChatFilterDTO(limit=10, offset=0)
 
-		mock_count_result = AsyncMock()
+		mock_count_result = Mock()
 		mock_count_result.scalar.return_value = 1
 
-		mock_search_result = AsyncMock()
+		mock_search_result = Mock()
 		mock_search_result.scalars.return_value.all.return_value = [sample_chat_model]
 
 		mock_session.execute.side_effect = [mock_count_result, mock_search_result]

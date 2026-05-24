@@ -43,6 +43,7 @@ class TestMessageGateway:
 			role=ChatRoles.USER,
 		)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_create_success(self, message_gateway, mock_session, sample_domain_message):
 		# Arrange
@@ -71,15 +72,16 @@ class TestMessageGateway:
 		mock_session.commit.assert_called_once()
 		mock_session.refresh.assert_called_once()
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_success(self, message_gateway, mock_session, sample_message_model, sample_message_filter_dto):
 		# Arrange
-		mock_count_result = AsyncMock()
+		mock_count_result = Mock()
 		mock_count_result.scalar.return_value = 1
 
 		mock_scalars = Mock()
 		mock_scalars.all.return_value = [sample_message_model]
-		mock_search_result = AsyncMock()
+		mock_search_result = Mock()
 		mock_search_result.scalars.return_value = mock_scalars
 
 		mock_session.execute.side_effect = [mock_count_result, mock_search_result]
@@ -97,6 +99,7 @@ class TestMessageGateway:
 		assert result.items[0].message == sample_message_model.content
 		assert result.items[0].role == ChatRoles(sample_message_model.role)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_with_all_filters(self, message_gateway, mock_session, sample_message_model):
 		# Arrange
@@ -108,10 +111,10 @@ class TestMessageGateway:
 			offset=5,
 		)
 
-		mock_count_result = AsyncMock()
+		mock_count_result = Mock()
 		mock_count_result.scalar.return_value = 3
 
-		mock_search_result = AsyncMock()
+		mock_search_result = Mock()
 		mock_search_result.scalars.return_value.all.return_value = [sample_message_model]
 
 		mock_session.execute.side_effect = [mock_count_result, mock_search_result]
@@ -125,13 +128,14 @@ class TestMessageGateway:
 		assert result.limit == 20
 		assert len(result.items) == 1
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_no_results(self, message_gateway, mock_session, sample_message_filter_dto):
 		# Arrange
-		mock_count_result = AsyncMock()
+		mock_count_result = Mock()
 		mock_count_result.scalar.return_value = 0
 
-		mock_search_result = AsyncMock()
+		mock_search_result = Mock()
 		mock_search_result.scalars.return_value.all.return_value = []
 
 		mock_session.execute.side_effect = [mock_count_result, mock_search_result]
@@ -143,11 +147,12 @@ class TestMessageGateway:
 		assert result.count == 0
 		assert len(result.items) == 0
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_get_one_success(self, message_gateway, mock_session, sample_message_model):
 		# Arrange
 		message_id = sample_message_model.id
-		mock_result = AsyncMock()
+		mock_result = Mock()
 		mock_result.scalar_one_or_none.return_value = sample_message_model
 		mock_session.execute.return_value = mock_result
 
@@ -161,11 +166,12 @@ class TestMessageGateway:
 		assert result.role == ChatRoles(sample_message_model.role)
 		mock_session.execute.assert_called_once()
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_get_one_not_found(self, message_gateway, mock_session):
 		# Arrange
 		message_id = uuid4()
-		mock_result = AsyncMock()
+		mock_result = Mock()
 		mock_result.scalar_one_or_none.return_value = None
 		mock_session.execute.return_value = mock_result
 
@@ -173,6 +179,7 @@ class TestMessageGateway:
 		with pytest.raises(ValueError, match="Message with ID .* not found"):
 			await message_gateway.get_one(message_id)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_update_success(self, message_gateway, mock_session):
 		# Arrange
@@ -191,6 +198,7 @@ class TestMessageGateway:
 		mock_session.execute.assert_called_once()
 		mock_session.commit.assert_called_once()
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_update_not_found(self, message_gateway, mock_session):
 		# Arrange
@@ -204,6 +212,7 @@ class TestMessageGateway:
 		with pytest.raises(ValueError, match="Message with ID .* not found"):
 			await message_gateway.update(message_id, updated_text)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_delete_success(self, message_gateway, mock_session):
 		# Arrange
@@ -221,6 +230,7 @@ class TestMessageGateway:
 		mock_session.execute.assert_called_once()
 		mock_session.commit.assert_called_once()
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_delete_not_found(self, message_gateway, mock_session):
 		# Arrange
@@ -233,6 +243,7 @@ class TestMessageGateway:
 		with pytest.raises(ValueError, match="Message with ID .* not found"):
 			await message_gateway.delete(message_id)
 
+	@pytest.mark.unit
 	def test_to_domain_message_conversion_user_role(self, message_gateway, sample_message_model):
 		# Act
 		result = message_gateway._to_domain_message(sample_message_model)
@@ -243,6 +254,7 @@ class TestMessageGateway:
 		assert result.chat_id == sample_message_model.chat_id
 		assert result.role == ChatRoles.USER
 
+	@pytest.mark.unit
 	def test_to_domain_message_conversion_model_role(self, message_gateway):
 		# Arrange
 		message_model = Mock(spec=MessageModel)
@@ -260,15 +272,16 @@ class TestMessageGateway:
 		assert result.chat_id == message_model.chat_id
 		assert result.role == ChatRoles.MODEL
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_empty_filters(self, message_gateway, mock_session, sample_message_model):
 		# Arrange
 		empty_filter_dto = MessagesFilterDto(limit=10, offset=0)
 
-		mock_count_result = AsyncMock()
+		mock_count_result = Mock()
 		mock_count_result.scalar.return_value = 1
 
-		mock_search_result = AsyncMock()
+		mock_search_result = Mock()
 		mock_search_result.scalars.return_value.all.return_value = [sample_message_model]
 
 		mock_session.execute.side_effect = [mock_count_result, mock_search_result]
@@ -280,6 +293,7 @@ class TestMessageGateway:
 		assert len(result.items) == 1
 		assert result.count == 1
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_create_with_empty_message(self, message_gateway, mock_session):
 		# Arrange
@@ -308,13 +322,14 @@ class TestMessageGateway:
 		mock_session.add.assert_called_once()
 		mock_session.commit.assert_called_once()
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_ordering_newest_first(self, message_gateway, mock_session, sample_message_filter_dto):
 		# Arrange
-		mock_count_result = AsyncMock()
+		mock_count_result = Mock()
 		mock_count_result.scalar.return_value = 0
 
-		mock_search_result = AsyncMock()
+		mock_search_result = Mock()
 		mock_search_result.scalars.return_value.all.return_value = []
 
 		mock_session.execute.side_effect = [mock_count_result, mock_search_result]

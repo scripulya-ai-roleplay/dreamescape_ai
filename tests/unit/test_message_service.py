@@ -30,6 +30,7 @@ class TestMessageService:
 	def sample_message_filter_dto(self):
 		return MessagesFilterDto(chats_ids=[uuid4()], roles=[ChatRoles.USER], limit=10, offset=0)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_success(self, message_service, mock_message_gateway, sample_message):
 		# Arrange
@@ -43,6 +44,7 @@ class TestMessageService:
 		assert result == expected_message
 		mock_message_gateway.create.assert_called_once_with(sample_message)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_success(
 		self, message_service, mock_message_gateway, sample_message, sample_message_filter_dto
@@ -58,6 +60,7 @@ class TestMessageService:
 		assert result == expected_page
 		mock_message_gateway.search.assert_called_once_with(sample_message_filter_dto)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_get_one_success(self, message_service, mock_message_gateway, sample_message):
 		# Arrange
@@ -71,6 +74,7 @@ class TestMessageService:
 		assert result == sample_message
 		mock_message_gateway.get_one.assert_called_once_with(message_id)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_update_success(self, message_service, mock_message_gateway):
 		# Arrange
@@ -85,6 +89,7 @@ class TestMessageService:
 		assert result == message_id
 		mock_message_gateway.update.assert_called_once_with(message_id, updated_text)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_delete_success(self, message_service, mock_message_gateway):
 		# Arrange
@@ -98,6 +103,7 @@ class TestMessageService:
 		assert result == message_id
 		mock_message_gateway.delete.assert_called_once_with(message_id)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_gateway_error(self, message_service, mock_message_gateway, sample_message):
 		# Arrange
@@ -107,6 +113,7 @@ class TestMessageService:
 		with pytest.raises(ValueError, match="Database error"):
 			await message_service.send_message(sample_message)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_get_one_not_found(self, message_service, mock_message_gateway):
 		# Arrange
@@ -117,6 +124,7 @@ class TestMessageService:
 		with pytest.raises(ValueError, match="Message not found"):
 			await message_service.get_one(message_id)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_empty_results(self, message_service, mock_message_gateway, sample_message_filter_dto):
 		# Arrange
@@ -131,6 +139,7 @@ class TestMessageService:
 		assert result.count == 0
 		mock_message_gateway.search.assert_called_once_with(sample_message_filter_dto)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_update_not_found(self, message_service, mock_message_gateway):
 		# Arrange
@@ -142,6 +151,7 @@ class TestMessageService:
 		with pytest.raises(ValueError, match="Message not found"):
 			await message_service.update(message_id, updated_text)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_delete_not_found(self, message_service, mock_message_gateway):
 		# Arrange
@@ -152,6 +162,7 @@ class TestMessageService:
 		with pytest.raises(ValueError, match="Message not found"):
 			await message_service.delete(message_id)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_with_model_role(self, message_service, mock_message_gateway):
 		# Arrange
@@ -175,6 +186,7 @@ class TestMessageService:
 		assert result.items[0].role == ChatRoles.MODEL
 		mock_message_gateway.search.assert_called_once_with(filter_dto)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_with_empty_content(self, message_service, mock_message_gateway):
 		# Arrange

@@ -49,3 +49,9 @@ dev = [
     "pytest>=9.0.3",
     "ruff>=0.15.13",
 ]
+
+[pytest]
+markers = [
+    "unit: marks tests as unit tests",
+    "e2e: marks tests as e2e tests",
+]
