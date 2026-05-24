@@ -40,6 +40,7 @@ class TestCharacterService:
 	def sample_character_filter_dto(self):
 		return CharacterFilterDTO(ids=[uuid4()], names=["Test Character"], owner_ids=[uuid4()])
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_create_character_success(self, character_service, mock_character_gateway, sample_character):
 		# Arrange
@@ -53,6 +54,7 @@ class TestCharacterService:
 		assert result == character_id
 		mock_character_gateway.create.assert_called_once_with(sample_character)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_create_character_gateway_error(self, character_service, mock_character_gateway, sample_character):
 		# Arrange
@@ -62,6 +64,7 @@ class TestCharacterService:
 		with pytest.raises(Exception, match="Gateway error"):
 			await character_service.create_character(sample_character)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_get_one_success(self, character_service, mock_character_gateway, sample_character):
 		# Arrange
@@ -75,6 +78,7 @@ class TestCharacterService:
 		assert result == sample_character
 		mock_character_gateway.get_one.assert_called_once_with(character_uuid)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_get_one_gateway_error(self, character_service, mock_character_gateway):
 		# Arrange
@@ -85,6 +89,7 @@ class TestCharacterService:
 		with pytest.raises(Exception, match="Character not found"):
 			await character_service.get_one(character_uuid)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_success(
 		self, character_service, mock_character_gateway, sample_character, sample_character_filter_dto
@@ -100,6 +105,7 @@ class TestCharacterService:
 		assert result == page_result
 		mock_character_gateway.search.assert_called_once_with(sample_character_filter_dto)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_gateway_error(self, character_service, mock_character_gateway, sample_character_filter_dto):
 		# Arrange
@@ -109,6 +115,7 @@ class TestCharacterService:
 		with pytest.raises(Exception, match="Search error"):
 			await character_service.search(sample_character_filter_dto)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_delete_success(self, character_service, mock_character_gateway, sample_character):
 		# Arrange
@@ -122,6 +129,7 @@ class TestCharacterService:
 		mock_character_gateway.get_one.assert_called_once_with(character_uuid)
 		mock_character_gateway.delete.assert_called_once_with(character_uuid)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_delete_not_found(self, character_service, mock_character_gateway):
 		# Arrange
@@ -132,6 +140,7 @@ class TestCharacterService:
 		with pytest.raises(ValueError, match="Character not found"):
 			await character_service.delete(character_uuid)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_delete_gateway_error(self, character_service, mock_character_gateway, sample_character):
 		# Arrange
@@ -143,6 +152,7 @@ class TestCharacterService:
 		with pytest.raises(Exception, match="Delete error"):
 			await character_service.delete(character_uuid)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_update_success(self, character_service, mock_character_gateway, sample_character):
 		# Arrange
@@ -156,6 +166,7 @@ class TestCharacterService:
 		mock_character_gateway.get_one.assert_called_once_with(character_uuid)
 		mock_character_gateway.update.assert_called_once_with(character_uuid, sample_character)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_update_not_found(self, character_service, mock_character_gateway, sample_character):
 		# Arrange
@@ -166,6 +177,7 @@ class TestCharacterService:
 		with pytest.raises(ValueError, match="Character not found"):
 			await character_service.update(character_uuid, sample_character)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_update_gateway_error(self, character_service, mock_character_gateway, sample_character):
 		# Arrange

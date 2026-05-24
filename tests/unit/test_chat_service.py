@@ -30,6 +30,7 @@ class TestChatService:
 	def sample_chat_filter_dto(self):
 		return ChatFilterDTO(titles=["Test Chat"], limit=10, offset=0)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_start_chat_success(self, chat_service, mock_chat_gateway, sample_chat):
 		# Arrange
@@ -43,6 +44,7 @@ class TestChatService:
 		assert result == expected_chat_id
 		mock_chat_gateway.create.assert_called_once_with(sample_chat)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_get_one_success(self, chat_service, mock_chat_gateway, sample_chat):
 		# Arrange
@@ -56,6 +58,7 @@ class TestChatService:
 		assert result == sample_chat
 		mock_chat_gateway.get_one.assert_called_once_with(chat_id)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_success(self, chat_service, mock_chat_gateway, sample_chat, sample_chat_filter_dto):
 		# Arrange
@@ -69,6 +72,7 @@ class TestChatService:
 		assert result == expected_page
 		mock_chat_gateway.search.assert_called_once_with(sample_chat_filter_dto)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_delete_success(self, chat_service, mock_chat_gateway):
 		# Arrange
@@ -82,6 +86,7 @@ class TestChatService:
 		assert result == chat_id
 		mock_chat_gateway.delete.assert_called_once_with(chat_id)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_update_success(self, chat_service, mock_chat_gateway):
 		# Arrange
@@ -96,6 +101,7 @@ class TestChatService:
 		assert result == chat_id
 		mock_chat_gateway.update.assert_called_once_with(chat_id, new_name)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_start_chat_gateway_error(self, chat_service, mock_chat_gateway, sample_chat):
 		# Arrange
@@ -105,6 +111,7 @@ class TestChatService:
 		with pytest.raises(ValueError, match="Database error"):
 			await chat_service.start_chat(sample_chat)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_get_one_not_found(self, chat_service, mock_chat_gateway):
 		# Arrange
@@ -115,6 +122,7 @@ class TestChatService:
 		with pytest.raises(ValueError, match="Chat not found"):
 			await chat_service.get_one(chat_id)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_empty_results(self, chat_service, mock_chat_gateway, sample_chat_filter_dto):
 		# Arrange
@@ -129,6 +137,7 @@ class TestChatService:
 		assert result.count == 0
 		mock_chat_gateway.search.assert_called_once_with(sample_chat_filter_dto)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_delete_not_found(self, chat_service, mock_chat_gateway):
 		# Arrange
@@ -139,6 +148,7 @@ class TestChatService:
 		with pytest.raises(ValueError, match="Chat not found"):
 			await chat_service.delete(chat_id)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_update_not_found(self, chat_service, mock_chat_gateway):
 		# Arrange

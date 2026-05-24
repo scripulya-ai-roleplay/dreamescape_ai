@@ -39,6 +39,7 @@ class TestChatsService:
 		"""Sample UserMessageDTO with mock model for testing."""
 		return UserMessageDTO(message="Test message for mock model", llm_model=LLMModelType.testing_mock)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_success_gemini(
 		self, chats_service, mock_gateway_factory, mock_gateway, sample_user_message_dto
@@ -56,6 +57,7 @@ class TestChatsService:
 			"usage": {"tokens": 50},
 		}
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_success_mock_model(
 		self, chats_service, mock_gateway_factory, mock_gateway, sample_mock_message_dto
@@ -73,6 +75,7 @@ class TestChatsService:
 			"usage": {"tokens": 50},
 		}
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_empty_message(self, chats_service, mock_gateway_factory, mock_gateway):
 		"""Test sending an empty message."""
@@ -91,6 +94,7 @@ class TestChatsService:
 			"usage": {"tokens": 50},
 		}
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_long_message(self, chats_service, mock_gateway_factory, mock_gateway):
 		"""Test sending a long message."""
@@ -110,6 +114,7 @@ class TestChatsService:
 			"usage": {"tokens": 50},
 		}
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_gateway_factory_error(self, mock_gateway_factory, sample_user_message_dto):
 		"""Test error handling when gateway factory fails."""
@@ -124,6 +129,7 @@ class TestChatsService:
 		assert str(exc_info.value) == "Gateway creation failed"
 		mock_gateway_factory.create_gateway.assert_called_once_with("gemini-3-flash-preview")
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_gateway_response_error(
 		self, chats_service, mock_gateway_factory, mock_gateway, sample_user_message_dto
@@ -140,6 +146,7 @@ class TestChatsService:
 		mock_gateway_factory.create_gateway.assert_called_once_with("gemini-3-flash-preview")
 		mock_gateway.generate_response.assert_called_once_with("Hello, how are you?")
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_different_response_format(
 		self, chats_service, mock_gateway_factory, mock_gateway, sample_user_message_dto
@@ -159,6 +166,7 @@ class TestChatsService:
 		mock_gateway.generate_response.assert_called_once_with("Hello, how are you?")
 		assert result == {"response": "Different format response", "metadata": {"source": "test"}}
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_special_characters(self, chats_service, mock_gateway_factory, mock_gateway):
 		"""Test sending message with special characters."""
@@ -178,6 +186,7 @@ class TestChatsService:
 			"usage": {"tokens": 50},
 		}
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_unicode_characters(self, chats_service, mock_gateway_factory, mock_gateway):
 		"""Test sending message with unicode characters."""
