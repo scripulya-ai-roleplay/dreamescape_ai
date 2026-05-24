@@ -8,14 +8,14 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.character.schemas import CharacterFilterDTO
+from src.application.chats.schemas import ChatFilterDTO
+from src.application.message.schemas import MessagesFilterDto
 from src.application.scene.schemas import SceneFilterDTO
-from src.domain.models import User, Scene, Character
+from src.domain.models import User, Scene, Character, Message, Chat
 from src.application.user.schemas import UserDTO
 
 
 class Page[T](BaseModel):
-	"""Pagination wrapper for list results"""
-
 	model_config = ConfigDict(frozen=True)
 
 	items: List[T]
@@ -153,6 +153,74 @@ class ICharacterGateway(abc.ABC):
 	async def update(self, target_scene_uuid: UUID, new_scene_data: Character): ...
 
 
+class IChatGateway(abc.ABC):
+	@abc.abstractmethod
+	async def create(self, chat: Chat) -> UUID: ...
+
+	@abc.abstractmethod
+	async def get_one(self, chat_uuid: UUID) -> Chat: ...
+
+	@abc.abstractmethod
+	async def search(self, dto: ChatFilterDTO) -> Page[Chat]: ...
+
+	@abc.abstractmethod
+	async def delete(self, chat_uuid: UUID) -> UUID: ...
+
+	@abc.abstractmethod
+	async def update(self, target_chat_uuid: UUID, chat_name: str) -> UUID: ...
+
+
+class IChatService(abc.ABC):
+	@abc.abstractmethod
+	async def start_chat(self, chat: Chat) -> UUID: ...
+
+	@abc.abstractmethod
+	async def get_one(self, chat_uuid: UUID) -> Chat: ...
+
+	@abc.abstractmethod
+	async def search(self, dto: ChatFilterDTO) -> Page[Chat]: ...
+
+	@abc.abstractmethod
+	async def delete(self, chat_uuid: UUID) -> UUID: ...
+
+	@abc.abstractmethod
+	async def update(self, target_chat_uuid: UUID, chat_name: str) -> UUID: ...
+
+
+class IMessageGateway(abc.ABC):
+	@abc.abstractmethod
+	async def create(self, message: Message) -> Message: ...
+
+	@abc.abstractmethod
+	async def search(self, dto: MessagesFilterDto) -> Page[Message]: ...
+
+	@abc.abstractmethod
+	async def get_one(self, message_uuid: UUID) -> Message: ...
+
+	@abc.abstractmethod
+	async def update(self, message_uuid: UUID, updated_text: str) -> UUID: ...
+
+	@abc.abstractmethod
+	async def delete(self, message_uuid: UUID) -> UUID: ...
+
+
+class IMessageService(abc.ABC):
+	@abc.abstractmethod
+	async def send_message(self, message: Message) -> Message: ...
+
+	@abc.abstractmethod
+	async def search(self, dto: MessagesFilterDto) -> Page[Message]: ...
+
+	@abc.abstractmethod
+	async def get_one(self, message_uuid: UUID) -> Message: ...
+
+	@abc.abstractmethod
+	async def update(self, message_uuid: UUID, updated_text: str) -> UUID: ...
+
+	@abc.abstractmethod
+	async def delete(self, message_uuid: UUID) -> UUID: ...
+
+
 class LLMResponse(BaseModel):
 	text: str
 
@@ -164,8 +232,6 @@ class IGatewayFactory(ABC):
 
 
 class ApiResponse[T](BaseModel):
-	"""Wrapper for API responses with correlation_id"""
-
 	model_config = ConfigDict(frozen=True)
 
 	result: T

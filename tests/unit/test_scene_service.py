@@ -40,6 +40,7 @@ class TestSceneService:
 			description="Test scene description",
 			background_prompt="Test background prompt",
 			owner_id=uuid4(),
+			initial_message_text="Welcome to the test scene!",
 		)
 
 	@pytest.fixture

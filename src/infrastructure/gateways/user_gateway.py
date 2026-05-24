@@ -138,6 +138,7 @@ class UserGateway(IUserGateway):
 					owner_id=scene_model.owner_id,
 					title=scene_model.title,
 					background_prompt=scene_model.background_prompt,
+					initial_message_text=scene_model.initial_message_text,
 				)
 			)
 
@@ -147,8 +148,8 @@ class UserGateway(IUserGateway):
 			chats.append(
 				Chat(
 					id=chat_model.id,
+					title=chat_model.name,  # Database uses 'name', domain uses 'title'
 					user_id=chat_model.user_id,
-					character_id=chat_model.character_id,
 					scene_id=chat_model.scene_id,
 				)
 			)

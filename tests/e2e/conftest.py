@@ -27,12 +27,15 @@ def client():
 		def delete(self, path, **kwargs):
 			return self.session.delete(f"{self.base_url}{path}", timeout=30.0, **kwargs)
 
+		def put(self, path, **kwargs):
+			return self.session.put(f"{self.base_url}{path}", timeout=30.0, **kwargs)
+
 	return ClientWrapper(session, "http://localhost:8000")
 
 
 @pytest.fixture
 def auth_headers():
-	test_user_id = "550e8400-e29b-41d4-a716-446655440000"
+	test_user_id = "5dbdc924-968a-4c50-94a8-44cdd165e460"
 
 	token = create_test_token(test_user_id)
 

@@ -49,7 +49,7 @@ class TestCharacterGateway:
 			owner_id=uuid4(),
 		)
 
-	@pytest.mark.asyncio
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_get_one_success(self, character_gateway, mock_session, sample_character_model):
 		# Arrange
@@ -68,7 +68,7 @@ class TestCharacterGateway:
 		assert result.is_public == sample_character_model.is_public
 		assert result.owner_id == sample_character_model.owner_id
 
-	@pytest.mark.asyncio
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_get_one_not_found(self, character_gateway, mock_session):
 		# Arrange
@@ -81,7 +81,7 @@ class TestCharacterGateway:
 		with pytest.raises(Exception, match="Character not found"):
 			await character_gateway.get_one(character_uuid)
 
-	@pytest.mark.asyncio
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_create_success(self, character_gateway, mock_session, sample_domain_character):
 		# Arrange
@@ -97,7 +97,7 @@ class TestCharacterGateway:
 		# it tests the general flow
 		await character_gateway.create(sample_domain_character)
 
-	@pytest.mark.asyncio
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_delete_success(self, character_gateway, mock_session):
 		# Arrange
@@ -110,7 +110,7 @@ class TestCharacterGateway:
 		# Assert
 		mock_session.execute.assert_called_once()
 
-	@pytest.mark.asyncio
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_delete_not_found(self, character_gateway, mock_session):
 		# Arrange
@@ -121,7 +121,7 @@ class TestCharacterGateway:
 		with pytest.raises(Exception, match="Delete failed"):
 			await character_gateway.delete(character_uuid)
 
-	@pytest.mark.asyncio
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_update_success(self, character_gateway, mock_session, sample_domain_character):
 		# Arrange
@@ -134,6 +134,7 @@ class TestCharacterGateway:
 		# Assert
 		mock_session.execute.assert_called_once()
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_update_not_found(self, character_gateway, mock_session, sample_domain_character):
 		# Arrange
@@ -144,6 +145,7 @@ class TestCharacterGateway:
 		with pytest.raises(Exception, match="Update failed"):
 			await character_gateway.update(character_uuid, sample_domain_character)
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_success(
 		self, character_gateway, mock_session, sample_character_model, sample_character_filter_dto
@@ -167,6 +169,7 @@ class TestCharacterGateway:
 		assert len(result.items) == 1
 		assert result.items[0].name == sample_character_model.name
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_with_id_filter(self, character_gateway, mock_session, sample_character_model):
 		# Arrange
@@ -189,6 +192,7 @@ class TestCharacterGateway:
 		assert isinstance(result, Page)
 		assert result.count == 1
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_with_name_filter(self, character_gateway, mock_session, sample_character_model):
 		# Arrange
@@ -210,6 +214,7 @@ class TestCharacterGateway:
 		assert isinstance(result, Page)
 		assert result.count == 1
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_with_owner_filter(self, character_gateway, mock_session, sample_character_model):
 		# Arrange
@@ -232,6 +237,7 @@ class TestCharacterGateway:
 		assert isinstance(result, Page)
 		assert result.count == 1
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_no_results(self, character_gateway, mock_session, sample_character_filter_dto):
 		# Arrange
@@ -252,6 +258,7 @@ class TestCharacterGateway:
 		assert result.count == 0
 		assert len(result.items) == 0
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_empty_filters(self, character_gateway, mock_session, sample_character_model):
 		# Arrange
@@ -273,6 +280,7 @@ class TestCharacterGateway:
 		assert isinstance(result, Page)
 		assert result.count == 1
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_to_domain_character_conversion(self, character_gateway, sample_character_model):
 		# Act
@@ -285,6 +293,7 @@ class TestCharacterGateway:
 		assert result.is_public == sample_character_model.is_public
 		assert result.owner_id == sample_character_model.owner_id
 
+	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_session_error_handling(self, character_gateway, mock_session):
 		# Arrange
