@@ -24,7 +24,8 @@ class TestChatsAPI:
 		data = response.json()
 		assert "result" in data
 		assert "correlation_id" in data
-		assert isinstance(data["result"], list)
+		assert isinstance(data["result"], dict)
+		assert "id" in data["result"]
 
 	def test_create_chat_with_minimal_data(self, client, auth_headers, cleanup_test_chats):
 		"""Test creating a chat with only required fields."""
@@ -169,26 +170,35 @@ class TestChatsAPI:
 		assert response.status_code == 422
 
 	def test_delete_chat_with_valid_uuid(self, client, auth_headers, cleanup_test_chats):
-		test_uuid = "90d27426-7b7a-4a4d-ba17-6f98b7c29c5e"
+		# First create a chat to get its ID
+		chat_payload = {
+			"title": "Test Chat for Deletion",
+			"user_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
+			"scene_id": "5c194d75-401f-4fa2-808c-7092153135b7",
+		}
+		create_response = client.post("/api/v1/chats/", json=chat_payload, headers=auth_headers)
+		assert create_response.status_code == 200
+		create_data = create_response.json()
+		assert "result" in create_data
+		assert "correlation_id" in create_data
 
-		# First, check if the chat exists
-		get_response = client.get(f"/api/v1/chats/{test_uuid}")
-		chat_exists = get_response.status_code == 200
-
-		# Only proceed with deletion if chat exists
-		if chat_exists:
-			response = client.delete(f"/api/v1/chats/{test_uuid}")
-			# Should return 200 if chat exists and deleted
-			assert response.status_code == 200
-			data = response.json()
-			assert "result" in data
-			assert "correlation_id" in data
-			assert isinstance(data["result"], list)
+		# Extract the chat ID from the creation response
+		created_chat = create_data["result"]
+		if isinstance(created_chat, dict) and "id" in created_chat:
+			test_uuid = created_chat["id"]
 		else:
-			# If chat doesn't exist, we can still test the delete endpoint behavior
-			response = client.delete(f"/api/v1/chats/{test_uuid}")
-			# Should return 404 if not found
-			assert response.status_code == 404
+			test_uuid = None
+
+		assert test_uuid is not None, f"Failed to extract chat ID from creation response. Response: {create_data}"
+
+		# Now proceed with deletion using the extracted chat ID
+		response = client.delete(f"/api/v1/chats/{test_uuid}")
+		# Should return 200 if chat exists and deleted
+		assert response.status_code == 200
+		data = response.json()
+		assert "result" in data
+		assert "correlation_id" in data
+		assert isinstance(data["result"], list)
 
 		# Create the chat back after deleting it
 		chat_payload = {
@@ -249,7 +259,7 @@ class TestChatsAPI:
 	def test_update_chat_with_valid_data(self, client):
 		"""Test updating a chat with valid data."""
 		test_uuid = "d99678f7-bb8c-41f4-9726-4722b44a5649"
-		payload = "Updated Chat Name"
+		payload = {"chat_name": "Updated Chat Name"}
 
 		response = client.post(f"/api/v1/chats/update/{test_uuid}", json=payload)
 
