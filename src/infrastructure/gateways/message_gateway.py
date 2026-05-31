@@ -20,7 +20,6 @@ class MessageGateway(IMessageGateway):
 
 	async def create(self, message: Message) -> Message:
 		logger.info(f"Creating message in database for chat: {message.chat_id}")
-
 		message_model = MessageModel(
 			chat_id=message.chat_id,
 			role=message.role.value,
@@ -29,7 +28,6 @@ class MessageGateway(IMessageGateway):
 		)
 
 		self._session.add(message_model)
-		await self._session.commit()
 		await self._session.refresh(message_model)
 
 		created_message = self._to_domain_message(message_model)
