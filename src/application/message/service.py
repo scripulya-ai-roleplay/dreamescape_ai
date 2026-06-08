@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from application.ports import IUnitOfWork
+from src.application.ports import IUnitOfWork
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import IMessageService, IMessageGateway, Page
 from src.domain.models import Message

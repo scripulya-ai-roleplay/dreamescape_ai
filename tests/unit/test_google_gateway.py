@@ -1,10 +1,11 @@
 import json
 import pytest
 from unittest.mock import Mock
-import google.generativeai as genai
 
 from src.infrastructure.gateways.google_gateway import GoogleGateway
 from src.infrastructure.exceptions import JSONParsingException, ContentSafetyException, LLMGatewayException
+
+genai = pytest.importorskip("google.generativeai")
 
 
 @pytest.mark.unit
@@ -17,14 +18,21 @@ class TestGoogleGateway:
 		return Mock(spec=genai.ChatSession)
 
 	@pytest.fixture
+	def mock_client(self, mock_chat_session):
+		"""Mock GenerativeModel client for testing"""
+		client = Mock(spec=genai.GenerativeModel)
+		client.start_chat.return_value = mock_chat_session
+		return client
+
+	@pytest.fixture
 	def mock_logger(self):
 		"""Mock logger for testing"""
 		return Mock()
 
 	@pytest.fixture
-	def google_gateway(self, mock_chat_session, mock_logger):
+	def google_gateway(self, mock_client, mock_logger):
 		"""GoogleGateway instance with mocked dependencies"""
-		return GoogleGateway(chat=mock_chat_session, logger=mock_logger)
+		return GoogleGateway(_client=mock_client, logger=mock_logger)
 
 	@pytest.mark.asyncio
 	async def test_generate_response_success(self, google_gateway, mock_chat_session, mock_logger):
@@ -182,8 +190,8 @@ class TestGoogleGateway:
 		assert result["empty_list"] == []
 		assert result["zero_value"] == 0
 
-	def test_dataclass_attributes(self, google_gateway, mock_chat_session, mock_logger):
+	def test_dataclass_attributes(self, google_gateway, mock_client, mock_logger):
 		"""Test that GoogleGateway dataclass attributes are accessible"""
 		# Assert
-		assert google_gateway.chat == mock_chat_session
+		assert google_gateway._client == mock_client
 		assert google_gateway.logger == mock_logger

@@ -1,8 +1,8 @@
 import logging
 from dataclasses import dataclass
 
-from application.message.schemas import MessagesFilterDto
-from application.ports import LLMResponse, IMessageGateway
+from src.application.message.schemas import MessagesFilterDto
+from src.application.ports import LLMResponse, IMessageGateway
 from src.application.ports import (
 	IChatsService,
 	UserMessageDTO,

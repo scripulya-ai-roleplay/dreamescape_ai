@@ -5,7 +5,7 @@ from logging import Logger
 import google.generativeai as genai
 from google.generativeai import GenerativeModel
 
-from application.ports import UserMessageDTO
+from src.application.ports import UserMessageDTO
 from src.application.ports import ILLMChatGateway
 from src.infrastructure.exceptions import JSONParsingException, ContentSafetyException, LLMGatewayException
 

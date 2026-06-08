@@ -7,7 +7,8 @@ from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Body, Depends
 
-from application.chats.llm_service import LLMChatsService
+from src.application.chats.llm_service import LLMChatsService
+from src.application.ports import UserMessageDTO
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import ApiResponse, Page, IMessageService
 from src.domain.models import Message
@@ -24,7 +25,7 @@ router = APIRouter(prefix="/api/v1/messages", tags=["messages"])
 async def create_message(
 	message_service: FromDishka[IMessageService],
 	llm_service: FromDishka[LLMChatsService],
-	message: Message = Body(),
+	message: UserMessageDTO = Body(),
 	current_user: Dict[str, Any] = Depends(get_current_user),
 ) -> ApiResponse[Message]:
 	logger.info(f"Current user payload: {current_user}")
@@ -38,7 +39,12 @@ async def create_message(
 	logger.info(f"Creating message for chat: {message.chat_id}")
 	await llm_service.send_message(message)
 
-	result = await message_service.send_message(message)
+	db_message = Message(
+		message=message.message,
+		chat_id=message.chat_id,
+		role=message.role,
+	)
+	result = await message_service.send_message(db_message)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 

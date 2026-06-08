@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from domain.models import ChatRoles
+from src.domain.models import ChatRoles
 from src.application.character.schemas import CharacterFilterDTO
 from src.application.chats.schemas import ChatFilterDTO
 from src.application.message.schemas import MessagesFilterDto
