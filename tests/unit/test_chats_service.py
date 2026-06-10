@@ -1,8 +1,11 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+from uuid import uuid4
+
 from src.application.chats.llm_service import LLMChatsService
-from src.application.ports import UserMessageDTO, LLMModelType, IGatewayFactory, ILLMChatGateway
+from src.application.ports import UserMessageDTO, LLMModelType, IGatewayFactory, ILLMChatGateway, IMessageGateway, Page
+from src.domain.models import ChatRoles, Message
 
 
 class TestChatsService:
@@ -25,19 +28,40 @@ class TestChatsService:
 		return factory
 
 	@pytest.fixture
-	def chats_service(self, mock_gateway_factory):
+	def mock_messages_gateway(self):
+		"""Mock messages gateway for history retrieval."""
+		gateway = AsyncMock(spec=IMessageGateway)
+		gateway.search.return_value = Page[Message](items=[], count=0, offset=0, limit=10)
+		return gateway
+
+	@pytest.fixture
+	def chats_service(self, mock_gateway_factory, mock_messages_gateway):
 		"""LLMChatsService instance with mocked dependencies."""
-		return LLMChatsService(gateway_factory=mock_gateway_factory)
+		return LLMChatsService(gateway_factory=mock_gateway_factory, messages_gateway=mock_messages_gateway)
 
 	@pytest.fixture
-	def sample_user_message_dto(self):
+	def sample_chat_id(self):
+		return uuid4()
+
+	@pytest.fixture
+	def sample_user_message_dto(self, sample_chat_id):
 		"""Sample UserMessageDTO for testing."""
-		return UserMessageDTO(message="Hello, how are you?", llm_model=LLMModelType.gemini_flash_preview)
+		return UserMessageDTO(
+			message="Hello, how are you?",
+			llm_model=LLMModelType.gemini_flash_preview,
+			chat_id=sample_chat_id,
+			role=ChatRoles.USER,
+		)
 
 	@pytest.fixture
-	def sample_mock_message_dto(self):
+	def sample_mock_message_dto(self, sample_chat_id):
 		"""Sample UserMessageDTO with mock model for testing."""
-		return UserMessageDTO(message="Test message for mock model", llm_model=LLMModelType.testing_mock)
+		return UserMessageDTO(
+			message="Test message for mock model",
+			llm_model=LLMModelType.testing_mock,
+			chat_id=sample_chat_id,
+			role=ChatRoles.USER,
+		)
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -50,7 +74,7 @@ class TestChatsService:
 
 		# Assert
 		mock_gateway_factory.create_gateway.assert_called_once_with("gemini-3-flash-preview")
-		mock_gateway.generate_response.assert_called_once_with("Hello, how are you?")
+		mock_gateway.generate_response.assert_called_once_with("Hello, how are you?", [])
 		assert result == {
 			"text": "This is a test response from the LLM",
 			"model": "test-model",
@@ -68,7 +92,7 @@ class TestChatsService:
 
 		# Assert
 		mock_gateway_factory.create_gateway.assert_called_once_with("testing_mock")
-		mock_gateway.generate_response.assert_called_once_with("Test message for mock model")
+		mock_gateway.generate_response.assert_called_once_with("Test message for mock model", [])
 		assert result == {
 			"text": "This is a test response from the LLM",
 			"model": "test-model",
@@ -80,14 +104,16 @@ class TestChatsService:
 	async def test_send_message_empty_message(self, chats_service, mock_gateway_factory, mock_gateway):
 		"""Test sending an empty message."""
 		# Arrange
-		empty_message_dto = UserMessageDTO(message="", llm_model=LLMModelType.gemini_flash_preview)
+		empty_message_dto = UserMessageDTO(
+			message="", llm_model=LLMModelType.gemini_flash_preview, chat_id=uuid4(), role=ChatRoles.USER
+		)
 
 		# Act
 		result = await chats_service.send_message(empty_message_dto)
 
 		# Assert
 		mock_gateway_factory.create_gateway.assert_called_once_with("gemini-3-flash-preview")
-		mock_gateway.generate_response.assert_called_once_with("")
+		mock_gateway.generate_response.assert_called_once_with("", [])
 		assert result == {
 			"text": "This is a test response from the LLM",
 			"model": "test-model",
@@ -100,14 +126,16 @@ class TestChatsService:
 		"""Test sending a long message."""
 		# Arrange
 		long_message = "This is a very long message " * 100
-		long_message_dto = UserMessageDTO(message=long_message, llm_model=LLMModelType.gemini_flash_preview)
+		long_message_dto = UserMessageDTO(
+			message=long_message, llm_model=LLMModelType.gemini_flash_preview, chat_id=uuid4(), role=ChatRoles.USER
+		)
 
 		# Act
 		result = await chats_service.send_message(long_message_dto)
 
 		# Assert
 		mock_gateway_factory.create_gateway.assert_called_once_with("gemini-3-flash-preview")
-		mock_gateway.generate_response.assert_called_once_with(long_message)
+		mock_gateway.generate_response.assert_called_once_with(long_message, [])
 		assert result == {
 			"text": "This is a test response from the LLM",
 			"model": "test-model",
@@ -116,11 +144,13 @@ class TestChatsService:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_send_message_gateway_factory_error(self, mock_gateway_factory, sample_user_message_dto):
+	async def test_send_message_gateway_factory_error(
+		self, mock_gateway_factory, mock_messages_gateway, sample_user_message_dto
+	):
 		"""Test error handling when gateway factory fails."""
 		# Arrange
 		mock_gateway_factory.create_gateway.side_effect = Exception("Gateway creation failed")
-		chats_service = LLMChatsService(gateway_factory=mock_gateway_factory)
+		chats_service = LLMChatsService(gateway_factory=mock_gateway_factory, messages_gateway=mock_messages_gateway)
 
 		# Act & Assert
 		with pytest.raises(Exception) as exc_info:
@@ -144,7 +174,7 @@ class TestChatsService:
 
 		assert str(exc_info.value) == "Response generation failed"
 		mock_gateway_factory.create_gateway.assert_called_once_with("gemini-3-flash-preview")
-		mock_gateway.generate_response.assert_called_once_with("Hello, how are you?")
+		mock_gateway.generate_response.assert_called_once_with("Hello, how are you?", [])
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -163,7 +193,7 @@ class TestChatsService:
 
 		# Assert
 		mock_gateway_factory.create_gateway.assert_called_once_with("gemini-3-flash-preview")
-		mock_gateway.generate_response.assert_called_once_with("Hello, how are you?")
+		mock_gateway.generate_response.assert_called_once_with("Hello, how are you?", [])
 		assert result == {"response": "Different format response", "metadata": {"source": "test"}}
 
 	@pytest.mark.unit
@@ -172,14 +202,16 @@ class TestChatsService:
 		"""Test sending message with special characters."""
 		# Arrange
 		special_message = "Hello! 🚀 How are you? @#$%^&*()_+-=[]{}|;':\",./<>?"
-		special_message_dto = UserMessageDTO(message=special_message, llm_model=LLMModelType.testing_mock)
+		special_message_dto = UserMessageDTO(
+			message=special_message, llm_model=LLMModelType.testing_mock, chat_id=uuid4(), role=ChatRoles.USER
+		)
 
 		# Act
 		result = await chats_service.send_message(special_message_dto)
 
 		# Assert
 		mock_gateway_factory.create_gateway.assert_called_once_with("testing_mock")
-		mock_gateway.generate_response.assert_called_once_with(special_message)
+		mock_gateway.generate_response.assert_called_once_with(special_message, [])
 		assert result == {
 			"text": "This is a test response from the LLM",
 			"model": "test-model",
@@ -192,14 +224,16 @@ class TestChatsService:
 		"""Test sending message with unicode characters."""
 		# Arrange
 		unicode_message = "你好世界! Привет мир! مرحبا بالعالم!"
-		unicode_message_dto = UserMessageDTO(message=unicode_message, llm_model=LLMModelType.gemini_flash_preview)
+		unicode_message_dto = UserMessageDTO(
+			message=unicode_message, llm_model=LLMModelType.gemini_flash_preview, chat_id=uuid4(), role=ChatRoles.USER
+		)
 
 		# Act
 		result = await chats_service.send_message(unicode_message_dto)
 
 		# Assert
 		mock_gateway_factory.create_gateway.assert_called_once_with("gemini-3-flash-preview")
-		mock_gateway.generate_response.assert_called_once_with(unicode_message)
+		mock_gateway.generate_response.assert_called_once_with(unicode_message, [])
 		assert result == {
 			"text": "This is a test response from the LLM",
 			"model": "test-model",

@@ -1,7 +1,4 @@
-import google.generativeai as genai
-from google.generativeai import GenerativeModel, ChatSession
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
 
 class Settings(BaseSettings):
@@ -18,8 +15,11 @@ class Settings(BaseSettings):
 	HOST: str = "0.0.0.0"
 	PORT: int = 8000
 
-	GEMINI_API_KEY: str
-
+	GEMINI_API_KEY: str = ""
+	ANTHROPIC_API_KEY: str = ""
+	QWEN_API_KEY: str = ""
+	QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+	LLM_TEMPERATURE: float = 0.7
 	# Database Settings
 	DATABASE_URL: str = "postgresql+asyncpg://user:password@postgres:5432/dbname"
 
@@ -40,24 +40,6 @@ class Settings(BaseSettings):
         "text": "Твой текстовый ответ",
     }
     """
-	MODEL: GenerativeModel = genai.GenerativeModel(
-		model_name="gemini-3-flash-preview",
-		system_instruction=SYSTEM_PROMPT,
-		# Форсируем JSON-вывод на уровне API
-		generation_config={
-			"response_mime_type": "application/json",
-			"temperature": 0.7,
-		},
-		# Отключаем фильтры безопасности насколько это возможно
-		safety_settings={
-			HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-			HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-			HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-			HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-		},
-	)
-
-	CHAT: ChatSession = MODEL.start_chat(history=[])
 
 
 settings = Settings()  # type: ignore

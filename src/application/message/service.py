@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
+from src.application.ports import IUnitOfWork
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import IMessageService, IMessageGateway, Page
 from src.domain.models import Message
@@ -12,13 +13,15 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MessageService(IMessageService):
 	message_gateway: IMessageGateway
+	_uow: IUnitOfWork
 
 	async def send_message(self, message: Message) -> Message:
-		logger.info(f"Sending message to chat: {message.chat_id}")
+		async with self._uow:
+			logger.info(f"Sending message to chat: {message.chat_id}")
 
-		result = await self.message_gateway.create(message)
-		logger.info(f"Successfully sent message with ID: {result.id}")
-		return result
+			result = await self.message_gateway.create(message)
+			logger.info(f"Successfully sent message with ID: {result.id}")
+			return result
 
 	async def search(self, dto: MessagesFilterDto) -> Page[Message]:
 		logger.info(f"Searching messages with filters: {dto}")

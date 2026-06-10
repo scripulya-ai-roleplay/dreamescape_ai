@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from src.application.message.service import MessageService
 from src.application.message.schemas import MessagesFilterDto
-from src.application.ports import IMessageGateway, Page
+from src.application.ports import IMessageGateway, IUnitOfWork, Page
 from src.domain.models import Message, ChatRoles
 
 
@@ -14,8 +14,15 @@ class TestMessageService:
 		return AsyncMock(spec=IMessageGateway)
 
 	@pytest.fixture
-	def message_service(self, mock_message_gateway):
-		return MessageService(message_gateway=mock_message_gateway)
+	def mock_uow(self):
+		uow = AsyncMock(spec=IUnitOfWork)
+		uow.__aenter__ = AsyncMock()
+		uow.__aexit__ = AsyncMock(return_value=False)
+		return uow
+
+	@pytest.fixture
+	def message_service(self, mock_message_gateway, mock_uow):
+		return MessageService(message_gateway=mock_message_gateway, _uow=mock_uow)
 
 	@pytest.fixture
 	def sample_message(self):

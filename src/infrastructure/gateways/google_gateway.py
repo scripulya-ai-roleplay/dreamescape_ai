@@ -3,20 +3,22 @@ from dataclasses import dataclass
 from logging import Logger
 
 import google.generativeai as genai
-from google.generativeai import ChatSession
+from google.generativeai import GenerativeModel
 
+from src.application.ports import UserMessageDTO
 from src.application.ports import ILLMChatGateway
 from src.infrastructure.exceptions import JSONParsingException, ContentSafetyException, LLMGatewayException
 
 
 @dataclass
 class GoogleGateway(ILLMChatGateway):
-	chat: ChatSession
 	logger: Logger
+	_client: GenerativeModel
 
-	async def generate_response(self, user_message: str) -> dict:
+	async def generate_response(self, user_message: str, history: list[UserMessageDTO] | None = None) -> dict:
 		try:
-			response = self.chat.send_message(user_message)
+			chat = self._client.start_chat()
+			response = chat.send_message(user_message)
 
 			parsed_data = json.loads(response.text)
 			return parsed_data
