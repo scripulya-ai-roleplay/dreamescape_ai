@@ -28,6 +28,7 @@ class MessageGateway(IMessageGateway):
 		)
 
 		self._session.add(message_model)
+		await self._session.flush()
 		await self._session.refresh(message_model)
 
 		created_message = self._to_domain_message(message_model)

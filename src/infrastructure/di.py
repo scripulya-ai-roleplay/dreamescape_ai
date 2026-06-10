@@ -117,16 +117,18 @@ class ServiceProvider(Provider):
 		)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_chats_service(self, gateway_factory: IGatewayFactory) -> IChatsService:
-		return LLMChatsService(gateway_factory=gateway_factory)
+	def provide_chats_service(
+		self, gateway_factory: IGatewayFactory, message_gateway: IMessageGateway
+	) -> IChatsService:
+		return LLMChatsService(gateway_factory=gateway_factory, messages_gateway=message_gateway)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_chat_service(self, chat_gateway: IChatGateway) -> IChatService:
 		return ChatService(chat_gateway=chat_gateway)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_message_service(self, message_gateway: IMessageGateway) -> IMessageService:
-		return MessageService(message_gateway=message_gateway)
+	def provide_message_service(self, message_gateway: IMessageGateway, uow: PostgresqlUOW) -> IMessageService:
+		return MessageService(message_gateway=message_gateway, _uow=uow)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_scene_service(self, scene_gateway: ISceneGateway, uow: PostgresqlUOW) -> ISceneService:

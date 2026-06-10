@@ -90,7 +90,7 @@ class IUserGateway(abc.ABC):
 class UserMessageDTO(BaseModel):
 	chat_id: UUID
 	message: str
-	llm_model: LLMModelType
+	llm_model: LLMModelType | None = LLMModelType.testing_mock
 	role: ChatRoles
 
 
