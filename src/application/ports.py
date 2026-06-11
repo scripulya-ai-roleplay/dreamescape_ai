@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.domain.models import ChatRoles
 from src.application.character.schemas import CharacterFilterDTO
 from src.application.chats.schemas import ChatFilterDTO
 from src.application.message.schemas import MessagesFilterDto
@@ -26,7 +27,23 @@ class Page[T](BaseModel):
 
 class LLMModelType(StrEnum):
 	testing_mock = "testing_mock"
+	# Google
 	gemini_flash_preview = "gemini-3-flash-preview"
+	gemini_pro = "gemini-2.5-pro"
+	# Anthropic
+	claude_sonnet = "claude-sonnet-4-20250514"
+	claude_haiku = "claude-haiku-4-20250514"
+	# Qwen
+	qwen_plus = "qwen-plus"
+	qwen_turbo = "qwen-turbo"
+	qwen_max = "qwen-max"
+
+
+class LLMResponse(BaseModel):
+	text: str
+	model: LLMModelType
+	usage: Optional[dict] = None
+	provider: str
 
 
 class IJWTService(abc.ABC):
@@ -71,13 +88,17 @@ class IUserGateway(abc.ABC):
 
 
 class UserMessageDTO(BaseModel):
+	chat_id: UUID
 	message: str
-	llm_model: LLMModelType
+	llm_model: LLMModelType | None = LLMModelType.testing_mock
+	role: ChatRoles
 
 
 class ILLMChatGateway(abc.ABC):
 	@abc.abstractmethod
-	async def generate_response(self, user_message: str) -> dict: ...
+	async def generate_response(
+		self, user_message: str, history: list[UserMessageDTO] | None = None
+	) -> LLMResponse: ...
 
 
 class IChatsService(abc.ABC):
@@ -219,10 +240,6 @@ class IMessageService(abc.ABC):
 
 	@abc.abstractmethod
 	async def delete(self, message_uuid: UUID) -> UUID: ...
-
-
-class LLMResponse(BaseModel):
-	text: str
 
 
 class IGatewayFactory(ABC):

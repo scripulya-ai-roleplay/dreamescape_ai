@@ -7,8 +7,9 @@ from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Body, Depends
 
+from src.application.ports import UserMessageDTO
 from src.application.message.schemas import MessagesFilterDto
-from src.application.ports import ApiResponse, Page, IMessageService
+from src.application.ports import ApiResponse, Page, IMessageService, IChatsService
 from src.domain.models import Message
 from src.infrastructure.auth.dependencies import get_current_user
 
@@ -22,7 +23,8 @@ router = APIRouter(prefix="/api/v1/messages", tags=["messages"])
 @inject
 async def create_message(
 	message_service: FromDishka[IMessageService],
-	message: Message = Body(),
+	llm_service: FromDishka[IChatsService],
+	message: UserMessageDTO = Body(),
 	current_user: Dict[str, Any] = Depends(get_current_user),
 ) -> ApiResponse[Message]:
 	logger.info(f"Current user payload: {current_user}")
@@ -34,8 +36,14 @@ async def create_message(
 	# In a real implementation, you might want to validate that the user owns the chat
 
 	logger.info(f"Creating message for chat: {message.chat_id}")
+	await llm_service.send_message(message)
 
-	result = await message_service.send_message(message)
+	db_message = Message(
+		message=message.message,
+		chat_id=message.chat_id,
+		role=message.role,
+	)
+	result = await message_service.send_message(db_message)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 

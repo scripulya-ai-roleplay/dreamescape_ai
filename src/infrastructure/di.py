@@ -2,6 +2,9 @@ import logging
 from typing import AsyncGenerator
 
 from dishka import Provider, Scope, make_async_container, provide
+from google.generativeai import GenerativeModel
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
+
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, create_async_engine, async_sessionmaker
 
 from src.conf import settings
@@ -41,13 +44,30 @@ from src.application.auth.jwt_service import JWTService
 logger = logging.getLogger(__name__)
 
 
+class LLMClientProvider(Provider):
+	@provide(scope=Scope.APP)
+	def provide_google_client(self) -> GenerativeModel:
+		model = GenerativeModel(
+			model_name="gemini-3-flash-preview",
+			system_instruction=settings.SYSTEM_PROMPT,
+			generation_config={
+				"response_mime_type": "application/json",
+				"temperature": 0.7,
+			},
+			safety_settings={
+				HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+				HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+				HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+				HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+			},
+		)
+		return model
+
+
 class GatewayProvider(Provider):
 	@provide(scope=Scope.REQUEST)
-	def provide_google_gateway(self) -> GoogleGateway:
-		return GoogleGateway(
-			logger=logger,
-			chat=settings.CHAT,
-		)
+	def provide_google_gateway(self, client: GenerativeModel) -> GoogleGateway:
+		return GoogleGateway(logger=logger, _client=client)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_mock_gateway(self) -> MockGateway:
@@ -97,16 +117,18 @@ class ServiceProvider(Provider):
 		)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_chats_service(self, gateway_factory: IGatewayFactory) -> IChatsService:
-		return LLMChatsService(gateway_factory=gateway_factory)
+	def provide_chats_service(
+		self, gateway_factory: IGatewayFactory, message_gateway: IMessageGateway
+	) -> IChatsService:
+		return LLMChatsService(gateway_factory=gateway_factory, messages_gateway=message_gateway)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_chat_service(self, chat_gateway: IChatGateway) -> IChatService:
 		return ChatService(chat_gateway=chat_gateway)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_message_service(self, message_gateway: IMessageGateway) -> IMessageService:
-		return MessageService(message_gateway=message_gateway)
+	def provide_message_service(self, message_gateway: IMessageGateway, uow: PostgresqlUOW) -> IMessageService:
+		return MessageService(message_gateway=message_gateway, _uow=uow)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_scene_service(self, scene_gateway: ISceneGateway, uow: PostgresqlUOW) -> ISceneService:
@@ -151,8 +173,5 @@ class UoWProvider(Provider):
 def create_container():
 	"""Create dishka container with gateway factory and database providers"""
 	return make_async_container(
-		GatewayProvider(),
-		DatabaseProvider(),
-		UoWProvider(),
-		ServiceProvider(),
+		GatewayProvider(), DatabaseProvider(), UoWProvider(), ServiceProvider(), LLMClientProvider()
 	)

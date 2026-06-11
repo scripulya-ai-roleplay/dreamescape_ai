@@ -28,14 +28,9 @@ class TestMockGateway:
 		result = await mock_gateway.generate_response(user_message)
 
 		# Assert
-		assert isinstance(result, dict)
-		assert "text" in result
-		assert "model" in result
-		assert "usage" in result
-
-		assert result["text"] == f"Mock response for: {user_message}"
-		assert result["model"] == "testing_mock"
-		assert result["usage"]["tokens"] == 10
+		assert result.text == f"Mock response for: {user_message}"
+		assert result.model == "testing_mock"
+		assert result.usage["tokens"] == 10
 
 		# Verify logging
 		mock_logger.info.assert_called_once_with(f"Mock gateway received: {user_message}")
@@ -50,9 +45,9 @@ class TestMockGateway:
 		result = await mock_gateway.generate_response(user_message)
 
 		# Assert
-		assert result["text"] == "Mock response for: "
-		assert result["model"] == "testing_mock"
-		assert result["usage"]["tokens"] == 10
+		assert result.text == "Mock response for: "
+		assert result.model == "testing_mock"
+		assert result.usage["tokens"] == 10
 
 		mock_logger.info.assert_called_once_with("Mock gateway received: ")
 
@@ -66,9 +61,9 @@ class TestMockGateway:
 		result = await mock_gateway.generate_response(user_message)
 
 		# Assert
-		assert result["text"] == f"Mock response for: {user_message}"
-		assert result["model"] == "testing_mock"
-		assert result["usage"]["tokens"] == 10
+		assert result.text == f"Mock response for: {user_message}"
+		assert result.model == "testing_mock"
+		assert result.usage["tokens"] == 10
 
 		mock_logger.info.assert_called_once_with(f"Mock gateway received: {user_message}")
 
@@ -82,9 +77,9 @@ class TestMockGateway:
 		result = await mock_gateway.generate_response(user_message)
 
 		# Assert
-		assert result["text"] == f"Mock response for: {user_message}"
-		assert result["model"] == "testing_mock"
-		assert result["usage"]["tokens"] == 10
+		assert result.text == f"Mock response for: {user_message}"
+		assert result.model == "testing_mock"
+		assert result.usage["tokens"] == 10
 
 		mock_logger.info.assert_called_once_with(f"Mock gateway received: {user_message}")
 
@@ -98,9 +93,9 @@ class TestMockGateway:
 		result = await mock_gateway.generate_response(user_message)
 
 		# Assert
-		assert result["text"] == f"Mock response for: {user_message}"
-		assert result["model"] == "testing_mock"
-		assert result["usage"]["tokens"] == 10
+		assert result.text == f"Mock response for: {user_message}"
+		assert result.model == "testing_mock"
+		assert result.usage["tokens"] == 10
 
 		mock_logger.info.assert_called_once_with(f"Mock gateway received: {user_message}")
 
@@ -114,9 +109,9 @@ class TestMockGateway:
 		result = await mock_gateway.generate_response(user_message)
 
 		# Assert
-		assert result["text"] == f"Mock response for: {user_message}"
-		assert result["model"] == "testing_mock"
-		assert result["usage"]["tokens"] == 10
+		assert result.text == f"Mock response for: {user_message}"
+		assert result.model == "testing_mock"
+		assert result.usage["tokens"] == 10
 
 		mock_logger.info.assert_called_once_with(f"Mock gateway received: {user_message}")
 
@@ -130,18 +125,12 @@ class TestMockGateway:
 		for message in messages:
 			result = await mock_gateway.generate_response(message)
 
-			# Verify structure is always the same
-			assert len(result.keys()) == 3
-			assert "text" in result
-			assert "model" in result
-			assert "usage" in result
-
 			# Verify model and usage are always the same
-			assert result["model"] == "testing_mock"
-			assert result["usage"]["tokens"] == 10
+			assert result.model == "testing_mock"
+			assert result.usage["tokens"] == 10
 
 			# Verify text includes the message
-			assert message in result["text"]
+			assert message in result.text
 
 	@pytest.mark.asyncio
 	async def test_generate_response_no_exceptions(self, mock_gateway, mock_logger):
@@ -185,8 +174,8 @@ class TestMockGateway:
 		result2 = await mock_gateway.generate_response(message2)
 
 		# Assert
-		assert result1["text"] == f"Mock response for: {message1}"
-		assert result2["text"] == f"Mock response for: {message2}"
+		assert result1.text == f"Mock response for: {message1}"
+		assert result2.text == f"Mock response for: {message2}"
 		assert result1 != result2
 
 		# Verify both calls were logged
@@ -202,13 +191,11 @@ class TestMockGateway:
 
 		# Act
 		result1 = await mock_gateway.generate_response(user_message)
-		result1["text"] = "Modified text"  # Modify the response
-		result1["new_field"] = "new_value"  # Add new field
+		result1.text = "Modified text"  # Modify the response
 
 		result2 = await mock_gateway.generate_response(user_message)
 
 		# Assert - second response should be unaffected by modifications to first
-		assert result2["text"] == f"Mock response for: {user_message}"
-		assert "new_field" not in result2
-		assert result2["model"] == "testing_mock"
-		assert result2["usage"]["tokens"] == 10
+		assert result2.text == f"Mock response for: {user_message}"
+		assert result2.model == "testing_mock"
+		assert result2.usage["tokens"] == 10

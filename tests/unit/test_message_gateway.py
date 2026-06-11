@@ -57,7 +57,6 @@ class TestMessageGateway:
 			model.content = sample_domain_message.message
 
 		mock_session.add = Mock(side_effect=mock_add)
-		mock_session.commit = AsyncMock()
 		mock_session.refresh = AsyncMock()
 
 		# Act
@@ -69,7 +68,6 @@ class TestMessageGateway:
 		assert result.role == sample_domain_message.role
 		assert result.message == sample_domain_message.message
 		mock_session.add.assert_called_once()
-		mock_session.commit.assert_called_once()
 		mock_session.refresh.assert_called_once()
 
 	@pytest.mark.unit
@@ -311,7 +309,6 @@ class TestMessageGateway:
 		mock_message_model.content = ""
 
 		mock_session.add = Mock()
-		mock_session.commit = AsyncMock()
 		mock_session.refresh = AsyncMock()
 
 		# Act
@@ -320,7 +317,6 @@ class TestMessageGateway:
 		# Assert
 		assert result.message == ""
 		mock_session.add.assert_called_once()
-		mock_session.commit.assert_called_once()
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
