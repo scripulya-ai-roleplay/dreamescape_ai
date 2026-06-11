@@ -85,6 +85,7 @@ CREATE INDEX idx_media_entity ON media_assets(entity_type, entity_id);
 
 -- Insert test users
 INSERT INTO users (id, test_username, google_id, crystal_balance) VALUES
+    ('00000000-0000-0000-0000-000000000001', 'mobile_test', 'mobile@mobile.net', 1000),
     ('5dbdc924-968a-4c50-94a8-44cdd165e460', 'admin_test', 'admin@google.com', 5000),
     ('f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'api_test', 'api@google.com', 3000),
     ('4954ef15-b75b-4f92-b32c-ded5e80ce802', 'dev_test', 'dev@google.com', 1000),
