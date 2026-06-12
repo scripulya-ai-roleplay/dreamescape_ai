@@ -66,7 +66,8 @@ CREATE TABLE messages (
     role VARCHAR(50) NOT NULL CHECK (role IN ('user', 'model')),
     content TEXT NOT NULL,
     cost_crystals INTEGER DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Create index on chat_id for messages
@@ -229,6 +230,9 @@ INSERT INTO messages (id, chat_id, role, content, cost_crystals, created_at) VAL
     -- Chat 11 messages (High cost conversation)
     ('d92f7708-57e3-409a-bad1-1fe883afe1f4', '3b0ea7ee-d883-49d9-aabd-5cf497c6db79', 'user', 'Write me a detailed analysis of quantum computing.', 0, NOW() - INTERVAL '10 days'),
     ('6aa69681-627e-440c-ab60-3667e2d36da9', '3b0ea7ee-d883-49d9-aabd-5cf497c6db79', 'model', 'Quantum computing represents a revolutionary paradigm in computational science, leveraging the principles of quantum mechanics to process information in fundamentally different ways than classical computers. This technology promises exponential speedups for certain types of problems...', 150, NOW() - INTERVAL '10 days' + INTERVAL '2 minutes');
+
+-- Align edited timestamps with creation time for seeded messages (not edited yet)
+UPDATE messages SET updated_at = created_at;
 
 -- Insert test media assets
 INSERT INTO media_assets (id, file_url, entity_type, entity_id) VALUES
