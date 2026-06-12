@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +29,8 @@ class TestMessageGateway:
 		model.role = "user"
 		model.content = "Test message content"
 		model.cost_crystals = 0
+		model.created_at = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+		model.updated_at = datetime(2024, 1, 2, 15, 30, 0, tzinfo=timezone.utc)
 		return model
 
 	@pytest.fixture
@@ -67,6 +70,10 @@ class TestMessageGateway:
 		assert result.chat_id == sample_domain_message.chat_id
 		assert result.role == sample_domain_message.role
 		assert result.message == sample_domain_message.message
+		# Timestamps are populated by the database (server defaults), so they are
+		# absent on a non-flushed model in this unit test.
+		assert result.date_created is None
+		assert result.date_edited is None
 		mock_session.add.assert_called_once()
 		mock_session.refresh.assert_called_once()
 
@@ -96,6 +103,8 @@ class TestMessageGateway:
 		assert result.items[0].id == sample_message_model.id
 		assert result.items[0].message == sample_message_model.content
 		assert result.items[0].role == ChatRoles(sample_message_model.role)
+		assert result.items[0].date_created == sample_message_model.created_at
+		assert result.items[0].date_edited == sample_message_model.updated_at
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -162,6 +171,8 @@ class TestMessageGateway:
 		assert result.message == sample_message_model.content
 		assert result.chat_id == sample_message_model.chat_id
 		assert result.role == ChatRoles(sample_message_model.role)
+		assert result.date_created == sample_message_model.created_at
+		assert result.date_edited == sample_message_model.updated_at
 		mock_session.execute.assert_called_once()
 
 	@pytest.mark.unit
@@ -195,6 +206,26 @@ class TestMessageGateway:
 		assert result == message_id
 		mock_session.execute.assert_called_once()
 		mock_session.commit.assert_called_once()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_update_bumps_date_edited(self, message_gateway, mock_session):
+		# Arrange
+		message_id = uuid4()
+		updated_text = "Updated message content"
+		mock_result = AsyncMock()
+		mock_result.rowcount = 1
+		mock_session.execute.return_value = mock_result
+		mock_session.commit = AsyncMock()
+
+		# Act
+		await message_gateway.update(message_id, updated_text)
+
+		# Assert: the UPDATE statement must set both the content and the edited timestamp
+		executed_statement = mock_session.execute.call_args[0][0]
+		compiled_statement = str(executed_statement)
+		assert "content" in compiled_statement
+		assert "updated_at" in compiled_statement
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -251,6 +282,8 @@ class TestMessageGateway:
 		assert result.message == sample_message_model.content
 		assert result.chat_id == sample_message_model.chat_id
 		assert result.role == ChatRoles.USER
+		assert result.date_created == sample_message_model.created_at
+		assert result.date_edited == sample_message_model.updated_at
 
 	@pytest.mark.unit
 	def test_to_domain_message_conversion_model_role(self, message_gateway):
@@ -260,6 +293,8 @@ class TestMessageGateway:
 		message_model.chat_id = uuid4()
 		message_model.role = "model"
 		message_model.content = "AI response"
+		message_model.created_at = datetime(2024, 3, 10, 8, 0, 0, tzinfo=timezone.utc)
+		message_model.updated_at = datetime(2024, 3, 11, 9, 0, 0, tzinfo=timezone.utc)
 
 		# Act
 		result = message_gateway._to_domain_message(message_model)
@@ -269,6 +304,8 @@ class TestMessageGateway:
 		assert result.message == message_model.content
 		assert result.chat_id == message_model.chat_id
 		assert result.role == ChatRoles.MODEL
+		assert result.date_created == message_model.created_at
+		assert result.date_edited == message_model.updated_at
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio

@@ -94,7 +94,11 @@ class MessageGateway(IMessageGateway):
 	async def update(self, message_uuid: UUID, updated_text: str) -> UUID:
 		logger.info(f"Updating message {message_uuid} with new text")
 
-		query = update(MessageModel).where(MessageModel.id == message_uuid).values(content=updated_text)
+		query = (
+			update(MessageModel)
+			.where(MessageModel.id == message_uuid)
+			.values(content=updated_text, updated_at=func.now())
+		)
 
 		result = await self._session.execute(query)
 
@@ -129,4 +133,6 @@ class MessageGateway(IMessageGateway):
 			message=message_model.content,  # Convert DB 'content' to domain 'message'
 			chat_id=message_model.chat_id,
 			role=role,
+			date_created=message_model.created_at,  # Convert DB 'created_at' to domain 'date_created'
+			date_edited=message_model.updated_at,  # Convert DB 'updated_at' to domain 'date_edited'
 		)

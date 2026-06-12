@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import StrEnum
 from typing import TypeVar, List
 from uuid import UUID
@@ -73,3 +74,6 @@ class Message(BaseModel):
 	message: str
 	chat_id: UUID
 	role: ChatRoles
+	# timestamps are optional because they are generated automatically inside DB
+	date_created: None | datetime = None
+	date_edited: None | datetime = None

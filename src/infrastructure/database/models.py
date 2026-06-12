@@ -95,6 +95,7 @@ class Message(Base):
 	content: Mapped[str] = mapped_column(Text)
 	cost_crystals: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
 	created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+	updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 	chat: Mapped["Chat"] = relationship(back_populates="messages")
 
