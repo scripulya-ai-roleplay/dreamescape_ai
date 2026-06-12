@@ -103,7 +103,7 @@ class ILLMChatGateway(abc.ABC):
 
 class IChatsService(abc.ABC):
 	@abc.abstractmethod
-	async def send_message(self, chat_dto: UserMessageDTO) -> dict: ...
+	async def send_message(self, chat_dto: UserMessageDTO) -> LLMResponse: ...
 
 
 class ICharacterService(abc.ABC):
