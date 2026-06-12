@@ -7,6 +7,7 @@ from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Body, Depends
 
+from src.domain.models import ChatRoles
 from src.application.ports import UserMessageDTO
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import ApiResponse, Page, IMessageService, IChatsService
@@ -36,14 +37,18 @@ async def create_message(
 	# In a real implementation, you might want to validate that the user owns the chat
 
 	logger.info(f"Creating message for chat: {message.chat_id}")
-	await llm_service.send_message(message)
+	response = await llm_service.send_message(message)
 
 	db_message = Message(
 		message=message.message,
 		chat_id=message.chat_id,
 		role=message.role,
 	)
+
+	response_from_llm = Message(message=response.text, chat_id=message.chat_id, role=ChatRoles.MODEL)
+
 	result = await message_service.send_message(db_message)
+	await message_service.send_message(response_from_llm)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 
