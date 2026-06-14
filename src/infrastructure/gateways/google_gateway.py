@@ -17,7 +17,12 @@ class GoogleGateway(ILLMChatGateway):
 
 	async def generate_response(self, user_message: str, history: list[UserMessageDTO] | None = None) -> dict:
 		try:
-			chat = self._client.start_chat()
+			if history:
+				chat_history = [{"role": m.role.value, "parts": [m.message]} for m in history]
+				chat = self._client.start_chat(history=chat_history)
+			else:
+				chat = self._client.start_chat()
+
 			response = chat.send_message(user_message)
 
 			parsed_data = json.loads(response.text)
