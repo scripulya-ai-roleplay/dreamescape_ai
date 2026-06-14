@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+from pydantic import computed_field
 
 class Settings(BaseSettings):
 	model_config = SettingsConfigDict(
@@ -15,16 +15,23 @@ class Settings(BaseSettings):
 	HOST: str = "0.0.0.0"
 	PORT: int = 8000
 
-	GEMINI_API_KEY: str = ""
+	GEMINI_API_KEY: str
 	ANTHROPIC_API_KEY: str = ""
 	QWEN_API_KEY: str = ""
 	QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 	LLM_TEMPERATURE: float = 0.7
 	# Database Settings
-	DATABASE_URL: str = "postgresql+asyncpg://user:password@postgres:5432/dbname"
+	POSTGRES_USER: str
+	POSTGRES_PASSWORD: str
+	POSTGRES_DB: str
+
+	@computed_field
+	@property
+	def DATABASE_URL(self) -> str:
+		return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@postgres:5432/{self.POSTGRES_DB}"
 
 	# JWT Settings
-	JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
+	JWT_SECRET_KEY: str
 	JWT_PUBLIC_KEY: str = ""
 	JWT_ALGORITHM: str = "HS256"
 	JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
