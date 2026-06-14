@@ -13,6 +13,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
+.python-version
 build/
 develop-eggs/
 dist/
