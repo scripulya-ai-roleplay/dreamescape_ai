@@ -1,48 +1,48 @@
-title User chooses a scene and starts chatting
-
-User->Mobile App: user loggins in
-Mobile App->User: Asks to login or sign up with google
-Mobile App->Backend: Mobile App sends a google token for verification
+@startuml
+User->Mobile_App: user loggins in
+Mobile_App->User: asks to login or sign up with google
+Mobile_App->Backend: Mobile_App sends a google token for verification
 Backend->Google: Goole Auth verifies the token
 Google->Backend: Backend receives approval
-Backend->Mobile App: Backend assigns a random name\n for the User if User sings up for the first time\n and creates a JWT token for logging in
-Mobile App->User: User is authorized
-User->Mobile App: Users looks up for a Scene in the Mobile App
-Mobile App->Backend: Mobile App asks backend for a list of accessible Scenes
+Backend->Mobile_App: Backend assigns a random name\n for the User if User sings up for the first time\n and creates a JWT token for logging in
+Mobile_App->User: User is authorized
+User->Mobile_App: Users looks up for a Scene in the Mobile_App
+Mobile_App->Backend: Mobile_App asks backend for a list of accessible Scenes
 Backend->Postgresql: Backend makes an SQL quiery to retrieve all available Scenes
 Postgresql->Backend: Postgresql returns data
-Backend->Mobile App: Backend returns the Scenes list
-Mobile App->Minio: Mobile App retrieves the illustrations for the scenes list
-Minio->Mobile App: Minio returns the images
-Mobile App->User: Mobile App renders the list and shows it to the User
-User->Mobile App: User selects one story and retrieves detailed information about the story
-Mobile App->Backend: Mobile App asks for the story details
+Backend->Mobile_App: Backend returns the Scenes list
+Mobile_App->Minio: Mobile_App retrieves the illustrations for the scenes list
+Minio->Mobile_App: Minio returns the images
+Mobile_App->User: Mobile_App renders the list and shows it to the User
+User->Mobile_App: User selects one story and retrieves detailed information about the story
+Mobile_App->Backend: Mobile_App asks for the story details
 Backend->Postgresql: Backend makes a query about details of the Scene
 Postgresql->Backend: Postgresql returns the details
-Backend->Mobile App: Backend returns the details to the Mobile App
-Mobile App->Minio: Mobile App gets the main illustration from the Minio CDN, according to the info from the details
-Minio->Mobile App: Minio returns the image
-Mobile App->User: Mobile App renders the detailed info: Name, short description, characters, head illustration
-User->Mobile App: User opens a new chat with the story and chooses it's own character from the list of their own characters
-Mobile App->Backend: Asks backend for the list of the available characters for User to choose
+Backend->Mobile_App: Backend returns the details to the Mobile_App
+Mobile_App->Minio: Mobile_App gets the main illustration from the Minio CDN, according to the info from the details
+Minio->Mobile_App: Minio returns the image
+Mobile_App->User: Mobile_App renders the detailed info: Name, short description, characters, head illustration
+User->Mobile_App: User opens a new chat with the story and chooses it's own character from the list of their own characters
+Mobile_App->Backend: Asks backend for the list of the available characters for User to choose
 Backend->Postgresql: Backend makes an SQL quiery
 Postgresql->Backend: returns Name, and first images links of the characters
-Backend->Mobile App: returns the list of the available characters for the user
-Mobile App->Minio: Mobile App downloads images from Minio CDN
-Minio->Mobile App: returns images
-Mobile App->User: renders characters list to User
-User->Mobile App: User chooses their character and settings for the story (which LLM to use, temperature etc)
-Mobile App->Backend: sends a request to start the chat to Backend
+Backend->Mobile_App: returns the list of the available characters for the user
+Mobile_App->Minio: Mobile_App downloads images from Minio CDN
+Minio->Mobile_App: returns images
+Mobile_App->User: renders characters list to User
+User->Mobile_App: User chooses their character and settings for the story (which LLM to use, temperature etc)
+Mobile_App->Backend: sends a request to start the chat to Backend
 Backend->Postgresql: Sends a request to Postgresql to get the initial message of the Scene
 Postgresql->Backend: returns the initial scene text
 Backend->Postgresql: INSERTs a new message with a new UUID, along with FKs to the User and to the Scene
-Backend->Mobile App: returns the new chat UUID and the first message
-Mobile App->User: User sees a new chat with the initial message of the Scene
-User->Mobile App: sends a new message to the Chat
-Mobile App->Backend: sends Chat UUID, message and the user ID
+Backend->Mobile_App: returns the new chat UUID and the first message
+Mobile_App->User: User sees a new chat with the initial message of the Scene
+User->Mobile_App: sends a new message to the Chat
+Mobile_App->Backend: sends Chat UUID, message and the user ID
 Backend->Postgresql: looks up for the scene description prompt, and\n UNION it with all related characters of the story
 Postgresql->Backend: returns UNIONed prompts for scene description\n and all related characters description along with the user's character
-Backend->Chosen LLM API: sends the compiled prompt along with settings to the LLM and the user message
-Chosen LLM API->Backend: returns the response
-Backend->Mobile App: Backend returns the chat UUID, and LLM response
-Mobile App->User: Mobile app re-renders the chat with the response. User sees the response from the LLM
+Backend->Chosen_LLM_API: sends the compiled prompt along with settings to the LLM and the user message
+Chosen_LLM_API->Backend: returns the response
+Backend->Mobile_App: Backend returns the chat UUID, and LLM response
+Mobile_App->User: Mobile app re-renders the chat with the response. User sees the response from the LLM
+@enduml

@@ -1,0 +1,9 @@
+@startuml
+Mobile -> Backend: asks for available settings
+Mobile->Backend: Message text with predefined settings
+Backend -> Database: Fetch the history for the chat
+Database -> Backend: Receive the history
+Baackend -> LLM: sends the message,
+LLM -> Backend: receives the response
+Backend -> Mobile: sends the response
+@enduml

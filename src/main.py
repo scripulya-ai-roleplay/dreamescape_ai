@@ -1,15 +1,12 @@
 import argparse
 import logging
 
-import google.generativeai as genai
 import uvicorn
 from dishka.integrations.fastapi import setup_dishka
 
 from src.app import create_app
 from src.conf import settings
 from src.infrastructure.di import create_container
-
-genai.configure(api_key=settings.GEMINI_API_KEY)
 
 
 logger = logging.getLogger(__name__)
