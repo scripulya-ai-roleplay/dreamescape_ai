@@ -2,8 +2,8 @@ import logging
 from typing import AsyncGenerator
 
 from dishka import Provider, Scope, make_async_container, provide
-from google.generativeai import GenerativeModel
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
+from google import genai
+from google.genai import types
 
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, create_async_engine, async_sessionmaker
 
@@ -46,28 +46,45 @@ logger = logging.getLogger(__name__)
 
 class LLMClientProvider(Provider):
 	@provide(scope=Scope.APP)
-	def provide_google_client(self) -> GenerativeModel:
-		model = GenerativeModel(
-			model_name="gemini-3-flash-preview",
+	def provide_google_client(self) -> genai.Client:
+		return genai.Client(api_key=settings.GEMINI_API_KEY)
+
+	@provide(scope=Scope.APP)
+	def provide_google_config(self) -> types.GenerateContentConfig:
+		return types.GenerateContentConfig(
 			system_instruction=settings.SYSTEM_PROMPT,
-			generation_config={
-				"response_mime_type": "application/json",
-				"temperature": 0.7,
-			},
-			safety_settings={
-				HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-				HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-				HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-				HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-			},
+			response_mime_type="application/json",
+			temperature=0.7,
+			safety_settings=[
+				types.SafetySetting(
+					category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+					threshold=types.HarmBlockThreshold.BLOCK_NONE,
+				),
+				types.SafetySetting(
+					category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+					threshold=types.HarmBlockThreshold.BLOCK_NONE,
+				),
+				types.SafetySetting(
+					category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+					threshold=types.HarmBlockThreshold.BLOCK_NONE,
+				),
+				types.SafetySetting(
+					category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+					threshold=types.HarmBlockThreshold.BLOCK_NONE,
+				),
+			],
 		)
-		return model
 
 
 class GatewayProvider(Provider):
 	@provide(scope=Scope.REQUEST)
-	def provide_google_gateway(self, client: GenerativeModel) -> GoogleGateway:
-		return GoogleGateway(logger=logger, _client=client)
+	def provide_google_gateway(self, client: genai.Client, config: types.GenerateContentConfig) -> GoogleGateway:
+		return GoogleGateway(
+			logger=logger,
+			_client=client,
+			_model_name="gemini-3-flash-preview",
+			_config=config,
+		)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_mock_gateway(self) -> MockGateway:
