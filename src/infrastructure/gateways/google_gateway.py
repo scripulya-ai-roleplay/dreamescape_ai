@@ -4,7 +4,9 @@ from logging import Logger
 
 from google import genai
 from google.genai import types
+from google.genai.types import UserContent, ModelContent
 
+from domain.models import ChatRoles
 from src.application.ports import UserMessageDTO
 from src.application.ports import ILLMChatGateway
 from src.infrastructure.exceptions import JSONParsingException, ContentSafetyException, LLMGatewayException
@@ -23,17 +25,24 @@ class GoogleGateway(ILLMChatGateway):
 	async def generate_response(self, user_message: str, history: list[UserMessageDTO] | None = None) -> dict:
 		response = None
 		try:
-			chat_history = None
+			chat_history = []
 			if history:
-				chat_history = [types.Content(role=m.role.value, parts=[types.Part(text=m.message)]) for m in history]
+				for message in history:
+					if message.role == ChatRoles.USER:
+						chat_history.append(UserContent(parts=[types.Part(text=message.message)]))
+					elif message.role == ChatRoles.MODEL:
+						chat_history.append(ModelContent(parts=[types.Part(text=message.message)]))
 
-			chat = self._client.aio.chats.create(
-				model=self._model_name,
-				config=self._config,
-				history=chat_history,
+			base_config = types.GenerateContentConfig(
+				temperature=0.2, system_instruction="You are a strict data formatting assistant."
 			)
 
-			response = await chat.send_message(user_message)
+			if chat_history:
+				chat = self._client.aio.chats.create(model="gemini-3.5-flash", history=chat_history, config=base_config)
+			else:
+				chat = self._client.aio.chats.create(model="gemini-3.5-flash", config=base_config)
+
+			response = chat.send_message(user_message)
 
 			finish_reason = response.candidates[0].finish_reason if response.candidates else None
 			if finish_reason is not None and finish_reason not in _OK_FINISH_REASONS:
