@@ -4,8 +4,8 @@ services:
     build: .
     ports:
       - "8000:8000"
-    environment:
-      - GEMINI_API_KEY=fake_api_key_for_testing
+    env_file:
+      - .env
     networks:
       - app-network
     depends_on:
@@ -17,10 +17,8 @@ services:
   # PostgreSQL database service
   postgres:
     image: postgres:15
-    environment:
-      - POSTGRES_DB=dbname
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
+    env_file:
+      - .env
     ports:
       - "5432:5432"
     volumes:
@@ -30,7 +28,7 @@ services:
       - app-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d dbname"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
