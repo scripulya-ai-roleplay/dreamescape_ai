@@ -25,6 +25,17 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      # RabbitMQ broker required by the app at startup (scripulya_agent integration).
+      # E2E uses the local testing_mock model, so scripulya_agent itself is not needed here.
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -76,6 +87,7 @@ jobs:
           docker run -d --name running-app --network host \
             -e GEMINI_API_KEY=fake_api_key_for_testing \
             -e DATABASE_URL=postgresql+asyncpg://user:password@127.0.0.1:5432/dbname \
+            -e RABBIT_URL=amqp://guest:guest@127.0.0.1:5672/ \
             main-app
 
       - name: Wait for application to be ready

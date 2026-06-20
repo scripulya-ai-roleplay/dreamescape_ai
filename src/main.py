@@ -3,9 +3,11 @@ import logging
 
 import uvicorn
 from dishka.integrations.fastapi import setup_dishka
+from dishka.integrations.faststream import setup_dishka as setup_broker_dishka
 
 from src.app import create_app
 from src.conf import settings
+from src.controllers.rabbit.v1.broker import broker
 from src.infrastructure.di import create_container
 
 
@@ -30,6 +32,8 @@ def run_http_server() -> None:
 	container = create_container()
 	app.state.dishka_container = container
 	setup_dishka(container, app)
+	# Wire the broker so FromDishka[...] resolves inside the llm.agent.result subscriber.
+	setup_broker_dishka(container, broker=broker, auto_inject=True)
 
 	uvicorn_logging_level = "info"
 	if settings.DEBUG:

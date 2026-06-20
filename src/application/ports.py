@@ -94,10 +94,47 @@ class UserMessageDTO(BaseModel):
 	role: ChatRoles
 
 
+# --- scripulya_agent wire contract (RabbitMQ) -------------------------------
+# These mirror scripulya_agent's application/ports.py DTOs so the two services
+# share an identical on-the-wire schema. UserMessageDTO above is reused as the
+# per-turn shape (its fields match scripulya_agent's UserMessageDTO exactly).
+
+
+class LLMRequest(BaseModel):
+	"""Published to llm.agent.request: the current message plus prior history."""
+
+	message: UserMessageDTO
+	history: list[UserMessageDTO] = []
+
+
+class LLMErrorResponse(BaseModel):
+	"""Structured failure returned by scripulya_agent (LLMResult.error)."""
+
+	error_code: str  # machine-readable snake_case, e.g. "model_is_inaccessible"
+	status: int  # HTTP-style status, e.g. 503
+	reason: str  # short human-readable reason phrase
+	message: str  # detailed message
+	provider: str | None = None
+	details: dict = {}
+
+
+class LLMResult(BaseModel):
+	"""Consumed from llm.agent.result; correlated by chat_id.
+
+	Exactly one of `message` / `error` is set.
+	"""
+
+	chat_id: UUID
+	message: UserMessageDTO | None = None  # the model's reply (role=MODEL) on success
+	error: LLMErrorResponse | None = None  # set on failure
+
+
 class ILLMChatGateway(abc.ABC):
 	@abc.abstractmethod
 	async def generate_response(
-		self, user_message: str, history: list[UserMessageDTO] | None = None
+		self,
+		message: UserMessageDTO,
+		history: list[UserMessageDTO],
 	) -> LLMResponse: ...
 
 

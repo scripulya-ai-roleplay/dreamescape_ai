@@ -20,6 +20,14 @@ class Settings(BaseSettings):
 	QWEN_API_KEY: str = ""
 	QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 	LLM_TEMPERATURE: float = 0.7
+
+	# --- RabbitMQ / scripulya_agent integration ---
+	# The backend delegates LLM generation to the scripulya_agent worker over these queues.
+	RABBIT_URL: str = "amqp://guest:guest@rabbitmq:5672/"
+	LLM_AGENT_REQUEST_QUEUE: str = "llm.agent.request"
+	LLM_AGENT_RESULT_QUEUE: str = "llm.agent.result"
+	LLM_AGENT_TIMEOUT: float = 60.0  # seconds to await an LLMResult before failing the request
+
 	# Database Settings
 	DATABASE_URL: str = "postgresql+asyncpg://user:password@postgres:5432/dbname"
 

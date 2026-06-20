@@ -1,10 +1,13 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends
 from asgi_correlation_id import CorrelationIdMiddleware
 
 from src.conf import settings
 from src.controllers.api.v1.auth import set_token_to_request_state
+from src.controllers.rabbit.v1 import llm as rabbit_llm  # noqa: F401  registers the result subscriber
+from src.controllers.rabbit.v1.broker import broker
 from src.controllers.api.v1.characters import router as characters_router
 from src.controllers.api.v1.messages import router as message_router
 from src.controllers.api.v1.chats import router as chat_router
@@ -16,6 +19,22 @@ from src.infrastructure.web.middlewares import TraceAndLogRequestsMiddleware
 logger = logging.getLogger(__name__)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+	"""Start/stop the RabbitMQ broker alongside the HTTP app.
+
+	dishka is wired to the broker in main.run_http_server before the app starts,
+	so FromDishka[...] resolves inside the result subscriber once it is started here.
+	"""
+	await broker.start()
+	logger.info("RabbitMQ broker started; consuming %s", settings.LLM_AGENT_RESULT_QUEUE)
+	try:
+		yield
+	finally:
+		await broker.close()
+		logger.info("RabbitMQ broker closed")
+
+
 def create_app() -> FastAPI:
 	logger.info("Creating FastAPI application")
 
@@ -25,6 +44,7 @@ def create_app() -> FastAPI:
 		description="Service for roleplay chatting using LLM",
 		debug=settings.DEBUG,
 		dependencies=[Depends(set_token_to_request_state)],
+		lifespan=lifespan,
 	)
 
 	# Add correlation ID middleware
