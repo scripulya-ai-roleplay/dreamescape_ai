@@ -37,6 +37,10 @@ class LLMModelType(StrEnum):
 	qwen_plus = "qwen-plus"
 	qwen_turbo = "qwen-turbo"
 	qwen_max = "qwen-max"
+	# Z.ai (GLM, OpenAI-compatible)
+	glm_5_2 = "glm-5.2"
+	glm_4_6 = "glm-4.6"
+	glm_4_5 = "glm-4.5"
 
 
 class LLMResponse(BaseModel):
