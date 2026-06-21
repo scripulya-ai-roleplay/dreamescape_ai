@@ -30,7 +30,7 @@ class LLMChatsService(IChatsService):
 			for m in history.items
 		]
 
-		response = await gateway.generate_response(chat_dto.message, history)
+		response = await gateway.generate_response(chat_dto, history)
 
 		logger.info("Successfully generated LLM response")
 		return response

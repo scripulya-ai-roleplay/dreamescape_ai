@@ -2,14 +2,13 @@ import logging
 from typing import AsyncGenerator
 
 from dishka import Provider, Scope, make_async_container, provide
-from google import genai
-from google.genai import types
 
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, create_async_engine, async_sessionmaker
 
 from src.conf import settings
+from src.controllers.rabbit.v1.broker import broker
 from src.infrastructure.database.postgresqluow import PostgresqlUOW
-from src.infrastructure.gateways.google_gateway import GoogleGateway
+from src.infrastructure.gateways.scripulya_agent_gateway import ScripulyaAgentClient, ScripulyaAgentGateway
 from src.application.ports import (
 	IUserService,
 	IUserGateway,
@@ -24,6 +23,7 @@ from src.application.ports import (
 	ISceneGateway,
 	ICharacterService,
 	ICharacterGateway,
+	LLMModelType,
 )
 from src.infrastructure.gateways.mock_gateway import MockGateway
 from src.infrastructure.gateways.gateway_factory import GatewayFactory
@@ -44,58 +44,31 @@ from src.application.auth.jwt_service import JWTService
 logger = logging.getLogger(__name__)
 
 
-class LLMClientProvider(Provider):
-	@provide(scope=Scope.APP)
-	def provide_google_client(self) -> genai.Client:
-		return genai.Client(api_key=settings.GEMINI_API_KEY)
-
-	@provide(scope=Scope.APP)
-	def provide_google_config(self) -> types.GenerateContentConfig:
-		return types.GenerateContentConfig(
-			system_instruction=settings.SYSTEM_PROMPT,
-			response_mime_type="application/json",
-			temperature=0.7,
-			safety_settings=[
-				types.SafetySetting(
-					category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-					threshold=types.HarmBlockThreshold.BLOCK_NONE,
-				),
-				types.SafetySetting(
-					category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-					threshold=types.HarmBlockThreshold.BLOCK_NONE,
-				),
-				types.SafetySetting(
-					category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-					threshold=types.HarmBlockThreshold.BLOCK_NONE,
-				),
-				types.SafetySetting(
-					category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-					threshold=types.HarmBlockThreshold.BLOCK_NONE,
-				),
-			],
-		)
-
-
 class GatewayProvider(Provider):
-	@provide(scope=Scope.REQUEST)
-	def provide_google_gateway(self, client: genai.Client, config: types.GenerateContentConfig) -> GoogleGateway:
-		return GoogleGateway(
+	@provide(scope=Scope.APP)
+	def provide_scripulya_agent_client(self) -> ScripulyaAgentClient:
+		return ScripulyaAgentClient(
+			broker=broker,
+			request_queue=settings.LLM_AGENT_REQUEST_QUEUE,
+			timeout=settings.LLM_AGENT_TIMEOUT,
 			logger=logger,
-			_client=client,
-			_model_name="gemini-3-flash-preview",
-			_config=config,
 		)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_scripulya_agent_gateway(self, client: ScripulyaAgentClient) -> ScripulyaAgentGateway:
+		return ScripulyaAgentGateway(logger=logger, _client=client)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_mock_gateway(self) -> MockGateway:
 		return MockGateway(logger=logger)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_gateway_factory(self, google_gateway: GoogleGateway, mock_gateway: MockGateway) -> IGatewayFactory:
-		gateways = {
-			"gemini-3-flash-preview": google_gateway,
-			"testing_mock": mock_gateway,
-		}
+	def provide_gateway_factory(
+		self, agent_gateway: ScripulyaAgentGateway, mock_gateway: MockGateway
+	) -> IGatewayFactory:
+		# Real models are delegated to scripulya_agent; testing_mock stays local (offline).
+		gateways = {"testing_mock": mock_gateway}
+		gateways.update({m.value: agent_gateway for m in LLMModelType if m != LLMModelType.testing_mock})
 		return GatewayFactory(gateways)
 
 	@provide(scope=Scope.REQUEST)
@@ -189,6 +162,4 @@ class UoWProvider(Provider):
 
 def create_container():
 	"""Create dishka container with gateway factory and database providers"""
-	return make_async_container(
-		GatewayProvider(), DatabaseProvider(), UoWProvider(), ServiceProvider(), LLMClientProvider()
-	)
+	return make_async_container(GatewayProvider(), DatabaseProvider(), UoWProvider(), ServiceProvider())

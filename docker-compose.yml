@@ -6,12 +6,19 @@ services:
       - "8000:8000"
     environment:
       - GEMINI_API_KEY=fake_api_key_for_testing
+      # scripulya_agent integration (RabbitMQ). scripulya_agent must connect to this same broker.
+      - RABBIT_URL=amqp://guest:guest@rabbitmq:5672/
+      - LLM_AGENT_REQUEST_QUEUE=llm.agent.request
+      - LLM_AGENT_RESULT_QUEUE=llm.agent.result
+      - LLM_AGENT_TIMEOUT=60
     networks:
       - app-network
     depends_on:
       mock-google-api:
         condition: service_started
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   # PostgreSQL database service
@@ -45,6 +52,23 @@ services:
       app-network:
         aliases:
           - generativelanguage.googleapis.com
+
+  # RabbitMQ broker for the scripulya_agent integration.
+  # NOTE: scripulya_agent itself must connect to this same broker (shared across services).
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # management UI (guest/guest)
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 networks:
   app-network:
