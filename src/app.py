@@ -6,6 +6,7 @@ from asgi_correlation_id import CorrelationIdMiddleware
 
 from src.conf import settings
 from src.controllers.api.v1.auth import set_token_to_request_state
+from src.controllers.api.v1.health import router as health_router
 from src.controllers.rabbit.v1 import llm as rabbit_llm  # noqa: F401  registers the result subscriber
 from src.controllers.rabbit.v1.broker import broker
 from src.controllers.api.v1.characters import router as characters_router
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
 	app.add_exception_handler(Exception, global_exception_handler)
 	logger.info("Global exception handler registered")
 
+	app.include_router(health_router)
 	app.include_router(characters_router)
 	app.include_router(chat_router)
 	app.include_router(scenes_router)

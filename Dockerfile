@@ -18,7 +18,7 @@ COPY src/ src/
 COPY tests/ tests/
 
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000', timeout=10)" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=10)" || exit 1
 
 EXPOSE 8000
 
