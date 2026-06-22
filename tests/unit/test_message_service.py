@@ -4,8 +4,15 @@ from uuid import uuid4
 
 from src.application.message.service import MessageService
 from src.application.message.schemas import MessagesFilterDto
-from src.application.ports import IMessageGateway, IUnitOfWork, Page
-from src.domain.models import Message, ChatRoles
+from src.application.ports import (
+	IMessageGateway,
+	IUnitOfWork,
+	Page,
+	LLMErrorResponse,
+	LLMResult,
+	UserMessageDTO,
+)
+from src.domain.models import Message, ChatRoles, MessageStatus
 
 
 class TestMessageService:
@@ -212,3 +219,55 @@ class TestMessageService:
 		assert result == empty_message
 		assert result.message == ""
 		mock_message_gateway.create.assert_called_once_with(empty_message)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_complete_pending_success(self, message_service, mock_message_gateway):
+		chat_id = uuid4()
+		result = LLMResult(
+			chat_id=chat_id,
+			message=UserMessageDTO(chat_id=chat_id, message="hello back", role=ChatRoles.MODEL),
+		)
+		returned = Message(id=uuid4(), message="hello back", chat_id=chat_id, role=ChatRoles.MODEL)
+		mock_message_gateway.complete_pending.return_value = returned
+
+		got = await message_service.complete_pending(result)
+
+		assert got is returned
+		mock_message_gateway.complete_pending.assert_called_once_with(chat_id, "hello back", MessageStatus.COMPLETED)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_complete_pending_error_marks_failed(self, message_service, mock_message_gateway):
+		chat_id = uuid4()
+		result = LLMResult(
+			chat_id=chat_id,
+			error=LLMErrorResponse(error_code="model_is_inaccessible", status=503, reason="r", message="nope"),
+		)
+		mock_message_gateway.complete_pending.return_value = None
+
+		got = await message_service.complete_pending(result)
+
+		assert got is None
+		mock_message_gateway.complete_pending.assert_called_once_with(chat_id, "nope", MessageStatus.FAILED)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_complete_pending_neither_message_nor_error(self, message_service, mock_message_gateway):
+		# An empty result is treated as a failure rather than silently dropping.
+		chat_id = uuid4()
+		result = LLMResult(chat_id=chat_id, message=None, error=None)
+		mock_message_gateway.complete_pending.return_value = None
+
+		await message_service.complete_pending(result)
+
+		args = mock_message_gateway.complete_pending.call_args.args
+		assert args[0] == chat_id
+		assert args[2] == MessageStatus.FAILED
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_latest_model_message_delegates(self, message_service, mock_message_gateway):
+		chat_id = uuid4()
+		await message_service.latest_model_message(chat_id)
+		mock_message_gateway.latest_model_message.assert_called_once_with(chat_id)

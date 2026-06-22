@@ -1,11 +1,12 @@
 import logging
 from dataclasses import dataclass
+from typing import Optional
 from uuid import UUID
 
 from src.application.ports import IUnitOfWork
 from src.application.message.schemas import MessagesFilterDto
-from src.application.ports import IMessageService, IMessageGateway, Page
-from src.domain.models import Message
+from src.application.ports import IMessageService, IMessageGateway, Page, LLMResult
+from src.domain.models import Message, MessageStatus
 
 logger = logging.getLogger(__name__)
 
@@ -50,3 +51,26 @@ class MessageService(IMessageService):
 		result = await self.message_gateway.delete(message_uuid)
 		logger.info(f"Successfully deleted message: {message_uuid}")
 		return result
+
+	async def complete_pending(self, result: LLMResult) -> Optional[Message]:
+		"""Resolve the pending model message for result.chat_id.
+
+		COMPLETED + the reply text on success; FAILED + the error message on error
+		(or when the agent returned neither). Returns None if nothing was pending.
+		"""
+		if result.error is not None:
+			content = result.error.message or result.error.reason or "LLM generation failed"
+			status = MessageStatus.FAILED
+		elif result.message is not None:
+			content = result.message.message
+			status = MessageStatus.COMPLETED
+		else:
+			logger.warning("LLMResult for chat_id=%s has neither message nor error", result.chat_id)
+			content = "LLM returned neither a message nor an error"
+			status = MessageStatus.FAILED
+
+		async with self._uow:
+			return await self.message_gateway.complete_pending(result.chat_id, content, status)
+
+	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]:
+		return await self.message_gateway.latest_model_message(chat_id)

@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 from src.application.chats.llm_service import LLMChatsService
@@ -10,42 +10,65 @@ from src.application.ports import (
 	IGatewayFactory,
 	ILLMChatGateway,
 	IMessageGateway,
+	IUnitOfWork,
 	Page,
+	SendMessageResult,
 )
-from src.domain.models import ChatRoles, Message
+from src.domain.models import ChatRoles, Message, MessageStatus
+from src.infrastructure.web.chat_event_broker import ChatEventBroker
+
+
+def _persist(message: Message) -> Message:
+	"""Stand-in for the gateway's create(): echo back with a generated id."""
+	return Message(
+		id=uuid4(),
+		message=message.message,
+		chat_id=message.chat_id,
+		role=message.role,
+		status=message.status,
+	)
 
 
 class TestChatsService:
 	@pytest.fixture
 	def mock_gateway(self):
-		"""Mock gateway that simulates LLM response generation."""
+		"""Mock LLM gateway. submit() returns None by default (async agent path)."""
 		gateway = AsyncMock(spec=ILLMChatGateway)
-		gateway.generate_response.return_value = LLMResponse(
-			text="This is a test response from the LLM",
-			model=LLMModelType.gemini_flash_preview,
-			usage={"tokens": 50},
-			provider="scripulya_agent",
-		)
+		gateway.submit.return_value = None
 		return gateway
 
 	@pytest.fixture
 	def mock_gateway_factory(self, mock_gateway):
-		"""Mock gateway factory that creates gateways."""
 		factory = MagicMock(spec=IGatewayFactory)
 		factory.create_gateway.return_value = mock_gateway
 		return factory
 
 	@pytest.fixture
 	def mock_messages_gateway(self):
-		"""Mock messages gateway for history retrieval."""
 		gateway = AsyncMock(spec=IMessageGateway)
 		gateway.search.return_value = Page[Message](items=[], count=0, offset=0, limit=10)
+		gateway.create.side_effect = _persist
 		return gateway
 
 	@pytest.fixture
-	def chats_service(self, mock_gateway_factory, mock_messages_gateway):
-		"""LLMChatsService instance with mocked dependencies."""
-		return LLMChatsService(gateway_factory=mock_gateway_factory, messages_gateway=mock_messages_gateway)
+	def mock_uow(self):
+		uow = AsyncMock(spec=IUnitOfWork)
+		uow.__aenter__ = AsyncMock(return_value=None)
+		uow.__aexit__ = AsyncMock(return_value=False)
+		return uow
+
+	@pytest.fixture
+	def mock_events(self):
+		return Mock(spec=ChatEventBroker)
+
+	@pytest.fixture
+	def chats_service(self, mock_gateway_factory, mock_messages_gateway, mock_uow, mock_events):
+		return LLMChatsService(
+			gateway_factory=mock_gateway_factory,
+			messages_gateway=mock_messages_gateway,
+			_uow=mock_uow,
+			_events=mock_events,
+		)
 
 	@pytest.fixture
 	def sample_chat_id(self):
@@ -53,7 +76,6 @@ class TestChatsService:
 
 	@pytest.fixture
 	def sample_user_message_dto(self, sample_chat_id):
-		"""Sample UserMessageDTO for testing."""
 		return UserMessageDTO(
 			message="Hello, how are you?",
 			llm_model=LLMModelType.gemini_flash_preview,
@@ -61,114 +83,132 @@ class TestChatsService:
 			role=ChatRoles.USER,
 		)
 
-	@pytest.fixture
-	def sample_mock_message_dto(self, sample_chat_id):
-		"""Sample UserMessageDTO with mock model for testing."""
-		return UserMessageDTO(
-			message="Test message for mock model",
-			llm_model=LLMModelType.testing_mock,
-			chat_id=sample_chat_id,
-			role=ChatRoles.USER,
-		)
-
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_send_message_success_gemini(
-		self, chats_service, mock_gateway_factory, mock_gateway, sample_user_message_dto
+	async def test_async_path_returns_pending_placeholder(
+		self, chats_service, mock_gateway, mock_messages_gateway, mock_events, sample_user_message_dto
 	):
-		"""Test successful message sending with Gemini model."""
-		# Act
+		"""Fire-and-forget gateway: returns the user message + a PENDING model message,
+		does not resolve inline or notify SSE."""
 		result = await chats_service.send_message(sample_user_message_dto)
 
-		# Assert
+		assert isinstance(result, SendMessageResult)
+		assert result.user_message.message == "Hello, how are you?"
+		assert result.user_message.role == ChatRoles.USER
+		assert result.user_message.status == MessageStatus.COMPLETED
+		assert result.model_message.role == ChatRoles.MODEL
+		assert result.model_message.status == MessageStatus.PENDING
+		# persisted exactly the user message + the placeholder
+		assert mock_messages_gateway.create.await_count == 2
+		# no inline completion, no SSE push
+		mock_messages_gateway.complete_pending.assert_not_called()
+		mock_events.publish_message.assert_not_called()
+		# gateway received the turn
+		mock_gateway.submit.assert_awaited_once()
+		args = mock_gateway.submit.await_args.args
+		assert args[0] is sample_user_message_dto
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_async_path_routes_by_model_value(self, chats_service, mock_gateway_factory, sample_user_message_dto):
+		await chats_service.send_message(sample_user_message_dto)
 		mock_gateway_factory.create_gateway.assert_called_once_with("gemini-3-flash-preview")
-		mock_gateway.generate_response.assert_called_once_with(sample_user_message_dto, [])
-		assert result.text == "This is a test response from the LLM"
-		assert result.model == LLMModelType.gemini_flash_preview
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_send_message_success_mock_model(
-		self, chats_service, mock_gateway_factory, mock_gateway, sample_mock_message_dto
+	async def test_mock_path_resolves_inline_and_notifies_sse(
+		self, chats_service, mock_gateway, mock_messages_gateway, mock_events, sample_user_message_dto
 	):
-		"""Test successful message sending with mock model."""
-		# Act
-		result = await chats_service.send_message(sample_mock_message_dto)
-
-		# Assert
-		mock_gateway_factory.create_gateway.assert_called_once_with("testing_mock")
-		mock_gateway.generate_response.assert_called_once_with(sample_mock_message_dto, [])
-		assert result.text == "This is a test response from the LLM"
-
-	@pytest.mark.unit
-	@pytest.mark.asyncio
-	async def test_send_message_empty_message(self, chats_service, mock_gateway_factory, mock_gateway):
-		"""Test sending an empty message."""
-		# Arrange
-		empty_message_dto = UserMessageDTO(
-			message="", llm_model=LLMModelType.gemini_flash_preview, chat_id=uuid4(), role=ChatRoles.USER
+		"""Offline gateway returns a response: placeholder is completed inline and the
+		SSE broker is notified within the same request."""
+		mock_gateway.submit.return_value = LLMResponse(
+			text="Mock response for: Hello",
+			model=LLMModelType.testing_mock,
+			usage={"tokens": 10},
+			provider="mock",
 		)
+		resolved = Message(
+			id=uuid4(),
+			message="Mock response for: Hello",
+			chat_id=sample_user_message_dto.chat_id,
+			role=ChatRoles.MODEL,
+		)
+		mock_messages_gateway.complete_pending.return_value = resolved
 
-		# Act
-		await chats_service.send_message(empty_message_dto)
+		result = await chats_service.send_message(sample_user_message_dto)
 
-		# Assert
-		mock_gateway_factory.create_gateway.assert_called_once_with("gemini-3-flash-preview")
-		mock_gateway.generate_response.assert_called_once_with(empty_message_dto, [])
-
-	@pytest.mark.unit
-	@pytest.mark.asyncio
-	async def test_send_message_gateway_factory_error(
-		self, mock_gateway_factory, mock_messages_gateway, sample_user_message_dto
-	):
-		"""Test error handling when gateway factory fails."""
-		# Arrange
-		mock_gateway_factory.create_gateway.side_effect = Exception("Gateway creation failed")
-		chats_service = LLMChatsService(gateway_factory=mock_gateway_factory, messages_gateway=mock_messages_gateway)
-
-		# Act & Assert
-		with pytest.raises(Exception) as exc_info:
-			await chats_service.send_message(sample_user_message_dto)
-
-		assert str(exc_info.value) == "Gateway creation failed"
-		mock_gateway_factory.create_gateway.assert_called_once_with("gemini-3-flash-preview")
+		mock_messages_gateway.complete_pending.assert_awaited_once_with(
+			sample_user_message_dto.chat_id, "Mock response for: Hello", MessageStatus.COMPLETED
+		)
+		mock_events.publish_message.assert_called_once_with(sample_user_message_dto.chat_id, resolved)
+		assert result.model_message is resolved
+		assert result.model_message.status == MessageStatus.COMPLETED
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_send_message_gateway_response_error(
-		self, chats_service, mock_gateway_factory, mock_gateway, sample_user_message_dto
-	):
-		"""Test error handling when gateway response generation fails."""
-		# Arrange
-		mock_gateway.generate_response.side_effect = Exception("Response generation failed")
-
-		# Act & Assert
-		with pytest.raises(Exception) as exc_info:
-			await chats_service.send_message(sample_user_message_dto)
-
-		assert str(exc_info.value) == "Response generation failed"
-		mock_gateway_factory.create_gateway.assert_called_once_with("gemini-3-flash-preview")
-		mock_gateway.generate_response.assert_called_once_with(sample_user_message_dto, [])
-
-	@pytest.mark.unit
-	@pytest.mark.asyncio
-	async def test_send_message_forwards_history_to_gateway(
-		self, mock_gateway_factory, mock_messages_gateway, mock_gateway, sample_user_message_dto
-	):
-		"""History fetched from the messages gateway is forwarded to the gateway as UserMessageDTOs."""
-		# Arrange
-		prior = Message(message="previous turn", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.MODEL)
-		mock_messages_gateway.search.return_value = Page[Message](items=[prior], count=1, offset=0, limit=10)
-		chats_service = LLMChatsService(gateway_factory=mock_gateway_factory, messages_gateway=mock_messages_gateway)
-
-		# Act
+	async def test_placeholder_is_created_pending(self, chats_service, mock_messages_gateway, sample_user_message_dto):
 		await chats_service.send_message(sample_user_message_dto)
 
-		# Assert
-		mock_gateway.generate_response.assert_called_once()
-		_, history = mock_gateway.generate_response.call_args.args
+		created_messages = [c.args[0] for c in mock_messages_gateway.create.call_args_list]
+		assert len(created_messages) == 2
+		assert created_messages[0].role == ChatRoles.USER
+		assert created_messages[0].status == MessageStatus.COMPLETED
+		assert created_messages[1].role == ChatRoles.MODEL
+		assert created_messages[1].status == MessageStatus.PENDING
+		assert created_messages[1].message == ""
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_history_forwarded_excludes_pending(
+		self, mock_gateway_factory, mock_messages_gateway, mock_gateway, mock_uow, mock_events, sample_user_message_dto
+	):
+		"""Prior history is forwarded to the gateway as UserMessageDTOs, but PENDING
+		(in-flight) model messages are filtered out."""
+		prior_done = Message(message="previous turn", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.MODEL)
+		prior_pending = Message(
+			message="", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.MODEL, status=MessageStatus.PENDING
+		)
+		mock_messages_gateway.search.return_value = Page[Message](
+			items=[prior_pending, prior_done], count=2, offset=0, limit=10
+		)
+		chats_service = LLMChatsService(
+			gateway_factory=mock_gateway_factory,
+			messages_gateway=mock_messages_gateway,
+			_uow=mock_uow,
+			_events=mock_events,
+		)
+
+		await chats_service.send_message(sample_user_message_dto)
+
+		_, history = mock_gateway.submit.await_args.args
 		assert len(history) == 1
 		assert history[0].message == "previous turn"
 		assert history[0].role == ChatRoles.MODEL
 		assert history[0].chat_id == sample_user_message_dto.chat_id
 		assert history[0].llm_model == sample_user_message_dto.llm_model
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_gateway_factory_error_propagates(
+		self, mock_gateway_factory, mock_messages_gateway, mock_uow, mock_events, sample_user_message_dto
+	):
+		mock_gateway_factory.create_gateway.side_effect = Exception("Gateway creation failed")
+		chats_service = LLMChatsService(
+			gateway_factory=mock_gateway_factory,
+			messages_gateway=mock_messages_gateway,
+			_uow=mock_uow,
+			_events=mock_events,
+		)
+
+		with pytest.raises(Exception, match="Gateway creation failed"):
+			await chats_service.send_message(sample_user_message_dto)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_submit_error_propagates(self, chats_service, mock_gateway, sample_user_message_dto):
+		"""If publishing fails, the error surfaces to the HTTP client (the user message
+		+ PENDING placeholder are already committed)."""
+		mock_gateway.submit.side_effect = Exception("Response generation failed")
+
+		with pytest.raises(Exception, match="Response generation failed"):
+			await chats_service.send_message(sample_user_message_dto)

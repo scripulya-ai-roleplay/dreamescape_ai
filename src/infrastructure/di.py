@@ -32,6 +32,7 @@ from src.infrastructure.gateways.scenes_gateway import SceneGateway
 from src.infrastructure.gateways.character_gateway import CharacterGateway
 from src.infrastructure.gateways.chat_gateway import ChatGateway
 from src.infrastructure.gateways.message_gateway import MessageGateway
+from src.infrastructure.web.chat_event_broker import ChatEventBroker
 from src.application.user.user_service import UserService
 from src.application.scene.service import SceneService
 from src.application.character.service import CharacterService
@@ -91,6 +92,12 @@ class GatewayProvider(Provider):
 	def provide_message_gateway(self, session: AsyncSession) -> IMessageGateway:
 		return MessageGateway(session)
 
+	@provide(scope=Scope.APP)
+	def provide_chat_event_broker(self) -> ChatEventBroker:
+		# In-process SSE fan-out; shared by the chats service, the result subscriber,
+		# and the SSE endpoint. Single-process only (see ChatEventBroker docstring).
+		return ChatEventBroker()
+
 
 class ServiceProvider(Provider):
 	@provide(scope=Scope.REQUEST)
@@ -108,9 +115,18 @@ class ServiceProvider(Provider):
 
 	@provide(scope=Scope.REQUEST)
 	def provide_chats_service(
-		self, gateway_factory: IGatewayFactory, message_gateway: IMessageGateway
+		self,
+		gateway_factory: IGatewayFactory,
+		message_gateway: IMessageGateway,
+		uow: PostgresqlUOW,
+		events: ChatEventBroker,
 	) -> IChatsService:
-		return LLMChatsService(gateway_factory=gateway_factory, messages_gateway=message_gateway)
+		return LLMChatsService(
+			gateway_factory=gateway_factory,
+			messages_gateway=message_gateway,
+			_uow=uow,
+			_events=events,
+		)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_chat_service(self, chat_gateway: IChatGateway) -> IChatService:

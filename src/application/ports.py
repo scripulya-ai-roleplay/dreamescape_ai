@@ -12,7 +12,7 @@ from src.application.character.schemas import CharacterFilterDTO
 from src.application.chats.schemas import ChatFilterDTO
 from src.application.message.schemas import MessagesFilterDto
 from src.application.scene.schemas import SceneFilterDTO
-from src.domain.models import User, Scene, Character, Message, Chat
+from src.domain.models import User, Scene, Character, Message, Chat, MessageStatus
 from src.application.user.schemas import UserDTO
 
 
@@ -48,6 +48,16 @@ class LLMResponse(BaseModel):
 	model: LLMModelType
 	usage: Optional[dict] = None
 	provider: str
+
+
+class SendMessageResult(BaseModel):
+	"""Returned by POST /messages: the persisted user message plus the model
+	message that will hold the LLM reply. The model message starts PENDING and
+	is delivered later via the chat SSE stream (or is already COMPLETED for the
+	offline testing_mock gateway)."""
+
+	user_message: Message
+	model_message: Message
 
 
 class IJWTService(abc.ABC):
@@ -135,16 +145,23 @@ class LLMResult(BaseModel):
 
 class ILLMChatGateway(abc.ABC):
 	@abc.abstractmethod
-	async def generate_response(
+	async def submit(
 		self,
 		message: UserMessageDTO,
 		history: list[UserMessageDTO],
-	) -> LLMResponse: ...
+	) -> Optional[LLMResponse]:
+		"""Hand the turn to the LLM provider.
+
+		Returns the LLMResponse immediately for synchronous/offline gateways
+		(e.g. testing_mock); returns None when the request was published and the
+		reply will arrive asynchronously (scripulya_agent over RabbitMQ).
+		"""
+		...
 
 
 class IChatsService(abc.ABC):
 	@abc.abstractmethod
-	async def send_message(self, chat_dto: UserMessageDTO) -> LLMResponse: ...
+	async def send_message(self, chat_dto: UserMessageDTO) -> SendMessageResult: ...
 
 
 class ICharacterService(abc.ABC):
@@ -265,6 +282,18 @@ class IMessageGateway(abc.ABC):
 	@abc.abstractmethod
 	async def delete(self, message_uuid: UUID) -> UUID: ...
 
+	@abc.abstractmethod
+	async def complete_pending(self, chat_id: UUID, content: str, status: MessageStatus) -> Optional[Message]:
+		"""Resolve the most recent PENDING model message for chat_id: set its
+		content and final status (COMPLETED/FAILED). Returns the updated Message,
+		or None if no PENDING row exists (late/duplicate/orphan result)."""
+		...
+
+	@abc.abstractmethod
+	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]:
+		"""Return the most recent model message for chat_id (any status), or None."""
+		...
+
 
 class IMessageService(abc.ABC):
 	@abc.abstractmethod
@@ -281,6 +310,18 @@ class IMessageService(abc.ABC):
 
 	@abc.abstractmethod
 	async def delete(self, message_uuid: UUID) -> UUID: ...
+
+	@abc.abstractmethod
+	async def complete_pending(self, result: LLMResult) -> Optional[Message]:
+		"""Resolve the pending model message for result.chat_id from an LLMResult:
+		COMPLETED + the reply text on success, FAILED + the error message on error.
+		Returns the updated Message, or None if nothing was pending."""
+		...
+
+	@abc.abstractmethod
+	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]:
+		"""Return the most recent model message for chat_id (any status), or None."""
+		...
 
 
 class IGatewayFactory(ABC):

@@ -65,6 +65,7 @@ CREATE TABLE messages (
     chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
     role VARCHAR(50) NOT NULL CHECK (role IN ('user', 'model')),
     content TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'completed' CHECK (status IN ('pending', 'completed', 'failed')),
     cost_crystals INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
