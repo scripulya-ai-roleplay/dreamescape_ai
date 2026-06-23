@@ -6,7 +6,7 @@ verifies that publish using a TestRabbitBroker, with a stand-in subscriber on th
 request queue (the real consumer is the separate scripulya_agent process).
 
 The result side (llm.agent.result -> complete_pending -> SSE) is covered by the
-unit tests for MessageService.complete_pending and ChatEventBroker, and by the
+unit tests for MessageService.complete_pending and ChatEventGateway, and by the
 manual end-to-end check in the plan's verification section (it requires a DB).
 """
 

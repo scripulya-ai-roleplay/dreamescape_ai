@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import (
 	IChatsService,
+	IChatEventGateway,
 	IGatewayFactory,
 	IMessageGateway,
 	IUnitOfWork,
@@ -11,26 +12,16 @@ from src.application.ports import (
 	UserMessageDTO,
 )
 from src.domain.models import ChatRoles, Message, MessageStatus
-from src.infrastructure.web.chat_event_broker import ChatEventBroker
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class LLMChatsService(IChatsService):
-	"""Publish-and-return chat service.
-
-	Persists the user message plus a PENDING placeholder model message, hands the
-	turn to the gateway, and returns immediately. The reply for fire-and-forget
-	gateways (scripulya_agent) arrives later over RabbitMQ and is persisted + pushed
-	to SSE by the result subscriber. Offline gateways (testing_mock) return the
-	reply inline, which is resolved here before returning.
-	"""
-
 	gateway_factory: IGatewayFactory
 	messages_gateway: IMessageGateway
 	_uow: IUnitOfWork
-	_events: ChatEventBroker
+	_events: IChatEventGateway
 
 	async def send_message(self, chat_dto: UserMessageDTO) -> SendMessageResult:
 		logger.info(f"Processing LLM chat message with model: {chat_dto.llm_model}")
@@ -55,8 +46,6 @@ class LLMChatsService(IChatsService):
 					status=MessageStatus.COMPLETED,
 				)
 			)
-			# Placeholder model message: persisted PENDING, resolved later by the
-			# result subscriber (or inline below for the offline mock gateway).
 			model_message = await self.messages_gateway.create(
 				Message(message="", chat_id=chat_dto.chat_id, role=ChatRoles.MODEL, status=MessageStatus.PENDING)
 			)

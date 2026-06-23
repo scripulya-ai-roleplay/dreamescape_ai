@@ -8,6 +8,7 @@ from src.application.ports import (
 	LLMModelType,
 	LLMResponse,
 	IGatewayFactory,
+	IChatEventGateway,
 	ILLMChatGateway,
 	IMessageGateway,
 	IUnitOfWork,
@@ -15,7 +16,6 @@ from src.application.ports import (
 	SendMessageResult,
 )
 from src.domain.models import ChatRoles, Message, MessageStatus
-from src.infrastructure.web.chat_event_broker import ChatEventBroker
 
 
 def _persist(message: Message) -> Message:
@@ -59,7 +59,7 @@ class TestChatsService:
 
 	@pytest.fixture
 	def mock_events(self):
-		return Mock(spec=ChatEventBroker)
+		return Mock(spec=IChatEventGateway)
 
 	@pytest.fixture
 	def chats_service(self, mock_gateway_factory, mock_messages_gateway, mock_uow, mock_events):

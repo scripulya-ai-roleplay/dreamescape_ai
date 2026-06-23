@@ -1,16 +1,15 @@
 from dishka.integrations.faststream import FromDishka
 
-from src.application.ports import IMessageService, LLMResult
+from src.application.ports import IChatEventGateway, IMessageService, LLMResult
 from src.conf import settings
 from src.controllers.rabbit.v1.broker import broker
-from src.infrastructure.web.chat_event_broker import ChatEventBroker
 
 
 @broker.subscriber(settings.LLM_AGENT_RESULT_QUEUE)
 async def handle_agent_result(
 	result: LLMResult,
 	message_service: FromDishka[IMessageService],
-	events: FromDishka[ChatEventBroker],
+	events: FromDishka[IChatEventGateway],
 ) -> None:
 	"""Consume an LLMResult from scripulya_agent.
 

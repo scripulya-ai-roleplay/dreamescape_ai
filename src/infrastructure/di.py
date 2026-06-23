@@ -1,7 +1,7 @@
 import logging
 from typing import AsyncGenerator
 
-from dishka import Provider, Scope, make_async_container, provide
+from dishka import AsyncContainer, Provider, Scope, make_async_container, provide
 
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, create_async_engine, async_sessionmaker
 
@@ -17,6 +17,8 @@ from src.application.ports import (
 	IChatsService,
 	IChatService,
 	IChatGateway,
+	IChatEventGateway,
+	IServerEventsService,
 	IMessageService,
 	IMessageGateway,
 	ISceneService,
@@ -32,7 +34,8 @@ from src.infrastructure.gateways.scenes_gateway import SceneGateway
 from src.infrastructure.gateways.character_gateway import CharacterGateway
 from src.infrastructure.gateways.chat_gateway import ChatGateway
 from src.infrastructure.gateways.message_gateway import MessageGateway
-from src.infrastructure.web.chat_event_broker import ChatEventBroker
+from src.infrastructure.gateways.chat_event_gateway import ChatEventGateway
+from src.application.events.server_events_service import ServerEventsService
 from src.application.user.user_service import UserService
 from src.application.scene.service import SceneService
 from src.application.character.service import CharacterService
@@ -93,10 +96,10 @@ class GatewayProvider(Provider):
 		return MessageGateway(session)
 
 	@provide(scope=Scope.APP)
-	def provide_chat_event_broker(self) -> ChatEventBroker:
+	def provide_chat_event_gateway(self) -> IChatEventGateway:
 		# In-process SSE fan-out; shared by the chats service, the result subscriber,
-		# and the SSE endpoint. Single-process only (see ChatEventBroker docstring).
-		return ChatEventBroker()
+		# and the SSE service. Single-process only (see ChatEventGateway docstring).
+		return ChatEventGateway()
 
 
 class ServiceProvider(Provider):
@@ -119,7 +122,7 @@ class ServiceProvider(Provider):
 		gateway_factory: IGatewayFactory,
 		message_gateway: IMessageGateway,
 		uow: PostgresqlUOW,
-		events: ChatEventBroker,
+		events: IChatEventGateway,
 	) -> IChatsService:
 		return LLMChatsService(
 			gateway_factory=gateway_factory,
@@ -127,6 +130,12 @@ class ServiceProvider(Provider):
 			_uow=uow,
 			_events=events,
 		)
+
+	@provide(scope=Scope.APP)
+	def provide_server_events_service(
+		self, events: IChatEventGateway, container: AsyncContainer
+	) -> IServerEventsService:
+		return ServerEventsService(_events=events, _container=container)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_chat_service(self, chat_gateway: IChatGateway) -> IChatService:

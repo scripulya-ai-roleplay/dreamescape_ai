@@ -1,10 +1,12 @@
 import abc
+import asyncio
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from typing import Optional, List
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.models import ChatRoles
@@ -108,12 +110,6 @@ class UserMessageDTO(BaseModel):
 	role: ChatRoles
 
 
-# --- scripulya_agent wire contract (RabbitMQ) -------------------------------
-# These mirror scripulya_agent's application/ports.py DTOs so the two services
-# share an identical on-the-wire schema. UserMessageDTO above is reused as the
-# per-turn shape (its fields match scripulya_agent's UserMessageDTO exactly).
-
-
 class LLMRequest(BaseModel):
 	"""Published to llm.agent.request: the current message plus prior history."""
 
@@ -149,14 +145,7 @@ class ILLMChatGateway(abc.ABC):
 		self,
 		message: UserMessageDTO,
 		history: list[UserMessageDTO],
-	) -> Optional[LLMResponse]:
-		"""Hand the turn to the LLM provider.
-
-		Returns the LLMResponse immediately for synchronous/offline gateways
-		(e.g. testing_mock); returns None when the request was published and the
-		reply will arrive asynchronously (scripulya_agent over RabbitMQ).
-		"""
-		...
+	) -> Optional[LLMResponse]: ...
 
 
 class IChatsService(abc.ABC):
@@ -292,6 +281,45 @@ class IMessageGateway(abc.ABC):
 	@abc.abstractmethod
 	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]:
 		"""Return the most recent model message for chat_id (any status), or None."""
+		...
+
+
+class IChatEventGateway(abc.ABC):
+	"""Source/sink for in-process chat-message events that back the SSE stream.
+
+	Abstracts the fan-out so the SSE service depends on the port, not the concrete
+	backend. Today the backend is an in-process asyncio fan-out fed by the RabbitMQ
+	result subscriber (and the offline mock path); it could later move onto Redis
+	pub/sub or a RabbitMQ fanout exchange without touching the service layer.
+	"""
+
+	@abc.abstractmethod
+	def subscribe(self, chat_id: UUID) -> asyncio.Queue:
+		"""Register a listener queue for chat_id events; returns the queue to await."""
+		...
+
+	@abc.abstractmethod
+	def unsubscribe(self, chat_id: UUID, queue: asyncio.Queue) -> None:
+		"""Drop a previously registered listener queue."""
+		...
+
+	@abc.abstractmethod
+	def publish_message(self, chat_id: UUID, message: Message) -> None:
+		"""Fan out a model-message lifecycle event to all listeners for chat_id."""
+		...
+
+
+class IServerEventsService(abc.ABC):
+	@abc.abstractmethod
+	async def open_stream(self, chat_id: UUID, user_id: UUID) -> StreamingResponse:
+		"""Open the SSE stream of model-message lifecycle events for a chat.
+
+		Verifies the chat belongs to user_id (403 otherwise) and reads the latest
+		model message for reconciliation, then returns the StreamingResponse. All DB
+		access happens in a short-lived session that is closed before the stream
+		starts, so no DB connection is held for the (potentially long-lived) SSE
+		connection.
+		"""
 		...
 
 
