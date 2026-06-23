@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from src.application.ports import IChatEventGateway
 from src.domain.models import Message
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,7 @@ _LISTENER_MAXSIZE = 32
 
 
 @dataclass
-class ChatEventBroker:
+class ChatEventGateway(IChatEventGateway):
 	"""In-process fan-out of chat message events to SSE listeners.
 
 	APP-scoped singleton. The RabbitMQ result subscriber (and the offline mock
@@ -55,7 +56,7 @@ class ChatEventBroker:
 	def publish_message(self, chat_id: UUID, message: Message) -> None:
 		"""Publish a model-message lifecycle event.
 
-		The SSE endpoint derives the frame's `event:` name (`message` vs `error`)
+		The SSE service derives the frame's `event:` name (`message` vs `error`)
 		from `message.status`.
 		"""
 		self.publish(chat_id, {"message": message.model_dump(mode="json")})
