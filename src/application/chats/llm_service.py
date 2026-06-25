@@ -5,6 +5,7 @@ from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import (
 	IChatsService,
 	IChatEventGateway,
+	IChatSettingsGateway,
 	IGatewayFactory,
 	IMessageGateway,
 	IUnitOfWork,
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 class LLMChatsService(IChatsService):
 	gateway_factory: IGatewayFactory
 	messages_gateway: IMessageGateway
+	chat_settings_gateway: IChatSettingsGateway
 	_uow: IUnitOfWork
 	_events: IChatEventGateway
 
@@ -48,7 +50,8 @@ class LLMChatsService(IChatsService):
 		# the reply arrives later via RabbitMQ and is appended by the result
 		# subscriber; synchronous/offline gateways (mock) return the LLMResponse
 		# immediately, so the reply is appended inline and pushed to SSE here.
-		response = await gateway.submit(chat_dto, history)
+		chat_settings = await self.chat_settings_gateway.get_for_chat(chat_dto.chat_id)
+		response = await gateway.submit(chat_dto, history, chat_settings=chat_settings)
 		if response is not None:
 			async with self._uow:
 				model_message = await self.messages_gateway.create(

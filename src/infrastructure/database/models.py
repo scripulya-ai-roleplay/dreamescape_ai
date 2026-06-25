@@ -4,7 +4,7 @@ from typing import List, Optional
 from sqlalchemy import String, Text, Boolean, Integer, ForeignKey, CheckConstraint, Index, Table, Column
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 
 class Base(DeclarativeBase):
@@ -81,6 +81,24 @@ class Chat(Base):
 	user: Mapped["User"] = relationship(back_populates="chats")
 	scene: Mapped[Optional["Scene"]] = relationship(back_populates="chats")
 	messages: Mapped[List["Message"]] = relationship(back_populates="chat")
+	settings: Mapped[Optional["ChatSettings"]] = relationship(
+		back_populates="chat", uselist=False, cascade="all, delete-orphan"
+	)
+
+
+class ChatSettings(Base):
+	__tablename__ = "chat_settings"
+
+	# 1:1 with chats: each chat has a single owner (chats.user_id), so settings
+	# are keyed by chat_id. The settings object is stored verbatim as JSONB.
+	chat_id: Mapped[uuid.UUID] = mapped_column(
+		UUID(as_uuid=True), ForeignKey("chats.id", ondelete="CASCADE"), primary_key=True
+	)
+	settings: Mapped[dict] = mapped_column(JSONB)
+	created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+	updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+	chat: Mapped["Chat"] = relationship(back_populates="settings")
 
 
 class Message(Base):

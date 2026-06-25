@@ -12,7 +12,20 @@ from src.application.ports import (
 	ILLMChatGateway,
 	IMessageGateway,
 	IUnitOfWork,
+	IChatSettingsGateway,
 	Page,
+)
+from src.application.chats.settings import (
+	ChatSettings,
+	ControlBehavior,
+	FunctionsSettings,
+	Perspective,
+	Preset,
+	ReasoningEffort,
+	ResponseLength,
+	TemperatureSettings,
+	TokenLimit,
+	Toggle,
 )
 from src.domain.models import ChatRoles, Message, MessageStatus
 
@@ -61,10 +74,20 @@ class TestChatsService:
 		return Mock(spec=IChatEventGateway)
 
 	@pytest.fixture
-	def chats_service(self, mock_gateway_factory, mock_messages_gateway, mock_uow, mock_events):
+	def mock_chat_settings_gateway(self):
+		"""Mock settings gateway. get_for_chat() returns None by default (no settings stored)."""
+		gateway = AsyncMock(spec=IChatSettingsGateway)
+		gateway.get_for_chat.return_value = None
+		return gateway
+
+	@pytest.fixture
+	def chats_service(
+		self, mock_gateway_factory, mock_messages_gateway, mock_chat_settings_gateway, mock_uow, mock_events
+	):
 		return LLMChatsService(
 			gateway_factory=mock_gateway_factory,
 			messages_gateway=mock_messages_gateway,
+			chat_settings_gateway=mock_chat_settings_gateway,
 			_uow=mock_uow,
 			_events=mock_events,
 		)
@@ -144,7 +167,14 @@ class TestChatsService:
 	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_history_forwarded_includes_all_prior_turns(
-		self, mock_gateway_factory, mock_messages_gateway, mock_gateway, mock_uow, mock_events, sample_user_message_dto
+		self,
+		mock_gateway_factory,
+		mock_messages_gateway,
+		mock_gateway,
+		mock_chat_settings_gateway,
+		mock_uow,
+		mock_events,
+		sample_user_message_dto,
 	):
 		"""Prior history is forwarded to the gateway as UserMessageDTOs."""
 		prior_done = Message(message="previous turn", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.MODEL)
@@ -152,6 +182,7 @@ class TestChatsService:
 		chats_service = LLMChatsService(
 			gateway_factory=mock_gateway_factory,
 			messages_gateway=mock_messages_gateway,
+			chat_settings_gateway=mock_chat_settings_gateway,
 			_uow=mock_uow,
 			_events=mock_events,
 		)
@@ -168,18 +199,64 @@ class TestChatsService:
 	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_gateway_factory_error_propagates(
-		self, mock_gateway_factory, mock_messages_gateway, mock_uow, mock_events, sample_user_message_dto
+		self,
+		mock_gateway_factory,
+		mock_messages_gateway,
+		mock_chat_settings_gateway,
+		mock_uow,
+		mock_events,
+		sample_user_message_dto,
 	):
 		mock_gateway_factory.create_gateway.side_effect = Exception("Gateway creation failed")
 		chats_service = LLMChatsService(
 			gateway_factory=mock_gateway_factory,
 			messages_gateway=mock_messages_gateway,
+			chat_settings_gateway=mock_chat_settings_gateway,
 			_uow=mock_uow,
 			_events=mock_events,
 		)
 
 		with pytest.raises(Exception, match="Gateway creation failed"):
 			await chats_service.send_message(sample_user_message_dto)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_stored_chat_settings_forwarded_to_gateway(
+		self,
+		mock_gateway_factory,
+		mock_messages_gateway,
+		mock_gateway,
+		mock_chat_settings_gateway,
+		mock_uow,
+		mock_events,
+		sample_user_message_dto,
+	):
+		"""Per-chat settings are fetched and forwarded to the gateway as chat_settings."""
+		settings_obj = ChatSettings(
+			aiControlBehavior=ControlBehavior.CONTROL,
+			continueBehavior=ControlBehavior.CONTROL,
+			perspective=Perspective.THIRD_PERSON,
+			temperature=TemperatureSettings(preset=Preset.MID, value=0.7),
+			responseLength=ResponseLength.MEDIUM,
+			responseTokenLimit=TokenLimit.HIGH,
+			reasoning=Toggle.OFF,
+			reasoningEffort=ReasoningEffort.MID,
+			aiMediaPicker=Toggle.OFF,
+			functions=FunctionsSettings(),
+		)
+		mock_chat_settings_gateway.get_for_chat.return_value = settings_obj
+		chats_service = LLMChatsService(
+			gateway_factory=mock_gateway_factory,
+			messages_gateway=mock_messages_gateway,
+			chat_settings_gateway=mock_chat_settings_gateway,
+			_uow=mock_uow,
+			_events=mock_events,
+		)
+
+		await chats_service.send_message(sample_user_message_dto)
+
+		mock_chat_settings_gateway.get_for_chat.assert_awaited_once_with(sample_user_message_dto.chat_id)
+		assert mock_gateway.submit.await_args.kwargs["chat_settings"] is settings_obj
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
