@@ -341,7 +341,6 @@ class TestMessagesAPI:
 		if response.status_code == 202:
 			data = response.json()
 			assert "result" in data
-			print(data)
 			assert data["result"]["message"] == long_message
 
 
