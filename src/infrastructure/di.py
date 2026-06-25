@@ -1,7 +1,7 @@
 import logging
 from typing import AsyncGenerator
 
-from dishka import Provider, Scope, make_async_container, provide
+from dishka import AsyncContainer, Provider, Scope, make_async_container, provide
 
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, create_async_engine, async_sessionmaker
 
@@ -9,6 +9,7 @@ from src.conf import settings
 from src.controllers.rabbit.v1.broker import broker
 from src.infrastructure.database.postgresqluow import PostgresqlUOW
 from src.infrastructure.gateways.scripulya_agent_gateway import ScripulyaAgentClient, ScripulyaAgentGateway
+from src.infrastructure.gateways.mock_scripulya_agent_client import MockScripulyaAgentClient
 from src.application.ports import (
 	IUserService,
 	IUserGateway,
@@ -17,12 +18,15 @@ from src.application.ports import (
 	IChatsService,
 	IChatService,
 	IChatGateway,
+	IChatEventGateway,
+	IServerEventsService,
 	IMessageService,
 	IMessageGateway,
 	ISceneService,
 	ISceneGateway,
 	ICharacterService,
 	ICharacterGateway,
+	IScripulyaAgentClient,
 	LLMModelType,
 )
 from src.infrastructure.gateways.mock_gateway import MockGateway
@@ -32,6 +36,8 @@ from src.infrastructure.gateways.scenes_gateway import SceneGateway
 from src.infrastructure.gateways.character_gateway import CharacterGateway
 from src.infrastructure.gateways.chat_gateway import ChatGateway
 from src.infrastructure.gateways.message_gateway import MessageGateway
+from src.infrastructure.gateways.chat_event_gateway import ChatEventGateway
+from src.application.events.server_events_service import ServerEventsService
 from src.application.user.user_service import UserService
 from src.application.scene.service import SceneService
 from src.application.character.service import CharacterService
@@ -46,16 +52,18 @@ logger = logging.getLogger(__name__)
 
 class GatewayProvider(Provider):
 	@provide(scope=Scope.APP)
-	def provide_scripulya_agent_client(self) -> ScripulyaAgentClient:
-		return ScripulyaAgentClient(
-			broker=broker,
-			request_queue=settings.LLM_AGENT_REQUEST_QUEUE,
-			timeout=settings.LLM_AGENT_TIMEOUT,
-			logger=logger,
-		)
+	def provide_scripulya_agent_client(self) -> IScripulyaAgentClient:
+		if settings.LLM_AGENT_ENABLED:
+			return ScripulyaAgentClient(
+				broker=broker,
+				request_queue=settings.LLM_AGENT_REQUEST_QUEUE,
+				timeout=settings.LLM_AGENT_TIMEOUT,
+				logger=logger,
+			)
+		return MockScripulyaAgentClient(logger=logger)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_scripulya_agent_gateway(self, client: ScripulyaAgentClient) -> ScripulyaAgentGateway:
+	def provide_scripulya_agent_gateway(self, client: IScripulyaAgentClient) -> ScripulyaAgentGateway:
 		return ScripulyaAgentGateway(logger=logger, _client=client)
 
 	@provide(scope=Scope.REQUEST)
@@ -91,6 +99,12 @@ class GatewayProvider(Provider):
 	def provide_message_gateway(self, session: AsyncSession) -> IMessageGateway:
 		return MessageGateway(session)
 
+	@provide(scope=Scope.APP)
+	def provide_chat_event_gateway(self) -> IChatEventGateway:
+		# In-process SSE fan-out; shared by the chats service, the result subscriber,
+		# and the SSE service. Single-process only (see ChatEventGateway docstring).
+		return ChatEventGateway()
+
 
 class ServiceProvider(Provider):
 	@provide(scope=Scope.REQUEST)
@@ -108,9 +122,24 @@ class ServiceProvider(Provider):
 
 	@provide(scope=Scope.REQUEST)
 	def provide_chats_service(
-		self, gateway_factory: IGatewayFactory, message_gateway: IMessageGateway
+		self,
+		gateway_factory: IGatewayFactory,
+		message_gateway: IMessageGateway,
+		uow: PostgresqlUOW,
+		events: IChatEventGateway,
 	) -> IChatsService:
-		return LLMChatsService(gateway_factory=gateway_factory, messages_gateway=message_gateway)
+		return LLMChatsService(
+			gateway_factory=gateway_factory,
+			messages_gateway=message_gateway,
+			_uow=uow,
+			_events=events,
+		)
+
+	@provide(scope=Scope.APP)
+	def provide_server_events_service(
+		self, events: IChatEventGateway, container: AsyncContainer
+	) -> IServerEventsService:
+		return ServerEventsService(_events=events, _container=container)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_chat_service(self, chat_gateway: IChatGateway) -> IChatService:

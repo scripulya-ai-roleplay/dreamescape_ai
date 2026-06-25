@@ -23,6 +23,10 @@ class Settings(BaseSettings):
 
 	# --- RabbitMQ / scripulya_agent integration ---
 	# The backend delegates LLM generation to the scripulya_agent worker over these queues.
+	# When false, a MockScripulyaAgentClient is used and the RabbitMQ broker is not started,
+	# so the app runs without RabbitMQ/scripulya_agent (local docker). Real models then drop
+	# their requests; use the testing_mock model for a fully offline chat.
+	LLM_AGENT_ENABLED: bool = True
 	RABBIT_URL: str = "amqp://guest:guest@rabbitmq:5672/"
 	LLM_AGENT_REQUEST_QUEUE: str = "llm.agent.request"
 	LLM_AGENT_RESULT_QUEUE: str = "llm.agent.result"

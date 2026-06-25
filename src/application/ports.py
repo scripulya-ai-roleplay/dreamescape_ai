@@ -1,10 +1,12 @@
 import abc
+import asyncio
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from typing import Optional, List
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.models import ChatRoles
@@ -98,12 +100,6 @@ class UserMessageDTO(BaseModel):
 	role: ChatRoles
 
 
-# --- scripulya_agent wire contract (RabbitMQ) -------------------------------
-# These mirror scripulya_agent's application/ports.py DTOs so the two services
-# share an identical on-the-wire schema. UserMessageDTO above is reused as the
-# per-turn shape (its fields match scripulya_agent's UserMessageDTO exactly).
-
-
 class LLMRequest(BaseModel):
 	"""Published to llm.agent.request: the current message plus prior history."""
 
@@ -135,16 +131,25 @@ class LLMResult(BaseModel):
 
 class ILLMChatGateway(abc.ABC):
 	@abc.abstractmethod
-	async def generate_response(
+	async def submit(
 		self,
 		message: UserMessageDTO,
 		history: list[UserMessageDTO],
-	) -> LLMResponse: ...
+	) -> Optional[LLMResponse]: ...
+
+
+class IScripulyaAgentClient(abc.ABC):
+	@abc.abstractmethod
+	async def publish(self, req: LLMRequest) -> None:
+		"""Hand an LLM request off to the agent, correlated by chat_id. Fire-and-forget:
+		the reply arrives later (via the result queue for the real client) and is pushed
+		to the chat SSE listeners. Raising aborts the request with an LLM gateway error."""
+		...
 
 
 class IChatsService(abc.ABC):
 	@abc.abstractmethod
-	async def send_message(self, chat_dto: UserMessageDTO) -> LLMResponse: ...
+	async def send_message(self, chat_dto: UserMessageDTO) -> Message: ...
 
 
 class ICharacterService(abc.ABC):
@@ -265,6 +270,33 @@ class IMessageGateway(abc.ABC):
 	@abc.abstractmethod
 	async def delete(self, message_uuid: UUID) -> UUID: ...
 
+	@abc.abstractmethod
+	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]:
+		"""Return the most recent model message for chat_id (any status), or None."""
+		...
+
+
+class IChatEventGateway(abc.ABC):
+	@abc.abstractmethod
+	def subscribe(self, chat_id: UUID) -> asyncio.Queue:
+		"""Register a listener queue for chat_id events; returns the queue to await."""
+		...
+
+	@abc.abstractmethod
+	def unsubscribe(self, chat_id: UUID, queue: asyncio.Queue) -> None:
+		"""Drop a previously registered listener queue."""
+		...
+
+	@abc.abstractmethod
+	def publish_message(self, chat_id: UUID, message: Message) -> None:
+		"""Fan out a model-message lifecycle event to all listeners for chat_id."""
+		...
+
+
+class IServerEventsService(abc.ABC):
+	@abc.abstractmethod
+	async def open_stream(self, chat_id: UUID, user_id: UUID) -> StreamingResponse: ...
+
 
 class IMessageService(abc.ABC):
 	@abc.abstractmethod
@@ -281,6 +313,16 @@ class IMessageService(abc.ABC):
 
 	@abc.abstractmethod
 	async def delete(self, message_uuid: UUID) -> UUID: ...
+
+	@abc.abstractmethod
+	async def append_model_message(self, result: LLMResult) -> Message:
+		"""Persist the model reply carried by an LLMResult as a fresh message row
+		(COMPLETED + text on success, FAILED + the error message on error). Every
+		consumed result produces exactly one row and is returned (never None)."""
+		...
+
+	@abc.abstractmethod
+	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]: ...
 
 
 class IGatewayFactory(ABC):

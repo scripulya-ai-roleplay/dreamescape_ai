@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.infrastructure.gateways.message_gateway import MessageGateway
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import Page
-from src.domain.models import Message, ChatRoles
+from src.domain.models import Message, ChatRoles, MessageStatus
 from src.infrastructure.database.models import Message as MessageModel
 
 
@@ -21,6 +21,12 @@ class TestMessageGateway:
 	def message_gateway(self, mock_session):
 		return MessageGateway(_session=mock_session)
 
+	@pytest.mark.unit
+	def test_to_domain_message_maps_status(self, message_gateway):
+		# The DB string 'status' must round-trip into the MessageStatus enum.
+		result = message_gateway._to_domain_message(self._model_row(status="pending"))
+		assert result.status == MessageStatus.PENDING
+
 	@pytest.fixture
 	def sample_message_model(self):
 		model = Mock(spec=MessageModel)
@@ -28,6 +34,7 @@ class TestMessageGateway:
 		model.chat_id = uuid4()
 		model.role = "user"
 		model.content = "Test message content"
+		model.status = "completed"
 		model.cost_crystals = 0
 		model.created_at = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 		model.updated_at = datetime(2024, 1, 2, 15, 30, 0, tzinfo=timezone.utc)
@@ -45,6 +52,19 @@ class TestMessageGateway:
 			chat_id=uuid4(),
 			role=ChatRoles.USER,
 		)
+
+	def _model_row(self, *, role="model", content="AI response", status="pending"):
+		"""A standalone ORM-style row for SELECT-based gateway methods."""
+		row = Mock(spec=MessageModel)
+		row.id = uuid4()
+		row.chat_id = uuid4()
+		row.role = role
+		row.content = content
+		row.status = status
+		row.cost_crystals = 0
+		row.created_at = datetime(2024, 3, 10, 8, 0, 0, tzinfo=timezone.utc)
+		row.updated_at = datetime(2024, 3, 11, 9, 0, 0, tzinfo=timezone.utc)
+		return row
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -293,6 +313,7 @@ class TestMessageGateway:
 		message_model.chat_id = uuid4()
 		message_model.role = "model"
 		message_model.content = "AI response"
+		message_model.status = "completed"
 		message_model.created_at = datetime(2024, 3, 10, 8, 0, 0, tzinfo=timezone.utc)
 		message_model.updated_at = datetime(2024, 3, 11, 9, 0, 0, tzinfo=timezone.utc)
 
@@ -374,3 +395,41 @@ class TestMessageGateway:
 		# Verify that the search query includes ordering by created_at desc
 		# This is implicitly tested by the query construction in the gateway
 		assert mock_session.execute.call_count == 2
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_create_persists_status(self, message_gateway, mock_session):
+		"""create() must write the domain MessageStatus onto the ORM row."""
+		from src.domain.models import MessageStatus as MS
+
+		msg = Message(message="hi", chat_id=uuid4(), role=ChatRoles.MODEL, status=MS.PENDING)
+		mock_session.add = Mock()
+		mock_session.refresh = AsyncMock()
+
+		await message_gateway.create(msg)
+
+		added = mock_session.add.call_args.args[0]
+		assert added.status == "pending"
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_latest_model_message_returns_newest(self, message_gateway, mock_session):
+		row = self._model_row(role="model", content="latest", status="completed")
+		mock_result = Mock()
+		mock_result.scalar_one_or_none.return_value = row
+		mock_session.execute.return_value = mock_result
+
+		result = await message_gateway.latest_model_message(row.chat_id)
+
+		assert result is not None
+		assert result.message == "latest"
+		assert result.role == ChatRoles.MODEL
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_latest_model_message_none_when_empty(self, message_gateway, mock_session):
+		mock_result = Mock()
+		mock_result.scalar_one_or_none.return_value = None
+		mock_session.execute.return_value = mock_result
+
+		assert await message_gateway.latest_model_message(uuid4()) is None

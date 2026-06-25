@@ -4,8 +4,15 @@ from uuid import uuid4
 
 from src.application.message.service import MessageService
 from src.application.message.schemas import MessagesFilterDto
-from src.application.ports import IMessageGateway, IUnitOfWork, Page
-from src.domain.models import Message, ChatRoles
+from src.application.ports import (
+	IMessageGateway,
+	IUnitOfWork,
+	Page,
+	LLMErrorResponse,
+	LLMResult,
+	UserMessageDTO,
+)
+from src.domain.models import Message, ChatRoles, MessageStatus
 
 
 class TestMessageService:
@@ -212,3 +219,67 @@ class TestMessageService:
 		assert result == empty_message
 		assert result.message == ""
 		mock_message_gateway.create.assert_called_once_with(empty_message)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_append_model_message_success(self, message_service, mock_message_gateway):
+		chat_id = uuid4()
+		result = LLMResult(
+			chat_id=chat_id,
+			message=UserMessageDTO(chat_id=chat_id, message="hello back", role=ChatRoles.MODEL),
+		)
+		persisted = Message(
+			id=uuid4(), message="hello back", chat_id=chat_id, role=ChatRoles.MODEL, status=MessageStatus.COMPLETED
+		)
+		mock_message_gateway.create.return_value = persisted
+
+		got = await message_service.append_model_message(result)
+
+		assert got is persisted
+		sent = mock_message_gateway.create.await_args.args[0]
+		assert sent.role == ChatRoles.MODEL
+		assert sent.status == MessageStatus.COMPLETED
+		assert sent.message == "hello back"
+		assert sent.chat_id == chat_id
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_append_model_message_error_marks_failed(self, message_service, mock_message_gateway):
+		chat_id = uuid4()
+		result = LLMResult(
+			chat_id=chat_id,
+			error=LLMErrorResponse(error_code="model_is_inaccessible", status=503, reason="r", message="nope"),
+		)
+		persisted = Message(
+			id=uuid4(), message="nope", chat_id=chat_id, role=ChatRoles.MODEL, status=MessageStatus.FAILED
+		)
+		mock_message_gateway.create.return_value = persisted
+
+		got = await message_service.append_model_message(result)
+
+		assert got is persisted
+		sent = mock_message_gateway.create.await_args.args[0]
+		assert sent.role == ChatRoles.MODEL
+		assert sent.status == MessageStatus.FAILED
+		assert sent.message == "nope"
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_append_model_message_neither_message_nor_error(self, message_service, mock_message_gateway):
+		# An empty result is persisted as a FAILED row rather than silently dropped.
+		chat_id = uuid4()
+		result = LLMResult(chat_id=chat_id, message=None, error=None)
+
+		await message_service.append_model_message(result)
+
+		sent = mock_message_gateway.create.await_args.args[0]
+		assert sent.chat_id == chat_id
+		assert sent.role == ChatRoles.MODEL
+		assert sent.status == MessageStatus.FAILED
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_latest_model_message_delegates(self, message_service, mock_message_gateway):
+		chat_id = uuid4()
+		await message_service.latest_model_message(chat_id)
+		mock_message_gateway.latest_model_message.assert_called_once_with(chat_id)

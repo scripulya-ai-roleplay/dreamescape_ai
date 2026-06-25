@@ -1,11 +1,12 @@
 import logging
 from dataclasses import dataclass
+from typing import Optional
 from uuid import UUID
 
 from src.application.ports import IUnitOfWork
 from src.application.message.schemas import MessagesFilterDto
-from src.application.ports import IMessageService, IMessageGateway, Page
-from src.domain.models import Message
+from src.application.ports import IMessageService, IMessageGateway, Page, LLMResult
+from src.domain.models import ChatRoles, Message, MessageStatus
 
 logger = logging.getLogger(__name__)
 
@@ -50,3 +51,35 @@ class MessageService(IMessageService):
 		result = await self.message_gateway.delete(message_uuid)
 		logger.info(f"Successfully deleted message: {message_uuid}")
 		return result
+
+	async def append_model_message(self, result: LLMResult) -> Message:
+		"""Persist the model reply for result.chat_id as a fresh message row.
+
+		Appends a COMPLETED row with the reply text on success, a FAILED row with
+		the error message on error (or when the agent returned neither). Unlike the
+		old complete_pending path this is a pure INSERT — it never mutates an
+		existing row and always returns the created message.
+		"""
+		if result.error is not None:
+			content = result.error.message or result.error.reason or "LLM generation failed"
+			status = MessageStatus.FAILED
+		elif result.message is not None:
+			content = result.message.message
+			status = MessageStatus.COMPLETED
+		else:
+			logger.warning("LLMResult for chat_id=%s has neither message nor error", result.chat_id)
+			content = "LLM returned neither a message nor an error"
+			status = MessageStatus.FAILED
+
+		async with self._uow:
+			return await self.message_gateway.create(
+				Message(
+					message=content,
+					chat_id=result.chat_id,
+					role=ChatRoles.MODEL,
+					status=status,
+				)
+			)
+
+	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]:
+		return await self.message_gateway.latest_model_message(chat_id)

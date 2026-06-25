@@ -17,6 +17,16 @@ class ChatRoles(StrEnum):
 	MODEL = "model"
 
 
+class MessageStatus(StrEnum):
+	"""Lifecycle of a message. Model messages are persisted as PENDING while the
+	LLM is generating, then flipped to COMPLETED/FAILED when scripulya_agent replies.
+	User messages are always COMPLETED."""
+
+	PENDING = "pending"
+	COMPLETED = "completed"
+	FAILED = "failed"
+
+
 T = TypeVar("T")
 
 
@@ -74,6 +84,7 @@ class Message(BaseModel):
 	message: str
 	chat_id: UUID
 	role: ChatRoles
+	status: MessageStatus = MessageStatus.COMPLETED
 	# timestamps are optional because they are generated automatically inside DB
 	date_created: None | datetime = None
 	date_edited: None | datetime = None

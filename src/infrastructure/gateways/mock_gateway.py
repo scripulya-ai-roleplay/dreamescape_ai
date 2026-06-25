@@ -10,11 +10,16 @@ class MockGateway(ILLMChatGateway):
 
 	logger: Logger
 
-	async def generate_response(
+	async def submit(
 		self,
 		message: UserMessageDTO,
 		history: list[UserMessageDTO],
 	) -> LLMResponse:
+		"""Offline/synchronous gateway: returns the canned reply immediately.
+
+		The caller completes the placeholder message inline and notifies SSE within
+		the same request — no broker round trip.
+		"""
 		self.logger.info(f"Mock gateway received: {message.message}")
 		return LLMResponse(
 			text=f"Mock response for: {message.message}",

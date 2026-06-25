@@ -2,12 +2,15 @@ import logging
 from dataclasses import dataclass
 
 from src.application.message.schemas import MessagesFilterDto
-from src.application.ports import LLMResponse, IMessageGateway
 from src.application.ports import (
 	IChatsService,
-	UserMessageDTO,
+	IChatEventGateway,
 	IGatewayFactory,
+	IMessageGateway,
+	IUnitOfWork,
+	UserMessageDTO,
 )
+from src.domain.models import ChatRoles, Message, MessageStatus
 
 logger = logging.getLogger(__name__)
 
@@ -16,21 +19,46 @@ logger = logging.getLogger(__name__)
 class LLMChatsService(IChatsService):
 	gateway_factory: IGatewayFactory
 	messages_gateway: IMessageGateway
+	_uow: IUnitOfWork
+	_events: IChatEventGateway
 
-	async def send_message(self, chat_dto: UserMessageDTO) -> LLMResponse:
+	async def send_message(self, chat_dto: UserMessageDTO) -> Message:
 		logger.info(f"Processing LLM chat message with model: {chat_dto.llm_model}")
-		# Create appropriate gateway based on the LLM model
 		gateway = self.gateway_factory.create_gateway(chat_dto.llm_model.value)
 
-		message_dto = MessagesFilterDto(chats_ids=[chat_dto.chat_id])
-
-		history = await self.messages_gateway.search(message_dto)
+		# Prior turns only; the current user message is passed separately as chat_dto.
+		# (search runs before the user message is persisted below, so it is excluded.)
+		history_page = await self.messages_gateway.search(MessagesFilterDto(chats_ids=[chat_dto.chat_id]))
 		history = [
 			UserMessageDTO(message=m.message, chat_id=chat_dto.chat_id, llm_model=chat_dto.llm_model, role=m.role)
-			for m in history.items
+			for m in history_page.items
 		]
 
-		response = await gateway.generate_response(chat_dto, history)
+		async with self._uow:
+			user_message = await self.messages_gateway.create(
+				Message(
+					message=chat_dto.message,
+					chat_id=chat_dto.chat_id,
+					role=chat_dto.role,
+					status=MessageStatus.COMPLETED,
+				)
+			)
 
-		logger.info("Successfully generated LLM response")
-		return response
+		# Hand the turn to the provider. Fire-and-forget gateways return None and
+		# the reply arrives later via RabbitMQ and is appended by the result
+		# subscriber; synchronous/offline gateways (mock) return the LLMResponse
+		# immediately, so the reply is appended inline and pushed to SSE here.
+		response = await gateway.submit(chat_dto, history)
+		if response is not None:
+			async with self._uow:
+				model_message = await self.messages_gateway.create(
+					Message(
+						message=response.text,
+						chat_id=chat_dto.chat_id,
+						role=ChatRoles.MODEL,
+						status=MessageStatus.COMPLETED,
+					)
+				)
+			self._events.publish_message(chat_dto.chat_id, model_message)
+
+		return user_message

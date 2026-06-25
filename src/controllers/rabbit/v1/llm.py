@@ -1,19 +1,21 @@
 from dishka.integrations.faststream import FromDishka
 
-from src.application.ports import LLMResult
+from src.application.ports import IChatEventGateway, IMessageService, LLMResult
 from src.conf import settings
 from src.controllers.rabbit.v1.broker import broker
-from src.infrastructure.gateways.scripulya_agent_gateway import ScripulyaAgentClient
 
 
 @broker.subscriber(settings.LLM_AGENT_RESULT_QUEUE)
 async def handle_agent_result(
 	result: LLMResult,
-	client: FromDishka[ScripulyaAgentClient],
+	message_service: FromDishka[IMessageService],
+	events: FromDishka[IChatEventGateway],
 ) -> None:
-	"""Consume an LLMResult published by scripulya_agent and resolve the awaiting request.
+	"""Consume an LLMResult from scripulya_agent.
 
-	scripulya_agent publishes every result to this fixed queue; correlation back to
-	the originating request is by chat_id (see ScripulyaAgentClient.resolve).
+	Appends the reply as a fresh model message for the chat (COMPLETED + text on
+	success, FAILED + the error message on error) and pushes it to any open SSE
+	listeners. Correlation is by chat_id (scripulya_agent echoes it).
 	"""
-	client.resolve(result)
+	message = await message_service.append_model_message(result)
+	events.publish_message(result.chat_id, message)

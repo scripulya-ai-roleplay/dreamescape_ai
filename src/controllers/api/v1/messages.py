@@ -5,9 +5,8 @@ from typing import Dict, Any
 from asgi_correlation_id import correlation_id
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Query, Path, Body, Depends
+from fastapi import APIRouter, Query, Path, Body, Depends, status
 
-from src.domain.models import ChatRoles
 from src.application.ports import UserMessageDTO
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import ApiResponse, Page, IMessageService, IChatsService
@@ -20,10 +19,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/messages", tags=["messages"])
 
 
-@router.post("/")
+@router.post("/", status_code=status.HTTP_202_ACCEPTED)
 @inject
 async def create_message(
-	message_service: FromDishka[IMessageService],
 	llm_service: FromDishka[IChatsService],
 	message: UserMessageDTO = Body(),
 	current_user: Dict[str, Any] = Depends(get_current_user),
@@ -32,23 +30,12 @@ async def create_message(
 	user_id = UUID(current_user["sub"])
 	logger.info(f"Extracted user ID: {user_id}")
 
-	# Note: Messages don't have direct user ownership validation like characters/scenes
-	# The validation should be done through chat ownership, but for now we'll allow creation
-	# In a real implementation, you might want to validate that the user owns the chat
-
+	# The service persists the user message, then publishes the request to
+	# scripulya_agent (or appends the reply inline for testing_mock) and returns
+	# immediately. The finished reply is delivered to the client via the chat SSE
+	# stream (GET /api/v1/chats/{chat_id}/events).
 	logger.info(f"Creating message for chat: {message.chat_id}")
-	response = await llm_service.send_message(message)
-
-	db_message = Message(
-		message=message.message,
-		chat_id=message.chat_id,
-		role=message.role,
-	)
-
-	response_from_llm = Message(message=response.text, chat_id=message.chat_id, role=ChatRoles.MODEL)
-
-	result = await message_service.send_message(db_message)
-	await message_service.send_message(response_from_llm)
+	result = await llm_service.send_message(message)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 

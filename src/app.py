@@ -11,6 +11,7 @@ from src.controllers.rabbit.v1 import llm as rabbit_llm  # noqa: F401  registers
 from src.controllers.rabbit.v1.broker import broker
 from src.controllers.api.v1.characters import router as characters_router
 from src.controllers.api.v1.messages import router as message_router
+from src.controllers.api.v1.chat_events import router as chat_events_router
 from src.controllers.api.v1.chats import router as chat_router
 from src.controllers.api.v1.scenes import router as scenes_router
 from src.controllers.api.v1.users import router as users_router
@@ -26,7 +27,16 @@ async def lifespan(app: FastAPI):
 
 	dishka is wired to the broker in main.run_http_server before the app starts,
 	so FromDishka[...] resolves inside the result subscriber once it is started here.
+
+	The broker (and thus the RabbitMQ/scripulya_agent dependency) is only started when
+	LLM_AGENT_ENABLED is true. When disabled, a MockScripulyaAgentClient is injected and
+	no broker connection is made, so the app runs without RabbitMQ (local docker).
 	"""
+	if not settings.LLM_AGENT_ENABLED:
+		logger.info("scripulya_agent disabled (LLM_AGENT_ENABLED=false); RabbitMQ broker not started")
+		yield
+		return
+
 	await broker.start()
 	logger.info("RabbitMQ broker started; consuming %s", settings.LLM_AGENT_RESULT_QUEUE)
 	try:
@@ -60,6 +70,7 @@ def create_app() -> FastAPI:
 	app.include_router(health_router)
 	app.include_router(characters_router)
 	app.include_router(chat_router)
+	app.include_router(chat_events_router)
 	app.include_router(scenes_router)
 	app.include_router(users_router)
 	app.include_router(message_router)
