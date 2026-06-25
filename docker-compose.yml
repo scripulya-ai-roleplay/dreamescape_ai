@@ -7,6 +7,9 @@ services:
     environment:
       - GEMINI_API_KEY=fake_api_key_for_testing
       # scripulya_agent integration (RabbitMQ). scripulya_agent must connect to this same broker.
+      # Set to false to run without RabbitMQ/scripulya_agent: a mock client is injected and the
+      # broker is not started (use the testing_mock model for an offline chat).
+      - LLM_AGENT_ENABLED=false
       - RABBIT_URL=amqp://guest:guest@rabbitmq:5672/
       - LLM_AGENT_REQUEST_QUEUE=llm.agent.request
       - LLM_AGENT_RESULT_QUEUE=llm.agent.result

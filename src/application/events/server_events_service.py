@@ -16,8 +16,6 @@ from src.application.ports import (
 )
 from src.domain.models import Message, MessageStatus
 
-# How often to emit a keepalive comment on an idle stream (also bounds how long a
-# queue.get() blocks before we can react to a client disconnect).
 _KEEPALIVE_SECONDS = 15.0
 
 _SSE_HEADERS = {
@@ -28,30 +26,16 @@ _SSE_HEADERS = {
 }
 
 
-def _sse_frame(payload: Dict[str, Any]) -> str:
-	"""Format one SSE frame. The `event:` name reflects the message status so a
-	failed generation is delivered as an `error` event."""
-	message = payload.get("message") or {}
-	name = "error" if message.get("status") == MessageStatus.FAILED.value else "message"
-	data = json.dumps(payload, ensure_ascii=False, default=str)
-	return f"event: {name}\ndata: {data}\n\n"
-
-
 @dataclass
 class ServerEventsService(IServerEventsService):
-	"""Owns the SSE streaming mechanics for a chat's message-lifecycle events.
-
-	APP-scoped: the long-lived stream generator closes over only the APP-scoped
-	event gateway + plain values, never a request-scoped DB session. The ownership
-	check and latest-message read run in a manually entered REQUEST child scope that
-	is exited before the StreamingResponse is returned, so the AsyncSession (and its
-	DB connection) is released before the stream starts iterating. Without this,
-	Dishka's ContainerMiddleware would keep the request scope — and thus the session
-	— open for the entire SSE connection.
-	"""
-
 	_events: IChatEventGateway
 	_container: AsyncContainer
+
+	def _sse_frame(self, payload: Dict[str, Any]) -> str:
+		message = payload.get("message") or {}
+		name = "error" if message.get("status") == MessageStatus.FAILED.value else "message"
+		data = json.dumps(payload, ensure_ascii=False, default=str)
+		return f"event: {name}\ndata: {data}\n\n"
 
 	async def open_stream(self, chat_id: UUID, user_id: UUID) -> StreamingResponse:
 		# Prepare reads run in a short-lived REQUEST scope; exiting it closes the
@@ -78,13 +62,13 @@ class ServerEventsService(IServerEventsService):
 		queue = self._events.subscribe(chat_id)
 		try:
 			if latest is not None:
-				yield _sse_frame({"message": latest.model_dump(mode="json")})
+				yield self._sse_frame({"message": latest.model_dump(mode="json")})
 			while True:
 				try:
 					event = await asyncio.wait_for(queue.get(), timeout=_KEEPALIVE_SECONDS)
 				except asyncio.TimeoutError:
 					yield ": keepalive\n\n"
 					continue
-				yield _sse_frame(event)
+				yield self._sse_frame(event)
 		finally:
 			self._events.unsubscribe(chat_id, queue)

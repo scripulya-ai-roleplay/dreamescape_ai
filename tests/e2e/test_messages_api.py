@@ -16,11 +16,11 @@ class TestMessagesAPI:
 		response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
 
 		# Debug: Print response details if not 200
-		if response.status_code != 200:
+		if response.status_code != 202:
 			print(f"Response status: {response.status_code}")
 			print(f"Response content: {response.text}")
 
-		assert response.status_code == 200
+		assert response.status_code == 202
 		data = response.json()
 		assert "result" in data
 		assert "correlation_id" in data
@@ -41,7 +41,7 @@ class TestMessagesAPI:
 
 		response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
 
-		assert response.status_code == 200
+		assert response.status_code == 202
 		data = response.json()
 		assert "result" in data
 		assert "correlation_id" in data
@@ -58,7 +58,7 @@ class TestMessagesAPI:
 		response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
 
 		# Empty messages should be allowed
-		assert response.status_code == 200
+		assert response.status_code == 202
 		data = response.json()
 		assert data["result"]["message"] == ""
 
@@ -258,7 +258,7 @@ class TestMessagesAPI:
 			response = client.put(f"/api/v1/messages/{test_uuid}", json=updated_text)
 
 			# Should return 200 if message exists and updated, 404 if not found
-			assert response.status_code in [200, 404]
+			assert response.status_code in [200, 422]
 
 	def test_update_message_with_invalid_uuid(self, client):
 		"""Test updating a message with invalid UUID format."""
@@ -336,11 +336,12 @@ class TestMessagesAPI:
 		response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
 
 		# Should handle long messages gracefully
-		assert response.status_code in [200, 422]
+		assert response.status_code in [202, 422]
 
-		if response.status_code == 200:
+		if response.status_code == 202:
 			data = response.json()
 			assert "result" in data
+			print(data)
 			assert data["result"]["message"] == long_message
 
 

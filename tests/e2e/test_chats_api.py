@@ -232,7 +232,7 @@ class TestChatsAPI:
 			}
 
 			user_msg_response = client.post("/api/v1/messages/", json=user_message_payload, headers=auth_headers)
-			assert user_msg_response.status_code == 200
+			assert user_msg_response.status_code == 202
 			user_msg_data = user_msg_response.json()
 			assert "result" in user_msg_data
 			assert "correlation_id" in user_msg_data
@@ -245,7 +245,7 @@ class TestChatsAPI:
 			}
 
 			model_msg_response = client.post("/api/v1/messages/", json=model_message_payload, headers=auth_headers)
-			assert model_msg_response.status_code == 200
+			assert model_msg_response.status_code == 202
 			model_msg_data = model_msg_response.json()
 			assert "result" in model_msg_data
 			assert "correlation_id" in model_msg_data

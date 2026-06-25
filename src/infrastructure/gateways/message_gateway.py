@@ -126,38 +126,6 @@ class MessageGateway(IMessageGateway):
 
 		return message_uuid
 
-	async def complete_pending(self, chat_id: UUID, content: str, status: MessageStatus) -> Optional[Message]:
-		"""Resolve the most recent PENDING model message for chat_id.
-
-		Selects the row, mutates it, and flushes (commit is owned by the caller's
-		Unit of Work, matching `create`). Returns None if no PENDING row exists.
-		"""
-		logger.info(f"Completing pending model message for chat {chat_id} as {status.value}")
-		query = (
-			select(MessageModel)
-			.where(
-				MessageModel.chat_id == chat_id,
-				MessageModel.role == ChatRoles.MODEL.value,
-				MessageModel.status == MessageStatus.PENDING.value,
-			)
-			.order_by(MessageModel.created_at.desc())
-			.limit(1)
-		)
-		result = await self._session.execute(query)
-		message_model = result.scalar_one_or_none()
-
-		if message_model is None:
-			logger.warning("No pending model message to complete for chat_id=%s", chat_id)
-			return None
-
-		message_model.content = content
-		message_model.status = status.value
-		# updated_at is bumped automatically by its onupdate=func.now() on flush.
-		await self._session.flush()
-		await self._session.refresh(message_model)
-		logger.info(f"Completed pending message {message_model.id} as {status.value}")
-		return self._to_domain_message(message_model)
-
 	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]:
 		logger.info(f"Getting latest model message for chat: {chat_id}")
 		query = (

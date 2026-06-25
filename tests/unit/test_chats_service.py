@@ -13,7 +13,6 @@ from src.application.ports import (
 	IMessageGateway,
 	IUnitOfWork,
 	Page,
-	SendMessageResult,
 )
 from src.domain.models import ChatRoles, Message, MessageStatus
 
@@ -85,23 +84,20 @@ class TestChatsService:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_async_path_returns_pending_placeholder(
+	async def test_async_path_returns_user_message_only(
 		self, chats_service, mock_gateway, mock_messages_gateway, mock_events, sample_user_message_dto
 	):
-		"""Fire-and-forget gateway: returns the user message + a PENDING model message,
-		does not resolve inline or notify SSE."""
+		"""Fire-and-forget gateway: persists only the user message, returns it, and
+		does not append a model reply inline or notify SSE."""
 		result = await chats_service.send_message(sample_user_message_dto)
 
-		assert isinstance(result, SendMessageResult)
-		assert result.user_message.message == "Hello, how are you?"
-		assert result.user_message.role == ChatRoles.USER
-		assert result.user_message.status == MessageStatus.COMPLETED
-		assert result.model_message.role == ChatRoles.MODEL
-		assert result.model_message.status == MessageStatus.PENDING
-		# persisted exactly the user message + the placeholder
-		assert mock_messages_gateway.create.await_count == 2
-		# no inline completion, no SSE push
-		mock_messages_gateway.complete_pending.assert_not_called()
+		assert isinstance(result, Message)
+		assert result.message == "Hello, how are you?"
+		assert result.role == ChatRoles.USER
+		assert result.status == MessageStatus.COMPLETED
+		# persisted exactly the user message — no placeholder, no inline reply
+		assert mock_messages_gateway.create.await_count == 1
+		# no SSE push (the reply arrives later via the result subscriber)
 		mock_events.publish_message.assert_not_called()
 		# gateway received the turn
 		mock_gateway.submit.assert_awaited_once()
@@ -116,61 +112,43 @@ class TestChatsService:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_mock_path_resolves_inline_and_notifies_sse(
+	async def test_mock_path_appends_reply_inline_and_notifies_sse(
 		self, chats_service, mock_gateway, mock_messages_gateway, mock_events, sample_user_message_dto
 	):
-		"""Offline gateway returns a response: placeholder is completed inline and the
-		SSE broker is notified within the same request."""
+		"""Offline gateway returns a response: a COMPLETED model reply is appended
+		inline (INSERT) and the SSE broker is notified within the same request."""
 		mock_gateway.submit.return_value = LLMResponse(
 			text="Mock response for: Hello",
 			model=LLMModelType.testing_mock,
 			usage={"tokens": 10},
 			provider="mock",
 		)
-		resolved = Message(
-			id=uuid4(),
-			message="Mock response for: Hello",
-			chat_id=sample_user_message_dto.chat_id,
-			role=ChatRoles.MODEL,
-		)
-		mock_messages_gateway.complete_pending.return_value = resolved
 
-		result = await chats_service.send_message(sample_user_message_dto)
-
-		mock_messages_gateway.complete_pending.assert_awaited_once_with(
-			sample_user_message_dto.chat_id, "Mock response for: Hello", MessageStatus.COMPLETED
-		)
-		mock_events.publish_message.assert_called_once_with(sample_user_message_dto.chat_id, resolved)
-		assert result.model_message is resolved
-		assert result.model_message.status == MessageStatus.COMPLETED
-
-	@pytest.mark.unit
-	@pytest.mark.asyncio
-	async def test_placeholder_is_created_pending(self, chats_service, mock_messages_gateway, sample_user_message_dto):
 		await chats_service.send_message(sample_user_message_dto)
 
-		created_messages = [c.args[0] for c in mock_messages_gateway.create.call_args_list]
-		assert len(created_messages) == 2
-		assert created_messages[0].role == ChatRoles.USER
-		assert created_messages[0].status == MessageStatus.COMPLETED
-		assert created_messages[1].role == ChatRoles.MODEL
-		assert created_messages[1].status == MessageStatus.PENDING
-		assert created_messages[1].message == ""
+		# user message + appended model reply
+		assert mock_messages_gateway.create.await_count == 2
+		appended = mock_messages_gateway.create.await_args_list[1].args[0]
+		assert appended.role == ChatRoles.MODEL
+		assert appended.status == MessageStatus.COMPLETED
+		assert appended.message == "Mock response for: Hello"
+		assert appended.chat_id == sample_user_message_dto.chat_id
+		# SSE received the appended message (create echoes it back with an id via _persist)
+		mock_events.publish_message.assert_called_once()
+		published = mock_events.publish_message.call_args.args
+		assert published[0] == sample_user_message_dto.chat_id
+		assert published[1].role == ChatRoles.MODEL
+		assert published[1].status == MessageStatus.COMPLETED
+		assert published[1].message == "Mock response for: Hello"
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_history_forwarded_excludes_pending(
+	async def test_history_forwarded_includes_all_prior_turns(
 		self, mock_gateway_factory, mock_messages_gateway, mock_gateway, mock_uow, mock_events, sample_user_message_dto
 	):
-		"""Prior history is forwarded to the gateway as UserMessageDTOs, but PENDING
-		(in-flight) model messages are filtered out."""
+		"""Prior history is forwarded to the gateway as UserMessageDTOs."""
 		prior_done = Message(message="previous turn", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.MODEL)
-		prior_pending = Message(
-			message="", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.MODEL, status=MessageStatus.PENDING
-		)
-		mock_messages_gateway.search.return_value = Page[Message](
-			items=[prior_pending, prior_done], count=2, offset=0, limit=10
-		)
+		mock_messages_gateway.search.return_value = Page[Message](items=[prior_done], count=1, offset=0, limit=10)
 		chats_service = LLMChatsService(
 			gateway_factory=mock_gateway_factory,
 			messages_gateway=mock_messages_gateway,
@@ -207,7 +185,7 @@ class TestChatsService:
 	@pytest.mark.asyncio
 	async def test_submit_error_propagates(self, chats_service, mock_gateway, sample_user_message_dto):
 		"""If publishing fails, the error surfaces to the HTTP client (the user message
-		+ PENDING placeholder are already committed)."""
+		is already committed)."""
 		mock_gateway.submit.side_effect = Exception("Response generation failed")
 
 		with pytest.raises(Exception, match="Response generation failed"):

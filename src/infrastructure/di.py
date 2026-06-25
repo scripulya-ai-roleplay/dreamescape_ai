@@ -9,6 +9,7 @@ from src.conf import settings
 from src.controllers.rabbit.v1.broker import broker
 from src.infrastructure.database.postgresqluow import PostgresqlUOW
 from src.infrastructure.gateways.scripulya_agent_gateway import ScripulyaAgentClient, ScripulyaAgentGateway
+from src.infrastructure.gateways.mock_scripulya_agent_client import MockScripulyaAgentClient
 from src.application.ports import (
 	IUserService,
 	IUserGateway,
@@ -25,6 +26,7 @@ from src.application.ports import (
 	ISceneGateway,
 	ICharacterService,
 	ICharacterGateway,
+	IScripulyaAgentClient,
 	LLMModelType,
 )
 from src.infrastructure.gateways.mock_gateway import MockGateway
@@ -50,16 +52,18 @@ logger = logging.getLogger(__name__)
 
 class GatewayProvider(Provider):
 	@provide(scope=Scope.APP)
-	def provide_scripulya_agent_client(self) -> ScripulyaAgentClient:
-		return ScripulyaAgentClient(
-			broker=broker,
-			request_queue=settings.LLM_AGENT_REQUEST_QUEUE,
-			timeout=settings.LLM_AGENT_TIMEOUT,
-			logger=logger,
-		)
+	def provide_scripulya_agent_client(self) -> IScripulyaAgentClient:
+		if settings.LLM_AGENT_ENABLED:
+			return ScripulyaAgentClient(
+				broker=broker,
+				request_queue=settings.LLM_AGENT_REQUEST_QUEUE,
+				timeout=settings.LLM_AGENT_TIMEOUT,
+				logger=logger,
+			)
+		return MockScripulyaAgentClient(logger=logger)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_scripulya_agent_gateway(self, client: ScripulyaAgentClient) -> ScripulyaAgentGateway:
+	def provide_scripulya_agent_gateway(self, client: IScripulyaAgentClient) -> ScripulyaAgentGateway:
 		return ScripulyaAgentGateway(logger=logger, _client=client)
 
 	@provide(scope=Scope.REQUEST)

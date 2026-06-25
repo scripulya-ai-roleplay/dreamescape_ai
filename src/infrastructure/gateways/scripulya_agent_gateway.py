@@ -5,6 +5,7 @@ from faststream.rabbit import RabbitBroker
 
 from src.application.ports import (
 	ILLMChatGateway,
+	IScripulyaAgentClient,
 	LLMRequest,
 	LLMResponse,
 	UserMessageDTO,
@@ -13,7 +14,7 @@ from src.infrastructure.exceptions import LLMGatewayException
 
 
 @dataclass
-class ScripulyaAgentClient:
+class ScripulyaAgentClient(IScripulyaAgentClient):
 	"""Fire-and-forget RabbitMQ publisher for the scripulya_agent worker.
 
 	Publishes LLMRequests to the request queue (correlated by chat_id) and returns
@@ -53,7 +54,7 @@ class ScripulyaAgentGateway(ILLMChatGateway):
 	"""LLM gateway that delegates generation to scripulya_agent over RabbitMQ."""
 
 	logger: Logger
-	_client: ScripulyaAgentClient
+	_client: IScripulyaAgentClient
 
 	async def submit(
 		self,

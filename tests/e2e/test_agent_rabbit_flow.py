@@ -5,8 +5,8 @@ llm.agent.request (correlated by chat_id) and returns immediately. This test
 verifies that publish using a TestRabbitBroker, with a stand-in subscriber on the
 request queue (the real consumer is the separate scripulya_agent process).
 
-The result side (llm.agent.result -> complete_pending -> SSE) is covered by the
-unit tests for MessageService.complete_pending and ChatEventGateway, and by the
+The result side (llm.agent.result -> append_model_message -> SSE) is covered by the
+unit tests for MessageService.append_model_message and ChatEventGateway, and by the
 manual end-to-end check in the plan's verification section (it requires a DB).
 """
 
@@ -17,13 +17,13 @@ import pytest
 from dishka.integrations.faststream import setup_dishka
 from faststream.rabbit import TestRabbitBroker
 
-from src.application.ports import LLMModelType, LLMRequest, UserMessageDTO
+from src.application.ports import IScripulyaAgentClient, LLMModelType, LLMRequest, UserMessageDTO
 from src.conf import settings
 from src.controllers.rabbit.v1 import llm as rabbit_llm  # noqa: F401  registers the result subscriber
 from src.controllers.rabbit.v1.broker import broker
 from src.domain.models import ChatRoles
 from src.infrastructure.di import create_container
-from src.infrastructure.gateways.scripulya_agent_gateway import ScripulyaAgentClient, ScripulyaAgentGateway
+from src.infrastructure.gateways.scripulya_agent_gateway import ScripulyaAgentGateway
 
 
 @pytest.mark.e2e
@@ -44,7 +44,7 @@ async def test_submit_publishes_to_request_queue_via_broker():
 	broker.subscriber(settings.LLM_AGENT_REQUEST_QUEUE)(fake_agent)
 
 	try:
-		client = await container.get(ScripulyaAgentClient)
+		client = await container.get(IScripulyaAgentClient)
 		gateway = ScripulyaAgentGateway(logger=logging.getLogger("test"), _client=client)
 		msg = UserMessageDTO(
 			chat_id=uuid4(), message="hi", llm_model=LLMModelType.gemini_flash_preview, role=ChatRoles.USER

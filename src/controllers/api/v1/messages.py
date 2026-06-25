@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query, Path, Body, Depends, status
 
 from src.application.ports import UserMessageDTO
 from src.application.message.schemas import MessagesFilterDto
-from src.application.ports import ApiResponse, Page, IMessageService, IChatsService, SendMessageResult
+from src.application.ports import ApiResponse, Page, IMessageService, IChatsService
 from src.domain.models import Message
 from src.infrastructure.auth.dependencies import get_current_user
 
@@ -25,15 +25,15 @@ async def create_message(
 	llm_service: FromDishka[IChatsService],
 	message: UserMessageDTO = Body(),
 	current_user: Dict[str, Any] = Depends(get_current_user),
-) -> ApiResponse[SendMessageResult]:
+) -> ApiResponse[Message]:
 	logger.info(f"Current user payload: {current_user}")
 	user_id = UUID(current_user["sub"])
 	logger.info(f"Extracted user ID: {user_id}")
 
-	# The service persists both the user message and a PENDING placeholder model
-	# message, then publishes the request to scripulya_agent (or resolves inline
-	# for testing_mock) and returns immediately. The finished reply is delivered
-	# to the client via the chat SSE stream (GET /api/v1/chats/{chat_id}/events).
+	# The service persists the user message, then publishes the request to
+	# scripulya_agent (or appends the reply inline for testing_mock) and returns
+	# immediately. The finished reply is delivered to the client via the chat SSE
+	# stream (GET /api/v1/chats/{chat_id}/events).
 	logger.info(f"Creating message for chat: {message.chat_id}")
 	result = await llm_service.send_message(message)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())

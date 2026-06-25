@@ -413,58 +413,6 @@ class TestMessageGateway:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_complete_pending_resolves_to_completed(self, message_gateway, mock_session):
-		# Arrange: SELECT returns the most recent pending model row
-		row = self._model_row(role="model", content="", status="pending")
-		mock_result = Mock()
-		mock_result.scalar_one_or_none.return_value = row
-		mock_session.execute.return_value = mock_result
-		mock_session.flush = AsyncMock()
-		mock_session.refresh = AsyncMock()
-
-		# Act
-		result = await message_gateway.complete_pending(row.chat_id, "the reply", MessageStatus.COMPLETED)
-
-		# Assert: the row is mutated in place and mapped back to the domain
-		assert row.content == "the reply"
-		assert row.status == "completed"
-		assert result is not None
-		assert result.message == "the reply"
-		assert result.status == MessageStatus.COMPLETED
-		mock_session.flush.assert_awaited_once()
-		mock_session.refresh.assert_awaited_once_with(row)
-
-	@pytest.mark.unit
-	@pytest.mark.asyncio
-	async def test_complete_pending_marks_failed(self, message_gateway, mock_session):
-		row = self._model_row(role="model", content="", status="pending")
-		mock_result = Mock()
-		mock_result.scalar_one_or_none.return_value = row
-		mock_session.execute.return_value = mock_result
-		mock_session.flush = AsyncMock()
-		mock_session.refresh = AsyncMock()
-
-		result = await message_gateway.complete_pending(row.chat_id, "boom", MessageStatus.FAILED)
-
-		assert row.status == "failed"
-		assert result.status == MessageStatus.FAILED
-
-	@pytest.mark.unit
-	@pytest.mark.asyncio
-	async def test_complete_pending_no_pending_returns_none(self, message_gateway, mock_session):
-		mock_result = Mock()
-		mock_result.scalar_one_or_none.return_value = None
-		mock_session.execute.return_value = mock_result
-		mock_session.flush = AsyncMock()
-		mock_session.refresh = AsyncMock()
-
-		result = await message_gateway.complete_pending(uuid4(), "late", MessageStatus.COMPLETED)
-
-		assert result is None
-		mock_session.flush.assert_not_awaited()
-
-	@pytest.mark.unit
-	@pytest.mark.asyncio
 	async def test_latest_model_message_returns_newest(self, message_gateway, mock_session):
 		row = self._model_row(role="model", content="latest", status="completed")
 		mock_result = Mock()

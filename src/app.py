@@ -27,7 +27,16 @@ async def lifespan(app: FastAPI):
 
 	dishka is wired to the broker in main.run_http_server before the app starts,
 	so FromDishka[...] resolves inside the result subscriber once it is started here.
+
+	The broker (and thus the RabbitMQ/scripulya_agent dependency) is only started when
+	LLM_AGENT_ENABLED is true. When disabled, a MockScripulyaAgentClient is injected and
+	no broker connection is made, so the app runs without RabbitMQ (local docker).
 	"""
+	if not settings.LLM_AGENT_ENABLED:
+		logger.info("scripulya_agent disabled (LLM_AGENT_ENABLED=false); RabbitMQ broker not started")
+		yield
+		return
+
 	await broker.start()
 	logger.info("RabbitMQ broker started; consuming %s", settings.LLM_AGENT_RESULT_QUEUE)
 	try:

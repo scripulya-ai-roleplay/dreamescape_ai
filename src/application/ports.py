@@ -14,7 +14,7 @@ from src.application.character.schemas import CharacterFilterDTO
 from src.application.chats.schemas import ChatFilterDTO
 from src.application.message.schemas import MessagesFilterDto
 from src.application.scene.schemas import SceneFilterDTO
-from src.domain.models import User, Scene, Character, Message, Chat, MessageStatus
+from src.domain.models import User, Scene, Character, Message, Chat
 from src.application.user.schemas import UserDTO
 
 
@@ -50,16 +50,6 @@ class LLMResponse(BaseModel):
 	model: LLMModelType
 	usage: Optional[dict] = None
 	provider: str
-
-
-class SendMessageResult(BaseModel):
-	"""Returned by POST /messages: the persisted user message plus the model
-	message that will hold the LLM reply. The model message starts PENDING and
-	is delivered later via the chat SSE stream (or is already COMPLETED for the
-	offline testing_mock gateway)."""
-
-	user_message: Message
-	model_message: Message
 
 
 class IJWTService(abc.ABC):
@@ -148,9 +138,18 @@ class ILLMChatGateway(abc.ABC):
 	) -> Optional[LLMResponse]: ...
 
 
+class IScripulyaAgentClient(abc.ABC):
+	@abc.abstractmethod
+	async def publish(self, req: LLMRequest) -> None:
+		"""Hand an LLM request off to the agent, correlated by chat_id. Fire-and-forget:
+		the reply arrives later (via the result queue for the real client) and is pushed
+		to the chat SSE listeners. Raising aborts the request with an LLM gateway error."""
+		...
+
+
 class IChatsService(abc.ABC):
 	@abc.abstractmethod
-	async def send_message(self, chat_dto: UserMessageDTO) -> SendMessageResult: ...
+	async def send_message(self, chat_dto: UserMessageDTO) -> Message: ...
 
 
 class ICharacterService(abc.ABC):
@@ -272,27 +271,12 @@ class IMessageGateway(abc.ABC):
 	async def delete(self, message_uuid: UUID) -> UUID: ...
 
 	@abc.abstractmethod
-	async def complete_pending(self, chat_id: UUID, content: str, status: MessageStatus) -> Optional[Message]:
-		"""Resolve the most recent PENDING model message for chat_id: set its
-		content and final status (COMPLETED/FAILED). Returns the updated Message,
-		or None if no PENDING row exists (late/duplicate/orphan result)."""
-		...
-
-	@abc.abstractmethod
 	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]:
 		"""Return the most recent model message for chat_id (any status), or None."""
 		...
 
 
 class IChatEventGateway(abc.ABC):
-	"""Source/sink for in-process chat-message events that back the SSE stream.
-
-	Abstracts the fan-out so the SSE service depends on the port, not the concrete
-	backend. Today the backend is an in-process asyncio fan-out fed by the RabbitMQ
-	result subscriber (and the offline mock path); it could later move onto Redis
-	pub/sub or a RabbitMQ fanout exchange without touching the service layer.
-	"""
-
 	@abc.abstractmethod
 	def subscribe(self, chat_id: UUID) -> asyncio.Queue:
 		"""Register a listener queue for chat_id events; returns the queue to await."""
@@ -311,16 +295,7 @@ class IChatEventGateway(abc.ABC):
 
 class IServerEventsService(abc.ABC):
 	@abc.abstractmethod
-	async def open_stream(self, chat_id: UUID, user_id: UUID) -> StreamingResponse:
-		"""Open the SSE stream of model-message lifecycle events for a chat.
-
-		Verifies the chat belongs to user_id (403 otherwise) and reads the latest
-		model message for reconciliation, then returns the StreamingResponse. All DB
-		access happens in a short-lived session that is closed before the stream
-		starts, so no DB connection is held for the (potentially long-lived) SSE
-		connection.
-		"""
-		...
+	async def open_stream(self, chat_id: UUID, user_id: UUID) -> StreamingResponse: ...
 
 
 class IMessageService(abc.ABC):
@@ -340,16 +315,14 @@ class IMessageService(abc.ABC):
 	async def delete(self, message_uuid: UUID) -> UUID: ...
 
 	@abc.abstractmethod
-	async def complete_pending(self, result: LLMResult) -> Optional[Message]:
-		"""Resolve the pending model message for result.chat_id from an LLMResult:
-		COMPLETED + the reply text on success, FAILED + the error message on error.
-		Returns the updated Message, or None if nothing was pending."""
+	async def append_model_message(self, result: LLMResult) -> Message:
+		"""Persist the model reply carried by an LLMResult as a fresh message row
+		(COMPLETED + text on success, FAILED + the error message on error). Every
+		consumed result produces exactly one row and is returned (never None)."""
 		...
 
 	@abc.abstractmethod
-	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]:
-		"""Return the most recent model message for chat_id (any status), or None."""
-		...
+	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]: ...
 
 
 class IGatewayFactory(ABC):
