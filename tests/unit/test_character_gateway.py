@@ -83,6 +83,26 @@ class TestCharacterGateway:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
+	async def test_get_for_scene_returns_characters(self, character_gateway, mock_session, sample_character_model):
+		# Arrange
+		scene_id = uuid4()
+		mock_result = Mock()
+		mock_scalars = Mock()
+		mock_scalars.all.return_value = [sample_character_model]
+		mock_result.scalars.return_value = mock_scalars
+		mock_session.execute.return_value = mock_result
+
+		# Act
+		result = await character_gateway.get_for_scene(scene_id)
+
+		# Assert
+		assert isinstance(result, list)
+		assert len(result) == 1
+		assert result[0].name == sample_character_model.name
+		assert result[0].system_prompt == sample_character_model.system_prompt
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
 	async def test_create_success(self, character_gateway, mock_session, sample_domain_character):
 		# Arrange
 		character_id = uuid4()

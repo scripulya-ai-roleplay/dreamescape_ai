@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from src.application.character.schemas import CharacterFilterDTO
 from src.application.ports import ICharacterGateway, Page
 from src.domain.models import Character
-from src.infrastructure.database.models import Character as CharacterModel
+from src.infrastructure.database.models import Character as CharacterModel, Scene as SceneModel
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,15 @@ class CharacterGateway(ICharacterGateway):
 		result = await self.session.execute(query)
 		character_model = result.scalar_one()
 		return self._to_domain_character(character_model)
+
+	async def get_for_scene(self, scene_id: UUID) -> list[Character]:
+		logger.info(f"Getting characters for scene: {scene_id}")
+
+		query = select(CharacterModel).join(CharacterModel.scenes).where(SceneModel.id == scene_id)
+
+		result = await self.session.execute(query)
+		character_models = result.scalars().all()
+		return [self._to_domain_character(character_model) for character_model in character_models]
 
 	async def delete(self, character_uuid: UUID):
 		logger.info(f"Deleting character: {character_uuid}")

@@ -102,16 +102,13 @@ class UserMessageDTO(BaseModel):
 
 
 class LLMRequest(BaseModel):
-	"""Published to llm.agent.request: the current message plus prior history."""
-
 	message: UserMessageDTO
 	history: list[UserMessageDTO] = []
 	chat_settings: ChatSettings | None = None
+	system_prompt: str = ""
 
 
 class LLMErrorResponse(BaseModel):
-	"""Structured failure returned by scripulya_agent (LLMResult.error)."""
-
 	error_code: str  # machine-readable snake_case, e.g. "model_is_inaccessible"
 	status: int  # HTTP-style status, e.g. 503
 	reason: str  # short human-readable reason phrase
@@ -121,11 +118,6 @@ class LLMErrorResponse(BaseModel):
 
 
 class LLMResult(BaseModel):
-	"""Consumed from llm.agent.result; correlated by chat_id.
-
-	Exactly one of `message` / `error` is set.
-	"""
-
 	chat_id: UUID
 	message: UserMessageDTO | None = None  # the model's reply (role=MODEL) on success
 	error: LLMErrorResponse | None = None  # set on failure
@@ -138,21 +130,23 @@ class ILLMChatGateway(abc.ABC):
 		message: UserMessageDTO,
 		history: list[UserMessageDTO],
 		chat_settings: ChatSettings | None = None,
+		system_prompt: str = "",
 	) -> Optional[LLMResponse]: ...
 
 
 class IScripulyaAgentClient(abc.ABC):
 	@abc.abstractmethod
-	async def publish(self, req: LLMRequest) -> None:
-		"""Hand an LLM request off to the agent, correlated by chat_id. Fire-and-forget:
-		the reply arrives later (via the result queue for the real client) and is pushed
-		to the chat SSE listeners. Raising aborts the request with an LLM gateway error."""
-		...
+	async def publish(self, req: LLMRequest) -> None: ...
 
 
 class IChatsService(abc.ABC):
 	@abc.abstractmethod
 	async def send_message(self, chat_dto: UserMessageDTO) -> Message: ...
+
+
+class IPromptService(abc.ABC):
+	@abc.abstractmethod
+	def build_system_prompt(self, scene: Scene | None, characters: list[Character]) -> str: ...
 
 
 class ICharacterService(abc.ABC):
@@ -212,6 +206,9 @@ class ICharacterGateway(abc.ABC):
 
 	@abc.abstractmethod
 	async def get_one(self, character_uuid: UUID) -> Character: ...
+
+	@abc.abstractmethod
+	async def get_for_scene(self, scene_id: UUID) -> list[Character]: ...
 
 	@abc.abstractmethod
 	async def search(self, dto: CharacterFilterDTO) -> Page[Character]: ...

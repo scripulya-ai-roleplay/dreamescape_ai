@@ -3,16 +3,20 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 from src.application.chats.llm_service import LLMChatsService
+from src.application.chats.prompt_service import PromptService
 from src.application.ports import (
 	UserMessageDTO,
 	LLMModelType,
 	LLMResponse,
 	IGatewayFactory,
+	ICharacterGateway,
 	IChatEventGateway,
+	IChatGateway,
+	IChatSettingsGateway,
 	ILLMChatGateway,
 	IMessageGateway,
+	ISceneGateway,
 	IUnitOfWork,
-	IChatSettingsGateway,
 	Page,
 )
 from src.application.chats.settings import (
@@ -27,7 +31,8 @@ from src.application.chats.settings import (
 	TokenLimit,
 	Toggle,
 )
-from src.domain.models import ChatRoles, Message, MessageStatus
+from src.conf import settings
+from src.domain.models import Character, Chat, ChatRoles, Message, MessageStatus, Scene
 
 
 def _persist(message: Message) -> Message:
@@ -81,13 +86,45 @@ class TestChatsService:
 		return gateway
 
 	@pytest.fixture
+	def mock_chat_gateway(self):
+		gateway = AsyncMock(spec=IChatGateway)
+		gateway.get_one.return_value = Chat(title="chat", user_id=uuid4(), scene_id=uuid4())
+		return gateway
+
+	@pytest.fixture
+	def mock_scene_gateway(self):
+		gateway = AsyncMock(spec=ISceneGateway)
+		gateway.get_one.return_value = Scene(
+			title="scene", owner_id=uuid4(), background_prompt="bg", initial_message_text="init"
+		)
+		return gateway
+
+	@pytest.fixture
+	def mock_character_gateway(self):
+		gateway = AsyncMock(spec=ICharacterGateway)
+		gateway.get_for_scene.return_value = []
+		return gateway
+
+	@pytest.fixture
 	def chats_service(
-		self, mock_gateway_factory, mock_messages_gateway, mock_chat_settings_gateway, mock_uow, mock_events
+		self,
+		mock_gateway_factory,
+		mock_messages_gateway,
+		mock_chat_settings_gateway,
+		mock_chat_gateway,
+		mock_scene_gateway,
+		mock_character_gateway,
+		mock_uow,
+		mock_events,
 	):
 		return LLMChatsService(
 			gateway_factory=mock_gateway_factory,
 			messages_gateway=mock_messages_gateway,
 			chat_settings_gateway=mock_chat_settings_gateway,
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=mock_scene_gateway,
+			character_gateway=mock_character_gateway,
+			prompt_service=PromptService(),
 			_uow=mock_uow,
 			_events=mock_events,
 		)
@@ -172,6 +209,9 @@ class TestChatsService:
 		mock_messages_gateway,
 		mock_gateway,
 		mock_chat_settings_gateway,
+		mock_chat_gateway,
+		mock_scene_gateway,
+		mock_character_gateway,
 		mock_uow,
 		mock_events,
 		sample_user_message_dto,
@@ -183,6 +223,10 @@ class TestChatsService:
 			gateway_factory=mock_gateway_factory,
 			messages_gateway=mock_messages_gateway,
 			chat_settings_gateway=mock_chat_settings_gateway,
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=mock_scene_gateway,
+			character_gateway=mock_character_gateway,
+			prompt_service=PromptService(),
 			_uow=mock_uow,
 			_events=mock_events,
 		)
@@ -203,6 +247,9 @@ class TestChatsService:
 		mock_gateway_factory,
 		mock_messages_gateway,
 		mock_chat_settings_gateway,
+		mock_chat_gateway,
+		mock_scene_gateway,
+		mock_character_gateway,
 		mock_uow,
 		mock_events,
 		sample_user_message_dto,
@@ -212,6 +259,10 @@ class TestChatsService:
 			gateway_factory=mock_gateway_factory,
 			messages_gateway=mock_messages_gateway,
 			chat_settings_gateway=mock_chat_settings_gateway,
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=mock_scene_gateway,
+			character_gateway=mock_character_gateway,
+			prompt_service=PromptService(),
 			_uow=mock_uow,
 			_events=mock_events,
 		)
@@ -227,6 +278,9 @@ class TestChatsService:
 		mock_messages_gateway,
 		mock_gateway,
 		mock_chat_settings_gateway,
+		mock_chat_gateway,
+		mock_scene_gateway,
+		mock_character_gateway,
 		mock_uow,
 		mock_events,
 		sample_user_message_dto,
@@ -249,6 +303,10 @@ class TestChatsService:
 			gateway_factory=mock_gateway_factory,
 			messages_gateway=mock_messages_gateway,
 			chat_settings_gateway=mock_chat_settings_gateway,
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=mock_scene_gateway,
+			character_gateway=mock_character_gateway,
+			prompt_service=PromptService(),
 			_uow=mock_uow,
 			_events=mock_events,
 		)
@@ -267,3 +325,41 @@ class TestChatsService:
 
 		with pytest.raises(Exception, match="Response generation failed"):
 			await chats_service.send_message(sample_user_message_dto)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_system_prompt_assembled_from_scene_and_characters(
+		self, chats_service, mock_character_gateway, mock_scene_gateway, mock_gateway, sample_user_message_dto
+	):
+		mock_character_gateway.get_for_scene.return_value = [
+			Character(name="Aria", system_prompt="A brave and cautious knight."),
+		]
+		mock_scene_gateway.get_one.return_value = Scene(
+			title="Dark Forest",
+			owner_id=uuid4(),
+			background_prompt="A misty woodland at dusk.",
+			initial_message_text="init",
+		)
+
+		await chats_service.send_message(sample_user_message_dto)
+
+		system_prompt = mock_gateway.submit.await_args.kwargs["system_prompt"]
+		assert settings.SYSTEM_PROMPT.strip() in system_prompt
+		assert "Aria" in system_prompt
+		assert "A brave and cautious knight." in system_prompt
+		assert "Dark Forest" in system_prompt
+		assert "A misty woodland at dusk." in system_prompt
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_history_forwarded_in_chronological_order(
+		self, chats_service, mock_messages_gateway, mock_gateway, sample_user_message_dto
+	):
+		newest = Message(message="newest", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.USER)
+		oldest = Message(message="oldest", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.MODEL)
+		mock_messages_gateway.search.return_value = Page[Message](items=[newest, oldest], count=2, offset=0, limit=10)
+
+		await chats_service.send_message(sample_user_message_dto)
+
+		_, history = mock_gateway.submit.await_args.args
+		assert [m.message for m in history] == ["oldest", "newest"]
