@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from logging import Logger
 
+from src.application.chats.settings import ChatSettings
 from src.application.ports import ILLMChatGateway, LLMModelType, LLMResponse, UserMessageDTO
 
 
@@ -14,6 +15,7 @@ class MockGateway(ILLMChatGateway):
 		self,
 		message: UserMessageDTO,
 		history: list[UserMessageDTO],
+		chat_settings: ChatSettings | None = None,  # noqa: ARG002 - offline gateway ignores settings
 	) -> LLMResponse:
 		"""Offline/synchronous gateway: returns the canned reply immediately.
 

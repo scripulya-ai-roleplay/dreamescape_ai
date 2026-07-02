@@ -3,6 +3,7 @@ from logging import Logger
 
 from faststream.rabbit import RabbitBroker
 
+from src.application.chats.settings import ChatSettings
 from src.application.ports import (
 	ILLMChatGateway,
 	IScripulyaAgentClient,
@@ -60,8 +61,9 @@ class ScripulyaAgentGateway(ILLMChatGateway):
 		self,
 		message: UserMessageDTO,
 		history: list[UserMessageDTO],
+		chat_settings: ChatSettings | None = None,
 	) -> LLMResponse | None:
 		# Fire-and-forget: the reply is persisted and pushed to SSE by the result
 		# subscriber. Returns None so the caller leaves the placeholder PENDING.
-		await self._client.publish(LLMRequest(message=message, history=history))
+		await self._client.publish(LLMRequest(message=message, history=history, chat_settings=chat_settings))
 		return None

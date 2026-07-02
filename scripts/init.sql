@@ -7,6 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- Drop tables if they exist (for clean initialization)
 DROP TABLE IF EXISTS media_assets CASCADE;
 DROP TABLE IF EXISTS messages CASCADE;
+DROP TABLE IF EXISTS chat_settings CASCADE;
 DROP TABLE IF EXISTS chats CASCADE;
 DROP TABLE IF EXISTS character_scene CASCADE;
 DROP TABLE IF EXISTS scenes CASCADE;
@@ -58,6 +59,14 @@ CREATE TABLE chats (
 
 -- Create index on user_id for chats
 CREATE INDEX idx_chats_user_id ON chats(user_id);
+
+-- Create chat_settings table (1:1 with chats; settings stored as a JSONB blob)
+CREATE TABLE chat_settings (
+    chat_id UUID PRIMARY KEY REFERENCES chats(id) ON DELETE CASCADE,
+    settings JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 
 -- Create messages table
 CREATE TABLE messages (

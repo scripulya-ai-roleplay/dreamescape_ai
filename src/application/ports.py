@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.domain.models import ChatRoles
 from src.application.character.schemas import CharacterFilterDTO
 from src.application.chats.schemas import ChatFilterDTO
+from src.application.chats.settings import ChatSettings
 from src.application.message.schemas import MessagesFilterDto
 from src.application.scene.schemas import SceneFilterDTO
 from src.domain.models import User, Scene, Character, Message, Chat
@@ -105,6 +106,7 @@ class LLMRequest(BaseModel):
 
 	message: UserMessageDTO
 	history: list[UserMessageDTO] = []
+	chat_settings: ChatSettings | None = None
 
 
 class LLMErrorResponse(BaseModel):
@@ -135,6 +137,7 @@ class ILLMChatGateway(abc.ABC):
 		self,
 		message: UserMessageDTO,
 		history: list[UserMessageDTO],
+		chat_settings: ChatSettings | None = None,
 	) -> Optional[LLMResponse]: ...
 
 
@@ -252,6 +255,26 @@ class IChatService(abc.ABC):
 
 	@abc.abstractmethod
 	async def update(self, target_chat_uuid: UUID, chat_name: str) -> UUID: ...
+
+
+class IChatSettingsGateway(abc.ABC):
+	@abc.abstractmethod
+	async def get_for_chat(self, chat_id: UUID) -> Optional[ChatSettings]:
+		"""Return the stored ChatSettings for chat_id, or None if none are set."""
+		...
+
+	@abc.abstractmethod
+	async def upsert(self, chat_id: UUID, settings: ChatSettings) -> ChatSettings:
+		"""Insert or replace the ChatSettings row for chat_id."""
+		...
+
+
+class IChatSettingsService(abc.ABC):
+	@abc.abstractmethod
+	async def get_for_chat(self, chat_id: UUID) -> Optional[ChatSettings]: ...
+
+	@abc.abstractmethod
+	async def upsert(self, chat_id: UUID, settings: ChatSettings) -> ChatSettings: ...
 
 
 class IMessageGateway(abc.ABC):
