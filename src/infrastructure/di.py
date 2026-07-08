@@ -24,6 +24,7 @@ from src.application.ports import (
 	IServerEventsService,
 	IMessageService,
 	IMessageGateway,
+	IPromptService,
 	ISceneService,
 	ISceneGateway,
 	ICharacterService,
@@ -47,6 +48,7 @@ from src.application.character.service import CharacterService
 from src.application.chats.service import ChatService
 from src.application.chats.settings_service import ChatSettingsService
 from src.application.chats.llm_service import LLMChatsService
+from src.application.chats.prompt_service import PromptService
 from src.application.message.service import MessageService
 from src.application.auth.jwt_service import JWTService
 
@@ -128,12 +130,20 @@ class ServiceProvider(Provider):
 			logger=logger,
 		)
 
+	@provide(scope=Scope.APP)
+	def provide_prompt_service(self) -> IPromptService:
+		return PromptService()
+
 	@provide(scope=Scope.REQUEST)
 	def provide_chats_service(
 		self,
 		gateway_factory: IGatewayFactory,
 		message_gateway: IMessageGateway,
 		chat_settings_gateway: IChatSettingsGateway,
+		chat_gateway: IChatGateway,
+		scene_gateway: ISceneGateway,
+		character_gateway: ICharacterGateway,
+		prompt_service: IPromptService,
 		uow: PostgresqlUOW,
 		events: IChatEventGateway,
 	) -> IChatsService:
@@ -141,6 +151,10 @@ class ServiceProvider(Provider):
 			gateway_factory=gateway_factory,
 			messages_gateway=message_gateway,
 			chat_settings_gateway=chat_settings_gateway,
+			chat_gateway=chat_gateway,
+			scene_gateway=scene_gateway,
+			character_gateway=character_gateway,
+			prompt_service=prompt_service,
 			_uow=uow,
 			_events=events,
 		)

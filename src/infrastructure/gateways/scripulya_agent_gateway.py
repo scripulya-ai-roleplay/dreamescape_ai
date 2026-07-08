@@ -62,8 +62,16 @@ class ScripulyaAgentGateway(ILLMChatGateway):
 		message: UserMessageDTO,
 		history: list[UserMessageDTO],
 		chat_settings: ChatSettings | None = None,
+		system_prompt: str = "",
 	) -> LLMResponse | None:
 		# Fire-and-forget: the reply is persisted and pushed to SSE by the result
 		# subscriber. Returns None so the caller leaves the placeholder PENDING.
-		await self._client.publish(LLMRequest(message=message, history=history, chat_settings=chat_settings))
+		await self._client.publish(
+			LLMRequest(
+				message=message,
+				history=history,
+				chat_settings=chat_settings,
+				system_prompt=system_prompt,
+			)
+		)
 		return None

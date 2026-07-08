@@ -16,6 +16,7 @@ class MockGateway(ILLMChatGateway):
 		message: UserMessageDTO,
 		history: list[UserMessageDTO],
 		chat_settings: ChatSettings | None = None,  # noqa: ARG002 - offline gateway ignores settings
+		system_prompt: str = "",  # noqa: ARG002 - offline gateway ignores prompt
 	) -> LLMResponse:
 		"""Offline/synchronous gateway: returns the canned reply immediately.
 

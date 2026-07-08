@@ -3,11 +3,15 @@ from dataclasses import dataclass
 
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import (
+	ICharacterGateway,
 	IChatsService,
 	IChatEventGateway,
+	IChatGateway,
 	IChatSettingsGateway,
 	IGatewayFactory,
 	IMessageGateway,
+	IPromptService,
+	ISceneGateway,
 	IUnitOfWork,
 	UserMessageDTO,
 )
@@ -21,6 +25,10 @@ class LLMChatsService(IChatsService):
 	gateway_factory: IGatewayFactory
 	messages_gateway: IMessageGateway
 	chat_settings_gateway: IChatSettingsGateway
+	chat_gateway: IChatGateway
+	scene_gateway: ISceneGateway
+	character_gateway: ICharacterGateway
+	prompt_service: IPromptService
 	_uow: IUnitOfWork
 	_events: IChatEventGateway
 
@@ -33,8 +41,13 @@ class LLMChatsService(IChatsService):
 		history_page = await self.messages_gateway.search(MessagesFilterDto(chats_ids=[chat_dto.chat_id]))
 		history = [
 			UserMessageDTO(message=m.message, chat_id=chat_dto.chat_id, llm_model=chat_dto.llm_model, role=m.role)
-			for m in history_page.items
+			for m in reversed(history_page.items)
 		]
+
+		chat = await self.chat_gateway.get_one(chat_dto.chat_id)
+		scene = await self.scene_gateway.get_one(chat.scene_id)
+		characters = await self.character_gateway.get_for_scene(chat.scene_id)
+		system_prompt = self.prompt_service.build_system_prompt(scene, characters)
 
 		async with self._uow:
 			user_message = await self.messages_gateway.create(
@@ -51,7 +64,7 @@ class LLMChatsService(IChatsService):
 		# subscriber; synchronous/offline gateways (mock) return the LLMResponse
 		# immediately, so the reply is appended inline and pushed to SSE here.
 		chat_settings = await self.chat_settings_gateway.get_for_chat(chat_dto.chat_id)
-		response = await gateway.submit(chat_dto, history, chat_settings=chat_settings)
+		response = await gateway.submit(chat_dto, history, chat_settings=chat_settings, system_prompt=system_prompt)
 		if response is not None:
 			async with self._uow:
 				model_message = await self.messages_gateway.create(
