@@ -84,11 +84,23 @@ CREATE TABLE messages (
 CREATE INDEX idx_messages_chat_id ON messages(chat_id);
 
 -- Create media_assets table
+-- Images live in MinIO/S3 (object storage). A row either points at a managed
+-- object (object_key + bucket, uploaded via the media API) OR at a legacy
+-- external URL (file_url). content_type/size_bytes/is_public/owner_id describe
+-- the asset; is_public picks the bucket at upload time and gates anonymous read.
 CREATE TABLE media_assets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    file_url TEXT NOT NULL,
-    entity_type VARCHAR(100) NOT NULL,
-    entity_id UUID NOT NULL
+    object_key TEXT,                                    -- MinIO/S3 object key (NULL for legacy external URLs)
+    bucket VARCHAR(63),                                 -- which bucket the object lives in (NULL for legacy)
+    file_url TEXT,                                      -- legacy/external absolute URL (NULL for managed uploads)
+    content_type VARCHAR(100) NOT NULL DEFAULT 'image/png',
+    size_bytes BIGINT NOT NULL DEFAULT 0,
+    entity_type VARCHAR(100) NOT NULL,                  -- 'character' | 'scene' | 'user'
+    entity_id UUID NOT NULL,
+    is_public BOOLEAN NOT NULL DEFAULT false,
+    owner_id UUID REFERENCES users(id) ON DELETE SET NULL,  -- uploader (NULL for legacy/seeded rows)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CHECK (object_key IS NOT NULL OR file_url IS NOT NULL)
 );
 
 -- Create index on entity_type and entity_id for media_assets
@@ -267,6 +279,10 @@ INSERT INTO media_assets (id, file_url, entity_type, entity_id) VALUES
     ('8212d164-1600-4aea-936e-16ce861eb58b', 'https://very-long-domain-name-for-testing-purposes.example.organization/extremely/long/path/structure/for/testing/url/length/limits/user-profile-image-with-very-descriptive-filename.jpg', 'user', '7edb0c2c-8dcd-402a-a979-cc7853d9b627'),
     ('34e2a21b-d1cd-4cb9-9f30-f1cee4703868', 'https://inactive-user-assets.example.com/placeholder.png', 'user', '53c41979-a116-4bb7-8281-57fadfd89a13'),
     ('05591567-becb-447f-9070-b0d4db85f307', 'https://minimal.example.com/bg.jpg', 'scene', 'f08f390a-1237-4bfa-9e53-6980dbb5aa0d');
+
+-- All seeded rows use legacy external file_url (object_key IS NULL): treat them
+-- as public so the read path (GET /api/v1/media/{id}) returns the URL as-is.
+UPDATE media_assets SET is_public = true WHERE object_key IS NULL;
 
 -- Display summary of inserted data
 SELECT 'Database initialization completed successfully!' as status;

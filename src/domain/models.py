@@ -88,3 +88,36 @@ class Message(BaseModel):
 	# timestamps are optional because they are generated automatically inside DB
 	date_created: None | datetime = None
 	date_edited: None | datetime = None
+
+
+class MediaEntityType(StrEnum):
+	"""The kind of entity a media asset (image) is attached to."""
+
+	CHARACTER = "character"
+	SCENE = "scene"
+	USER = "user"
+
+
+class MediaAsset(BaseModel):
+	"""An image attached to an entity (character/scene/user).
+
+	A media asset either points at a managed object in object storage
+	(``object_key`` + ``bucket``) or at a legacy/external absolute URL
+	(``file_url``). ``is_public`` selects the bucket at upload time and gates
+	anonymous reads; private assets are only handed to their owner as a
+	short-lived presigned URL.
+	"""
+
+	model_config = ConfigDict(frozen=True)
+
+	id: None | UUID = None
+	object_key: None | str = None
+	bucket: None | str = None
+	file_url: None | str = None
+	content_type: str
+	size_bytes: int = 0
+	entity_type: MediaEntityType
+	entity_id: UUID
+	is_public: bool = False
+	owner_id: None | UUID = None
+	created_at: None | datetime = None
