@@ -8,9 +8,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.application.media.schemas import MediaFilterDTO
 from src.application.ports import IMediaGateway, Page
 from src.domain.models import MediaAsset, MediaEntityType
-from src.infrastructure.database.models import MediaAsset as MediaAssetModel
+from src.infrastructure.database.models import (
+	MediaAsset as MediaAssetModel,
+	Character as CharacterModel,
+	Scene as SceneModel,
+	User as UserModel,
+)
 
 logger = logging.getLogger(__name__)
+
+# Maps an entity kind to (table, owner-column) for ownership checks. Characters
+# and scenes are owned via owner_id; a user "owns" itself (its own id).
+_ENTITY_OWNER_COLUMN: dict[MediaEntityType, tuple[type, object]] = {
+	MediaEntityType.CHARACTER: (CharacterModel, CharacterModel.owner_id),
+	MediaEntityType.SCENE: (SceneModel, SceneModel.owner_id),
+	MediaEntityType.USER: (UserModel, UserModel.id),
+}
 
 
 @dataclass
@@ -45,6 +58,16 @@ class MediaGateway(IMediaGateway):
 		model = result.scalar_one()
 		return self._to_domain(model)
 
+	async def get_entity_owner(self, entity_type: MediaEntityType, entity_id: UUID) -> UUID | None:
+		logger.info("Resolving owner of %s/%s", entity_type, entity_id)
+
+		mapping = _ENTITY_OWNER_COLUMN.get(entity_type)
+		if mapping is None:
+			return None
+		model, owner_col = mapping
+		result = await self.session.execute(select(owner_col).where(model.id == entity_id))
+		return result.scalar_one_or_none()
+
 	async def get_for_entity(self, entity_type: MediaEntityType, entity_id: UUID) -> list[MediaAsset]:
 		logger.info("Getting media for %s/%s", entity_type, entity_id)
 
@@ -75,14 +98,18 @@ class MediaGateway(IMediaGateway):
 
 		where_clause = and_(*conditions)
 
-		query = select(MediaAssetModel).where(where_clause)
-		if dto.limit > 0:
-			query = query.limit(dto.limit)
-		if dto.offset > 0:
-			query = query.offset(dto.offset)
-
 		count_query = select(func.count(MediaAssetModel.id)).where(where_clause)
 		total = (await self.session.execute(count_query)).scalar() or 0
+
+		# limit==0 means "no items": skip the items query so we never run an
+		# unbounded SELECT. The total is still reported for pagination.
+		if dto.limit == 0:
+			logger.info("limit=0 -> returning no items out of %s total", total)
+			return Page[MediaAsset](items=[], count=total, offset=dto.offset, limit=dto.limit)
+
+		query = select(MediaAssetModel).where(where_clause).limit(dto.limit)
+		if dto.offset > 0:
+			query = query.offset(dto.offset)
 
 		result = await self.session.execute(query)
 		items = [self._to_domain(model) for model in result.scalars().all()]

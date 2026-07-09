@@ -87,6 +87,26 @@ class TestMediaGateway:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
+	async def test_get_entity_owner_character(self, media_gateway, mock_session):
+		owner = uuid4()
+		mock_result = Mock()
+		mock_result.scalar_one_or_none.return_value = owner
+		mock_session.execute.return_value = mock_result
+
+		result = await media_gateway.get_entity_owner(MediaEntityType.CHARACTER, uuid4())
+		assert result == owner
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_get_entity_owner_missing_returns_none(self, media_gateway, mock_session):
+		mock_result = Mock()
+		mock_result.scalar_one_or_none.return_value = None
+		mock_session.execute.return_value = mock_result
+
+		assert await media_gateway.get_entity_owner(MediaEntityType.SCENE, uuid4()) is None
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
 	async def test_get_for_entity(self, media_gateway, mock_session, sample_model):
 		mock_result = Mock()
 		mock_scalars = Mock()
@@ -122,6 +142,24 @@ class TestMediaGateway:
 		assert len(result.items) == 1
 		# the executed query was built (two DB calls happened)
 		assert mock_session.execute.await_count == 2
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_search_limit_zero_returns_no_items(self, media_gateway, mock_session):
+		# limit=0 must not run an unbounded items query: only the count is issued.
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 42
+		mock_session.execute.return_value = mock_count_result
+
+		dto = MediaFilterDTO(limit=0, offset=0)
+		result = await media_gateway.search(dto, actor_id=uuid4())
+
+		assert isinstance(result, Page)
+		assert result.count == 42  # total still reported for pagination
+		assert result.items == []
+		assert result.limit == 0
+		# exactly one DB call (the count) — the items query is skipped entirely
+		assert mock_session.execute.await_count == 1
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio

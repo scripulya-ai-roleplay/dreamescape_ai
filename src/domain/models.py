@@ -99,15 +99,6 @@ class MediaEntityType(StrEnum):
 
 
 class MediaAsset(BaseModel):
-	"""An image attached to an entity (character/scene/user).
-
-	A media asset either points at a managed object in object storage
-	(``object_key`` + ``bucket``) or at a legacy/external absolute URL
-	(``file_url``). ``is_public`` selects the bucket at upload time and gates
-	anonymous reads; private assets are only handed to their owner as a
-	short-lived presigned URL.
-	"""
-
 	model_config = ConfigDict(frozen=True)
 
 	id: None | UUID = None

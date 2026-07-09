@@ -3,97 +3,90 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 from starlette import status
 
-from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO
-from src.application.ports import IObjectStorageGateway, IMediaGateway, IMediaService, IUnitOfWork, Page
-from src.conf import settings
-from src.domain.models import MediaAsset, MediaEntityType
+from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadDTO
+from src.application.ports import (
+	IImageReader,
+	IObjectStorageGateway,
+	IMediaGateway,
+	IMediaService,
+	IUnitOfWork,
+	Page,
+)
+from src.domain.models import MediaAsset
 
 logger = logging.getLogger(__name__)
-
-# Image content types accepted on upload. The extension is derived from the
-# content type (not the client-supplied filename) and doubles as the allowlist.
-_CONTENT_TYPE_EXT: dict[str, str] = {
-	"image/png": "png",
-	"image/jpeg": "jpg",
-	"image/webp": "webp",
-	"image/gif": "gif",
-	"image/svg+xml": "svg",
-	"image/bmp": "bmp",
-	"image/tiff": "tiff",
-	"image/x-icon": "ico",
-}
-
-_READ_CHUNK = 64 * 1024
 
 
 @dataclass
 class MediaService(IMediaService):
 	storage: IObjectStorageGateway
 	gateway: IMediaGateway
+	reader: IImageReader
 	uow: IUnitOfWork
 
-	async def upload(
-		self,
-		file: UploadFile,
-		entity_type: MediaEntityType,
-		entity_id: UUID,
-		is_public: bool,
-		owner_id: UUID,
-	) -> MediaAssetDTO:
-		content_type = (file.content_type or "").lower()
-		if content_type not in _CONTENT_TYPE_EXT:
-			logger.warning("Rejected upload: unsupported content_type=%s", content_type)
+	async def upload(self, dto: MediaUploadDTO) -> MediaAssetDTO:
+		# Authorize first: the uploader must own the target entity. Fails fast
+		# before reading the file, so an attacker can't attach media to another
+		# user's character/scene (or to a fabricated UUID). 403 in both the
+		# not-owned and not-found cases to avoid leaking which entities exist.
+		entity_owner = await self.gateway.get_entity_owner(dto.entity_type, dto.entity_id)
+		if entity_owner is None or entity_owner != dto.owner_id:
+			logger.warning(
+				"Rejected upload: user %s may not attach media to %s/%s (owner=%s)",
+				dto.owner_id,
+				dto.entity_type,
+				dto.entity_id,
+				entity_owner,
+			)
 			raise HTTPException(
-				status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-				detail=f"Unsupported image content type: {content_type or 'unknown'}",
+				status_code=status.HTTP_403_FORBIDDEN,
+				detail="Not allowed to attach media to this entity",
 			)
 
-		# Stream into memory with a hard cap so a huge upload cannot OOM the process.
-		max_bytes = settings.MEDIA_MAX_UPLOAD_BYTES
-		buf = bytearray()
-		while True:
-			chunk = await file.read(_READ_CHUNK)
-			if not chunk:
-				break
-			buf += chunk
-			if len(buf) > max_bytes:
-				logger.warning("Rejected upload: size exceeds %s bytes", max_bytes)
-				raise HTTPException(
-					status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-					detail=f"Image exceeds the {max_bytes}-byte limit",
-				)
+		# Read + validate the uploaded image (size cap + content-type sniff).
+		# Raises UnsupportedImageTypeException (415) / ImageTooLargeException (413),
+		# which the global exception handler maps to HTTP responses.
+		image = await self.reader.read(dto.file)
 
-		ext = _CONTENT_TYPE_EXT[content_type]
-		object_key = f"{entity_type.value}/{uuid4().hex}.{ext}"
+		object_key = f"{dto.entity_type.value}/{uuid4().hex}.{image.ext}"
 
 		await self.storage.ensure_buckets()
 		bucket, size = await self.storage.upload(
 			object_key=object_key,
-			data=io.BytesIO(bytes(buf)),
-			length=len(buf),
-			content_type=content_type,
-			is_public=is_public,
+			data=io.BytesIO(image.data),
+			length=image.size,
+			content_type=image.content_type,
+			is_public=dto.is_public,
 		)
 
 		asset = MediaAsset(
 			object_key=object_key,
 			bucket=bucket,
 			file_url=None,
-			content_type=content_type,
+			content_type=image.content_type,
 			size_bytes=size,
-			entity_type=entity_type,
-			entity_id=entity_id,
-			is_public=is_public,
-			owner_id=owner_id,
+			entity_type=dto.entity_type,
+			entity_id=dto.entity_id,
+			is_public=dto.is_public,
+			owner_id=dto.owner_id,
 		)
 
-		async with self.uow:
-			asset = await self.gateway.create(asset)
+		# The object is already in storage; if the DB write fails, reclaim it so
+		# it can't become an unreclaimable orphan. Mirrors the delete ordering.
+		try:
+			async with self.uow:
+				asset = await self.gateway.create(asset)
+		except Exception:
+			try:
+				await self.storage.delete_object(bucket, object_key)
+			except Exception:
+				logger.exception("Failed to clean up orphaned object %s/%s", bucket, object_key)
+			raise
 
-		logger.info("Uploaded media %s for %s/%s", asset.id, entity_type, entity_id)
+		logger.info("Uploaded media %s for %s/%s", asset.id, dto.entity_type, dto.entity_id)
 		return await self._to_dto(asset)
 
 	async def get_one(self, media_id: UUID, actor_id: UUID | None) -> MediaAssetDTO:

@@ -32,6 +32,7 @@ from src.application.ports import (
 	IObjectStorageGateway,
 	IMediaGateway,
 	IMediaService,
+	IImageReader,
 	IScripulyaAgentClient,
 	LLMModelType,
 )
@@ -45,6 +46,7 @@ from src.infrastructure.gateways.chat_settings_gateway import ChatSettingsGatewa
 from src.infrastructure.gateways.message_gateway import MessageGateway
 from src.infrastructure.gateways.chat_event_gateway import ChatEventGateway
 from src.infrastructure.gateways.object_storage_gateway import MinioObjectStorageGateway
+from src.infrastructure.gateways.image_reader import ImageReader
 from src.infrastructure.gateways.media_gateway import MediaGateway
 from src.application.events.server_events_service import ServerEventsService
 from src.application.user.user_service import UserService
@@ -120,6 +122,11 @@ class GatewayProvider(Provider):
 		# Holds two long-lived minio clients (data + public-endpoint). Lazily
 		# provisioned on first upload / best-effort at startup (see app lifespan).
 		return MinioObjectStorageGateway.from_settings(settings)
+
+	@provide(scope=Scope.APP)
+	def provide_image_reader(self) -> IImageReader:
+		# Stateless: just carries the upload size cap from settings.
+		return ImageReader(max_bytes=settings.MEDIA_MAX_UPLOAD_BYTES)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_media_gateway(self, session: AsyncSession) -> IMediaGateway:
@@ -198,9 +205,10 @@ class ServiceProvider(Provider):
 		self,
 		storage: IObjectStorageGateway,
 		media_gateway: IMediaGateway,
+		reader: IImageReader,
 		uow: PostgresqlUOW,
 	) -> IMediaService:
-		return MediaService(storage=storage, gateway=media_gateway, uow=uow)
+		return MediaService(storage=storage, gateway=media_gateway, reader=reader, uow=uow)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_scene_service(self, scene_gateway: ISceneGateway, uow: PostgresqlUOW) -> ISceneService:

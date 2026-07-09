@@ -17,7 +17,7 @@ from src.application.chats.settings import ChatSettings
 from src.application.message.schemas import MessagesFilterDto
 from src.application.scene.schemas import SceneFilterDTO
 from src.domain.models import User, Scene, Character, Message, Chat, MediaAsset, MediaEntityType
-from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO
+from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadDTO
 from src.application.user.schemas import UserDTO
 
 
@@ -347,6 +347,38 @@ class IMessageService(abc.ABC):
 	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]: ...
 
 
+class UploadedImage(BaseModel):
+	"""A fully-read, validated uploaded image.
+
+	Produced by IImageReader after enforcing the size cap and verifying the real
+	content type (magic-number sniff). ``ext`` is the storage extension derived
+	from the (validated) ``content_type``.
+	"""
+
+	model_config = ConfigDict(frozen=True)
+
+	content_type: str
+	ext: str
+	data: bytes
+	size: int
+
+
+class IImageReader(abc.ABC):
+	"""Reads and validates an uploaded image file.
+
+	Keeps byte-level upload parsing (streaming, size cap, content-type sniff) out
+	of the media service. On failure raises UnsupportedImageTypeException (415) or
+	ImageTooLargeException (413), which the global exception handler maps to HTTP
+	responses.
+	"""
+
+	@abc.abstractmethod
+	async def read(self, file: UploadFile) -> UploadedImage:
+		"""Read the whole upload into memory (enforcing the size cap) and verify its
+		real content type agrees with the declared one."""
+		...
+
+
 class IObjectStorageGateway(abc.ABC):
 	"""Abstraction over the object store (MinIO/S3) backing media assets.
 
@@ -398,6 +430,17 @@ class IMediaGateway(abc.ABC):
 	async def get_one(self, media_id: UUID) -> MediaAsset: ...
 
 	@abc.abstractmethod
+	async def get_entity_owner(self, entity_type: MediaEntityType, entity_id: UUID) -> Optional[UUID]:
+		"""Return the user id that owns ``(entity_type, entity_id)``.
+
+		For characters/scenes this is the row's ``owner_id``; for users it is the
+		user's own id. ``None`` is returned when no such entity exists (or the
+		entity kind is unknown). Used to authorize media uploads: the uploader
+		must own the target entity.
+		"""
+		...
+
+	@abc.abstractmethod
 	async def get_for_entity(self, entity_type: MediaEntityType, entity_id: UUID) -> list[MediaAsset]: ...
 
 	@abc.abstractmethod
@@ -416,14 +459,14 @@ class IMediaGateway(abc.ABC):
 
 class IMediaService(abc.ABC):
 	@abc.abstractmethod
-	async def upload(
-		self,
-		file: UploadFile,
-		entity_type: MediaEntityType,
-		entity_id: UUID,
-		is_public: bool,
-		owner_id: UUID,
-	) -> MediaAssetDTO: ...
+	async def upload(self, dto: MediaUploadDTO) -> MediaAssetDTO:
+		"""Upload the file in ``dto`` to object storage and persist a media row.
+
+		``dto.owner_id`` is the authenticated uploader (sourced from the auth token
+		by the caller). Authorization (the uploader owns the target entity),
+		content-type sniffing, and orphan-object rollback are handled inside.
+		"""
+		...
 
 	@abc.abstractmethod
 	async def get_one(self, media_id: UUID, actor_id: Optional[UUID]) -> MediaAssetDTO:

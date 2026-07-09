@@ -1,6 +1,8 @@
 """
-Global exception handling module for FastAPI application.
-Handles LLM-specific exceptions including quota, JSON parsing, and content safety violations.
+API exception types raised by infrastructure gateways.
+Covers LLM-provider errors (quota, JSON parsing, content safety) and media-upload
+validation errors (unsupported type, oversize). All subclass BaseAPIException so
+the global exception handler maps them to the right HTTP status automatically.
 """
 
 from fastapi import status
@@ -50,4 +52,29 @@ class RateLimitException(BaseAPIException):
 	def __init__(self, message: str = "Rate limit exceeded", **kwargs):
 		super().__init__(
 			message=message, status_code=status.HTTP_429_TOO_MANY_REQUESTS, error_code="RATE_LIMIT_EXCEEDED", **kwargs
+		)
+
+
+class UnsupportedImageTypeException(BaseAPIException):
+	"""Raised when an uploaded image's declared content type is not accepted, or
+	when the real bytes (magic-number sniff) do not match the declared type."""
+
+	def __init__(self, message: str = "Unsupported image content type", **kwargs):
+		super().__init__(
+			message=message,
+			status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+			error_code="UNSUPPORTED_IMAGE_TYPE",
+			**kwargs,
+		)
+
+
+class ImageTooLargeException(BaseAPIException):
+	"""Raised when an uploaded image exceeds the configured size cap."""
+
+	def __init__(self, message: str = "Image exceeds the size limit", **kwargs):
+		super().__init__(
+			message=message,
+			status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+			error_code="IMAGE_TOO_LARGE",
+			**kwargs,
 		)
