@@ -7,7 +7,73 @@ on:
     branches: [ "main", "master" ]
 
 jobs:
-  build-and-test:
+  # ─────────────────────────────────────────────────────────────────────────
+  # 1) Unit tests + linting. Runs on the runner (no Docker, no services) so it
+  #    is fast and gates the more expensive build/e2e stages. Unit tests are
+  #    isolated and need no database or network.
+  # ─────────────────────────────────────────────────────────────────────────
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # STAGE 0: Linting & Formatting
+      - name: Ruff Linter
+        uses: astral-sh/ruff-action@v1
+        with:
+          args: "check ."
+
+      - name: Ruff Formatter
+        uses: astral-sh/ruff-action@v1
+        with:
+          args: "format --check ."
+
+      # STAGE 1: Unit tests (mirrors the image: deps from requirements.txt)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Unit Tests
+        run: python -m pytest tests/unit
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 2) Dockerfile build. Verifies the image builds and exports it so the e2e
+  #    job tests the exact artifact that was built here (no rebuild).
+  # ─────────────────────────────────────────────────────────────────────────
+  build:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build App Image
+        run: docker build -t main-app .
+
+      # Share the built image with the e2e job (separate runner). Alternatives:
+      # push to ghcr.io and pull in e2e — heavier setup, but cleaner for reuse.
+      - name: Export image
+        run: docker save main-app -o main-app.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-app-image
+          path: main-app.tar
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 3) End-to-end tests. Loads the image from `build`, stands up the services
+  #    the app needs, and runs the e2e suite against the running app.
+  # ─────────────────────────────────────────────────────────────────────────
+  e2e:
+    needs: build
     runs-on: ubuntu-latest
     # Define pre-built images as native pipeline services
     services:
@@ -40,6 +106,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Load App Image
+        uses: actions/download-artifact@v4
+        with:
+          name: main-app-image
+          path: .
+
+      - name: Import image
+        run: docker load -i main-app.tar
+
       # WORKAROUND: Initialize DB
       # Since we cannot mount init.sql in the services block, apply it now.
       - name: Initialize PostgreSQL Database
@@ -52,18 +127,6 @@ jobs:
       - name: Map Google API alias to localhost
         run: echo "127.0.0.1 generativelanguage.googleapis.com" | sudo tee -a /etc/hosts
 
-      # STAGE 0: Linting & Formatting
-      - name: Stage 0a - Ruff Linter
-        uses: astral-sh/ruff-action@v1
-        with:
-          # Pin version here if needed, e.g., version: "0.3.5"
-          args: "check ."
-
-      - name: Stage 0b - Ruff Formatter
-        uses: astral-sh/ruff-action@v1
-        with:
-          args: "format --check ."
-
       - name: Build and start Mock Google API
         # Builds the local Dockerfile and runs it in the background.
         # Ensure the port mapped (443 here) matches what your app expects.
@@ -71,18 +134,8 @@ jobs:
           docker build -t mock-api -f google_api_mock/Dockerfile .
           docker run -d --name mock-google-api -p 443:443 mock-api
 
-      # STAGE 1: Build
-      - name: Stage 1 - Build App Image
-        run: docker build -t main-app .
-
-      # STAGE 2: Unit Tests
-      - name: Stage 2 - Run Unit Tests
-        # Runs in isolation. No database or network connections provided.
-        run: |
-          docker run --rm main-app pytest tests/unit
-
-      # STAGE 2.5: Start Service for E2E
-      - name: Stage 2.5 - Start Main Application
+      # STAGE: Start Service for E2E
+      - name: Start Main Application
         run: |
           docker run -d --name running-app --network host \
             -e GEMINI_API_KEY=fake_api_key_for_testing \
@@ -94,8 +147,7 @@ jobs:
         run: |
           timeout 30 bash -c 'while ! curl -s http://127.0.0.1:8000 > /dev/null; do sleep 2; done'
 
-      # STAGE 3: End-to-End Tests
-      - name: Stage 3 - Run E2E Tests
+      - name: Run E2E Tests
         run: |
           docker run --rm --network host \
             -e BACKEND_HOST=http://127.0.0.1:8000 \
@@ -103,7 +155,7 @@ jobs:
             main-app pytest tests/e2e
 
       - name: Dump Application Logs
-        if: always() # Ensures this runs even if Stage 3 fails
+        if: always() # Ensures this runs even if E2E fails
         # Redirects both stdout and stderr to a file.
         # The || true prevents the pipeline from failing if the container crashed early.
         run: docker logs running-app > running-app.log 2>&1 || true
