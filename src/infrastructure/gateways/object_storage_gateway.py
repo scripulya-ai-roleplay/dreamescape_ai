@@ -12,6 +12,13 @@ from src.application.ports import IObjectStorageGateway
 
 logger = logging.getLogger(__name__)
 
+# MinIO's default region. Preset on both clients so the minio SDK's region
+# lookup (triggered by presigned_get_object) short-circuits instead of making a
+# network call to the client's endpoint — the _url_client's endpoint (the public
+# host) is not reachable from inside the backend container, so a region lookup
+# against it would fail and 500 the upload.
+MINIO_DEFAULT_REGION = "us-east-1"
+
 
 def _parse_endpoint(endpoint: str) -> tuple[str, bool | None]:
 	"""Split a MinIO endpoint into ``(host[:port], secure)``.
@@ -35,9 +42,11 @@ class MinioObjectStorageGateway(IObjectStorageGateway):
 
 	Holds two clients: ``_data_client`` talks to the in-network data endpoint
 	(uploads, bucket provisioning); ``_url_client`` is configured with the public
-	endpoint and is used only to *sign* presigned URLs client-side (it never
-	connects). Signing over the public host is what makes the URLs valid for
-	clients fetching directly from MinIO.
+	endpoint and is used to *sign* presigned URLs over the public host so they are
+	valid for clients fetching directly from MinIO. Both clients are constructed
+	with a preset region so the SDK's region lookup (which presigned_get_object
+	triggers) short-circuits instead of dialing the endpoint — the public host is
+	not reachable from inside the backend container.
 	"""
 
 	_data_client: Minio
@@ -58,6 +67,7 @@ class MinioObjectStorageGateway(IObjectStorageGateway):
 			access_key=settings.MINIO_ROOT_USER,
 			secret_key=settings.MINIO_ROOT_PASSWORD,
 			secure=secure,
+			region=MINIO_DEFAULT_REGION,
 		)
 		return cls(
 			_data_client=Minio(internal_host, **creds),
