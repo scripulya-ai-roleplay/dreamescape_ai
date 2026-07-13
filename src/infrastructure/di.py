@@ -29,6 +29,10 @@ from src.application.ports import (
 	ISceneGateway,
 	ICharacterService,
 	ICharacterGateway,
+	IObjectStorageGateway,
+	IMediaGateway,
+	IMediaService,
+	IImageReader,
 	IScripulyaAgentClient,
 	LLMModelType,
 )
@@ -41,6 +45,9 @@ from src.infrastructure.gateways.chat_gateway import ChatGateway
 from src.infrastructure.gateways.chat_settings_gateway import ChatSettingsGateway
 from src.infrastructure.gateways.message_gateway import MessageGateway
 from src.infrastructure.gateways.chat_event_gateway import ChatEventGateway
+from src.infrastructure.gateways.object_storage_gateway import MinioObjectStorageGateway
+from src.infrastructure.gateways.image_reader import ImageReader
+from src.infrastructure.gateways.media_gateway import MediaGateway
 from src.application.events.server_events_service import ServerEventsService
 from src.application.user.user_service import UserService
 from src.application.scene.service import SceneService
@@ -50,6 +57,7 @@ from src.application.chats.settings_service import ChatSettingsService
 from src.application.chats.llm_service import LLMChatsService
 from src.application.chats.prompt_service import PromptService
 from src.application.message.service import MessageService
+from src.application.media.service import MediaService
 from src.application.auth.jwt_service import JWTService
 
 
@@ -108,6 +116,21 @@ class GatewayProvider(Provider):
 	@provide(scope=Scope.REQUEST)
 	def provide_message_gateway(self, session: AsyncSession) -> IMessageGateway:
 		return MessageGateway(session)
+
+	@provide(scope=Scope.APP)
+	def provide_object_storage_gateway(self) -> IObjectStorageGateway:
+		# Holds two long-lived minio clients (data + public-endpoint). Lazily
+		# provisioned on first upload / best-effort at startup (see app lifespan).
+		return MinioObjectStorageGateway.from_settings(settings)
+
+	@provide(scope=Scope.APP)
+	def provide_image_reader(self) -> IImageReader:
+		# Stateless: just carries the upload size cap from settings.
+		return ImageReader(max_bytes=settings.MEDIA_MAX_UPLOAD_BYTES)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_media_gateway(self, session: AsyncSession) -> IMediaGateway:
+		return MediaGateway(session)
 
 	@provide(scope=Scope.APP)
 	def provide_chat_event_gateway(self) -> IChatEventGateway:
@@ -176,6 +199,16 @@ class ServiceProvider(Provider):
 	@provide(scope=Scope.REQUEST)
 	def provide_message_service(self, message_gateway: IMessageGateway, uow: PostgresqlUOW) -> IMessageService:
 		return MessageService(message_gateway=message_gateway, _uow=uow)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_media_service(
+		self,
+		storage: IObjectStorageGateway,
+		media_gateway: IMediaGateway,
+		reader: IImageReader,
+		uow: PostgresqlUOW,
+	) -> IMediaService:
+		return MediaService(storage=storage, gateway=media_gateway, reader=reader, uow=uow)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_scene_service(self, scene_gateway: ISceneGateway, uow: PostgresqlUOW) -> ISceneService:

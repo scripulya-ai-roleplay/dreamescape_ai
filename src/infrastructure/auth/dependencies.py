@@ -29,10 +29,10 @@ async def get_current_user(credentials=Depends(oauth2_scheme)) -> Dict[str, Any]
 	return payload
 
 
-async def get_optional_user(token: Optional[str] = Depends(HTTPBearer(auto_error=False))) -> Optional[Dict[str, Any]]:
-	"""Optional dependency to get current user - returns None if no valid token."""
-	if not token:
+async def get_optional_user(credentials=Depends(HTTPBearer(auto_error=False))) -> Optional[Dict[str, Any]]:
+	"""Optional dependency to get current user - returns None if no/invalid token."""
+	if not credentials:
 		return None
 
-	payload = verify_token(token)
+	payload = verify_token(credentials.credentials)
 	return payload

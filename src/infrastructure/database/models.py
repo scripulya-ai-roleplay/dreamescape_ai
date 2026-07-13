@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import String, Text, Boolean, Integer, ForeignKey, CheckConstraint, Index, Table, Column
+from sqlalchemy import String, Text, Boolean, Integer, BigInteger, ForeignKey, CheckConstraint, Index, Table, Column
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -124,11 +124,23 @@ class Message(Base):
 
 class MediaAsset(Base):
 	__tablename__ = "media_assets"
-	__table_args__ = (Index("idx_media_entity", "entity_type", "entity_id"),)
+	__table_args__ = (
+		Index("idx_media_entity", "entity_type", "entity_id"),
+		CheckConstraint("object_key IS NOT NULL OR file_url IS NOT NULL", name="check_media_has_location"),
+	)
 
 	id: Mapped[uuid.UUID] = mapped_column(
 		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
 	)
-	file_url: Mapped[str] = mapped_column(Text)
+	# A media asset either references a managed object in object storage
+	# (object_key + bucket) or a legacy/external absolute URL (file_url).
+	object_key: Mapped[Optional[str]] = mapped_column(Text)
+	bucket: Mapped[Optional[str]] = mapped_column(String(63))
+	file_url: Mapped[Optional[str]] = mapped_column(Text)
+	content_type: Mapped[str] = mapped_column(String(100), server_default="image/png", default="image/png")
+	size_bytes: Mapped[int] = mapped_column(BigInteger, server_default="0", default=0)
 	entity_type: Mapped[str] = mapped_column(String(100))
 	entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+	is_public: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
+	owner_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+	created_at: Mapped[datetime] = mapped_column(server_default=func.now())

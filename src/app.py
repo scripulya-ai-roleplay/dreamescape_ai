@@ -16,6 +16,8 @@ from src.controllers.api.v1.chats import router as chat_router
 from src.controllers.api.v1.chat_settings import router as chat_settings_router
 from src.controllers.api.v1.scenes import router as scenes_router
 from src.controllers.api.v1.users import router as users_router
+from src.controllers.api.v1.media import router as media_router
+from src.application.ports import IObjectStorageGateway
 from src.infrastructure.web.global_exceptions_handler import global_exception_handler
 from src.infrastructure.web.middlewares import TraceAndLogRequestsMiddleware
 
@@ -33,6 +35,15 @@ async def lifespan(app: FastAPI):
 	LLM_AGENT_ENABLED is true. When disabled, a MockScripulyaAgentClient is injected and
 	no broker connection is made, so the app runs without RabbitMQ (local docker).
 	"""
+	# Best-effort: provision the media buckets early (and surface a MinIO
+	# misconfig at boot). Non-fatal — upload retries lazily on first use.
+	try:
+		storage = await app.state.dishka_container.get(IObjectStorageGateway)
+		await storage.ensure_buckets()
+		logger.info("Media buckets ensured")
+	except Exception:
+		logger.warning("Could not ensure media buckets at startup; will retry on first upload", exc_info=True)
+
 	if not settings.LLM_AGENT_ENABLED:
 		logger.info("scripulya_agent disabled (LLM_AGENT_ENABLED=false); RabbitMQ broker not started")
 		yield
@@ -76,6 +87,7 @@ def create_app() -> FastAPI:
 	app.include_router(scenes_router)
 	app.include_router(users_router)
 	app.include_router(message_router)
+	app.include_router(media_router)
 	logger.info("API routes registered")
 
 	return app

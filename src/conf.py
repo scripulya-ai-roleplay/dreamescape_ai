@@ -35,6 +35,26 @@ class Settings(BaseSettings):
 	# Database Settings
 	DATABASE_URL: str = "postgresql+asyncpg://user:password@postgres:5432/dbname"
 
+	# --- Object storage (MinIO / S3) for media assets ---
+	# MINIO_INTERNAL_ENDPOINT is the host the backend uses for data ops (put/get
+	# objects, create buckets) — the in-network service name. MINIO_PUBLIC_ENDPOINT
+	# is the host embedded in the URLs handed to clients (mobile/web), which must be
+	# reachable FROM the client: e.g. "localhost:9000" for compose,
+	# "localhost:30900" for the k8s NodePort, or real DNS in prod. The minio client
+	# signs presigned URLs over this host, so a wrong value makes every image 404.
+	MINIO_INTERNAL_ENDPOINT: str = "minio:9000"
+	MINIO_PUBLIC_ENDPOINT: str = "localhost:9000"
+	# Same values as the MinIO server's MINIO_ROOT_USER / MINIO_ROOT_PASSWORD — the
+	# app uses them as its S3 access key / secret.
+	MINIO_ROOT_USER: str = "minioadmin"
+	MINIO_ROOT_PASSWORD: str = "minioadmin"
+	MINIO_SECURE: bool = False
+	MINIO_BUCKET_PUBLIC: str = "scripulya-public"
+	MINIO_BUCKET_PRIVATE: str = "scripulya-private"
+	MINIO_PRESIGN_EXPIRY_SECONDS: int = 900
+	# Hard cap on a single uploaded file (enforced while streaming, not after read).
+	MEDIA_MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
+
 	# JWT Settings
 	JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
 	JWT_PUBLIC_KEY: str = ""

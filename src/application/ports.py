@@ -2,10 +2,11 @@ import abc
 import asyncio
 from abc import ABC, abstractmethod
 from enum import StrEnum
-from typing import Optional, List
+from typing import Optional, List, BinaryIO
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
+from fastapi import UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +16,8 @@ from src.application.chats.schemas import ChatFilterDTO
 from src.application.chats.settings import ChatSettings
 from src.application.message.schemas import MessagesFilterDto
 from src.application.scene.schemas import SceneFilterDTO
-from src.domain.models import User, Scene, Character, Message, Chat
+from src.domain.models import User, Scene, Character, Message, Chat, MediaAsset, MediaEntityType
+from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadDTO
 from src.application.user.schemas import UserDTO
 
 
@@ -343,6 +345,149 @@ class IMessageService(abc.ABC):
 
 	@abc.abstractmethod
 	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]: ...
+
+
+class UploadedImage(BaseModel):
+	"""A fully-read, validated uploaded image.
+
+	Produced by IImageReader after enforcing the size cap and verifying the real
+	content type (magic-number sniff). ``ext`` is the storage extension derived
+	from the (validated) ``content_type``.
+	"""
+
+	model_config = ConfigDict(frozen=True)
+
+	content_type: str
+	ext: str
+	data: bytes
+	size: int
+
+
+class IImageReader(abc.ABC):
+	"""Reads and validates an uploaded image file.
+
+	Keeps byte-level upload parsing (streaming, size cap, content-type sniff) out
+	of the media service. On failure raises UnsupportedImageTypeException (415) or
+	ImageTooLargeException (413), which the global exception handler maps to HTTP
+	responses.
+	"""
+
+	@abc.abstractmethod
+	async def read(self, file: UploadFile) -> UploadedImage:
+		"""Read the whole upload into memory (enforcing the size cap) and verify its
+		real content type agrees with the declared one."""
+		...
+
+
+class IObjectStorageGateway(abc.ABC):
+	"""Abstraction over the object store (MinIO/S3) backing media assets.
+
+	Two hosts are involved: the *data* endpoint (backend -> store, for uploads and
+	bucket provisioning) and the *public* endpoint (embedded in the URLs handed to
+	clients). Presigned URLs are signed over the public endpoint so clients can
+	fetch them directly; the data endpoint is only reachable inside the deploy.
+	"""
+
+	@abc.abstractmethod
+	async def ensure_buckets(self) -> None:
+		"""Idempotently create the public/private buckets and set the public read policy."""
+		...
+
+	@abc.abstractmethod
+	async def upload(
+		self,
+		object_key: str,
+		data: BinaryIO,
+		length: int,
+		content_type: str,
+		is_public: bool,
+	) -> tuple[str, int]:
+		"""Store ``length`` bytes from ``data`` under ``object_key`` in the public
+		or private bucket (per ``is_public``). Returns ``(bucket, size_bytes)``."""
+		...
+
+	@abc.abstractmethod
+	async def presigned_get_url(self, bucket: str, object_key: str) -> str:
+		"""A short-lived presigned GET URL for an object (signed over the public endpoint)."""
+		...
+
+	@abc.abstractmethod
+	def public_url(self, bucket: str, object_key: str) -> str:
+		"""A stable, anonymous URL for an object in the public bucket."""
+		...
+
+	@abc.abstractmethod
+	async def delete_object(self, bucket: str, object_key: str) -> None:
+		"""Remove an object from the store."""
+		...
+
+
+class IMediaGateway(abc.ABC):
+	@abc.abstractmethod
+	async def create(self, asset: MediaAsset) -> MediaAsset: ...
+
+	@abc.abstractmethod
+	async def get_one(self, media_id: UUID) -> MediaAsset: ...
+
+	@abc.abstractmethod
+	async def get_entity_owner(self, entity_type: MediaEntityType, entity_id: UUID) -> Optional[UUID]:
+		"""Return the user id that owns ``(entity_type, entity_id)``.
+
+		For characters/scenes this is the row's ``owner_id``; for users it is the
+		user's own id. ``None`` is returned when no such entity exists (or the
+		entity kind is unknown). Used to authorize media uploads: the uploader
+		must own the target entity.
+		"""
+		...
+
+	@abc.abstractmethod
+	async def get_for_entity(self, entity_type: MediaEntityType, entity_id: UUID) -> list[MediaAsset]: ...
+
+	@abc.abstractmethod
+	async def search(self, dto: MediaFilterDTO, actor_id: Optional[UUID] = None) -> Page[MediaAsset]:
+		"""Page through media assets matching ``dto``.
+
+		When ``actor_id`` is given, only public assets and the actor's own private
+		assets are returned (``is_public OR owner_id = actor``); when ``None``,
+		only public assets. Applied in SQL so pagination counts stay correct.
+		"""
+		...
+
+	@abc.abstractmethod
+	async def delete(self, media_id: UUID) -> None: ...
+
+
+class IMediaService(abc.ABC):
+	@abc.abstractmethod
+	async def upload(self, dto: MediaUploadDTO) -> MediaAssetDTO:
+		"""Upload the file in ``dto`` to object storage and persist a media row.
+
+		``dto.owner_id`` is the authenticated uploader (sourced from the auth token
+		by the caller). Authorization (the uploader owns the target entity),
+		content-type sniffing, and orphan-object rollback are handled inside.
+		"""
+		...
+
+	@abc.abstractmethod
+	async def get_one(self, media_id: UUID, actor_id: Optional[UUID]) -> MediaAssetDTO:
+		"""Return a media asset as a DTO with a consumable ``url``.
+
+		``actor_id`` is the requesting user (``None`` for an anonymous request).
+		Public assets are returned to anyone; private assets require
+		``actor_id == owner_id`` (401 if anonymous, 403 otherwise).
+		"""
+		...
+
+	@abc.abstractmethod
+	async def search(self, dto: MediaFilterDTO, actor_id: Optional[UUID]) -> Page[MediaAssetDTO]:
+		"""List assets matching ``dto``. Private assets belonging to other users
+		are excluded; ``actor_id`` is the requesting user (``None`` = anonymous)."""
+		...
+
+	@abc.abstractmethod
+	async def delete(self, media_id: UUID, actor_id: UUID) -> None:
+		"""Delete a media asset. Only the owner (``actor_id == owner_id``) may delete (403)."""
+		...
 
 
 class IGatewayFactory(ABC):

@@ -84,11 +84,23 @@ CREATE TABLE messages (
 CREATE INDEX idx_messages_chat_id ON messages(chat_id);
 
 -- Create media_assets table
+-- Images live in MinIO/S3 (object storage). A row either points at a managed
+-- object (object_key + bucket, uploaded via the media API) OR at a legacy
+-- external URL (file_url). content_type/size_bytes/is_public/owner_id describe
+-- the asset; is_public picks the bucket at upload time and gates anonymous read.
 CREATE TABLE media_assets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    file_url TEXT NOT NULL,
-    entity_type VARCHAR(100) NOT NULL,
-    entity_id UUID NOT NULL
+    object_key TEXT,                                    -- MinIO/S3 object key (NULL for legacy external URLs)
+    bucket VARCHAR(63),                                 -- which bucket the object lives in (NULL for legacy)
+    file_url TEXT,                                      -- legacy/external absolute URL (NULL for managed uploads)
+    content_type VARCHAR(100) NOT NULL DEFAULT 'image/png',
+    size_bytes BIGINT NOT NULL DEFAULT 0,
+    entity_type VARCHAR(100) NOT NULL,                  -- 'character' | 'scene' | 'user'
+    entity_id UUID NOT NULL,
+    is_public BOOLEAN NOT NULL DEFAULT false,
+    owner_id UUID REFERENCES users(id) ON DELETE SET NULL,  -- uploader (NULL for legacy/seeded rows)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CHECK (object_key IS NOT NULL OR file_url IS NOT NULL)
 );
 
 -- Create index on entity_type and entity_id for media_assets
@@ -245,11 +257,11 @@ INSERT INTO messages (id, chat_id, role, content, cost_crystals, created_at) VAL
 UPDATE messages SET updated_at = created_at;
 
 -- Insert test media assets
+-- Legacy / external assets for characters and users (object_key IS NULL). The bulk
+-- UPDATE below marks these public so GET /api/v1/media/{id} returns file_url as-is.
 INSERT INTO media_assets (id, file_url, entity_type, entity_id) VALUES
     ('fc8a47d7-010a-48f1-8be4-a711760c547f', 'https://example.com/avatar1.png', 'character', '43341001-4ea1-4f03-b315-811d3264b6a3'),
     ('c9709cfb-f8bc-4744-99bf-f4273b01f0dc', 'https://example.com/avatar2.png', 'character', '1a0fca84-996c-43b5-976a-0c676c61dde5'),
-    ('726e284c-d65b-4817-bc73-d654db2854b0', 'https://example.com/scene_bg1.jpg', 'scene', 'e971d123-2f76-4022-87e6-79fc372cbbf3'),
-    ('e29d17cf-0769-40f1-92b5-7a3d45683cfa', 'https://example.com/scene_bg2.jpg', 'scene', '641e5f5d-73ea-4ef0-864c-2cb19f311b11'),
     ('8961b230-0504-4540-bb4c-540551cf2bdf', 'https://example.com/user_profile1.jpg', 'user', '5dbdc924-968a-4c50-94a8-44cdd165e460'),
     ('4fdf4deb-1e61-4e22-8c29-77514fab0f83', 'https://example.com/user_profile2.jpg', 'user', 'f5ac5447-d562-4d7b-91fb-dc4d5bcc4395'),
     ('886e8915-2492-4faa-8c57-9fa3ec5dd37b', 'https://cdn.amazonaws.com/storage/characters/sophisticated-character-avatar-high-resolution.png', 'character', '117737b7-e183-4aac-9a09-47a45c3d6f58'),
@@ -257,16 +269,33 @@ INSERT INTO media_assets (id, file_url, entity_type, entity_id) VALUES
     ('5dcbfb55-ceab-4ddc-889c-ab646576ebcd', 'https://gaming-assets.s3.amazonaws.com/avatars/gaming_companion_animated.webp', 'character', '8abecb4a-8d05-4d24-8fab-31ea776640f2'),
     ('a2c3f558-2939-4502-9fc5-2a4551599e87', 'https://meditation-images.cloudfront.net/peaceful-guide-portrait.svg', 'character', '84d54c1c-6837-44bf-ad31-26c78729a42c'),
     ('4a077616-4dc5-4b70-8145-fc7fce723813', 'https://travel-media.example.org/advisor-profile-hd.jpeg', 'character', '9a6cf9ec-11d7-471b-8678-c8651b8f331f'),
-    ('0c355303-4715-4d94-86a4-5edb450ff93a', 'https://scene-backgrounds.cdn.example.com/fantasy-realm-ultra-wide-4k-background.tiff', 'scene', 'c7e7899e-ac69-4024-a79c-252531920cd2'),
-    ('ad1b4f32-b181-4a79-9627-09d2ba9ca79c', 'https://example.com/beach-paradise-360.jpg', 'scene', '2f263740-29f7-4622-b4ce-fd7ac29d04d5'),
-    ('bca058ca-e53d-47a4-9145-501510142c29', 'https://space-assets.nasa.gov/station-alpha-interior-panoramic.bmp', 'scene', '5277db85-10c6-4f12-ab23-810f289ca6df'),
-    ('febfb826-a578-43ab-858d-0c8060699e77', 'https://underground-lab.tech-assets.com/laboratory-environment-dark.png', 'scene', 'e1daa2c4-3c0b-4ac5-9937-c9540f80c85e'),
     ('26e7e583-63eb-4069-b6c3-f9c93e3b9708', 'https://user-profiles.example.com/premium-user-badge.ico', 'user', 'e5fd1874-a299-4c22-b6b5-af4e00b796a7'),
     ('449b8ea2-f9d6-4c88-a70b-63d832f2436a', 'https://example.com/default-avatar.svg', 'user', 'c23dc540-a0ba-4d83-ac7b-d0f8eab9d463'),
     ('bcfb901c-84c9-4236-8c9f-d7d6fee7805e', 'https://profile-images.example.net/new-user-welcome-banner.webp', 'user', 'f3ba11a5-4026-4c16-9aed-061f0d490ade'),
     ('8212d164-1600-4aea-936e-16ce861eb58b', 'https://very-long-domain-name-for-testing-purposes.example.organization/extremely/long/path/structure/for/testing/url/length/limits/user-profile-image-with-very-descriptive-filename.jpg', 'user', '7edb0c2c-8dcd-402a-a979-cc7853d9b627'),
-    ('34e2a21b-d1cd-4cb9-9f30-f1cee4703868', 'https://inactive-user-assets.example.com/placeholder.png', 'user', '53c41979-a116-4bb7-8281-57fadfd89a13'),
-    ('05591567-becb-447f-9070-b0d4db85f307', 'https://minimal.example.com/bg.jpg', 'scene', 'f08f390a-1237-4bfa-9e53-6980dbb5aa0d');
+    ('34e2a21b-d1cd-4cb9-9f30-f1cee4703868', 'https://inactive-user-assets.example.com/placeholder.png', 'user', '53c41979-a116-4bb7-8281-57fadfd89a13');
+
+-- Scene backgrounds: managed objects in MinIO (scripulya-public), generated and
+-- uploaded by the minio-init seed sidecar in scripulya_deploy from each scene's
+-- background_prompt via an image model. object_key is the single source of truth the
+-- sidecar uploads to (see scripts/seed_minio_media.py). size_bytes is back-filled by
+-- the sidecar after upload; the read path only needs object_key+bucket+is_public.
+INSERT INTO media_assets (id, object_key, bucket, content_type, entity_type, entity_id, is_public) VALUES
+    ('1c93f02d-e19a-4304-9eaa-bcf9edc6d24f', 'scene/e2e-test.png',         'scripulya-public', 'image/png', 'scene', '5c194d75-401f-4fa2-808c-7092153135b7', true), -- E2E Test Scene
+    ('726e284c-d65b-4817-bc73-d654db2854b0', 'scene/office.png',           'scripulya-public', 'image/png', 'scene', 'e971d123-2f76-4022-87e6-79fc372cbbf3', true), -- Office Environment
+    ('e29d17cf-0769-40f1-92b5-7a3d45683cfa', 'scene/coffee-shop.png',      'scripulya-public', 'image/png', 'scene', '641e5f5d-73ea-4ef0-864c-2cb19f311b11', true), -- Cozy Coffee Shop
+    ('a08ff485-b567-4c2f-bb00-7f98ef566401', 'scene/library.png',          'scripulya-public', 'image/png', 'scene', '414e2a88-2376-46bd-bde7-06c7a514e0d4', true), -- Library Study Room
+    ('cbcf5eb0-9a9c-4628-abf5-291e5fe4d086', 'scene/vr-space.png',         'scripulya-public', 'image/png', 'scene', '7a587ee5-d55f-4d09-9ced-927ecc059ff0', true), -- Virtual Reality Space
+    ('05591567-becb-447f-9070-b0d4db85f307', 'scene/minimalist.png',       'scripulya-public', 'image/png', 'scene', 'f08f390a-1237-4bfa-9e53-6980dbb5aa0d', true), -- Minimalist Scene
+    ('0c355303-4715-4d94-86a4-5edb450ff93a', 'scene/fantasy.png',          'scripulya-public', 'image/png', 'scene', 'c7e7899e-ac69-4024-a79c-252531920cd2', true), -- Epic Fantasy Adventure
+    ('ad1b4f32-b181-4a79-9627-09d2ba9ca79c', 'scene/beach.png',            'scripulya-public', 'image/png', 'scene', '2f263740-29f7-4622-b4ce-fd7ac29d04d5', true), -- Beach Resort Paradise
+    ('bca058ca-e53d-47a4-9145-501510142c29', 'scene/space-station.png',    'scripulya-public', 'image/png', 'scene', '5277db85-10c6-4f12-ab23-810f289ca6df', true), -- Space Station Alpha
+    ('febfb826-a578-43ab-858d-0c8060699e77', 'scene/underground-lab.png',  'scripulya-public', 'image/png', 'scene', 'e1daa2c4-3c0b-4ac5-9937-c9540f80c85e', true); -- Underground Laboratory
+
+-- All legacy rows use an external file_url (object_key IS NULL): treat them as public
+-- so the read path (GET /api/v1/media/{id}) returns the URL as-is. Managed scene rows
+-- above carry their own object_key + is_public and are left untouched here.
+UPDATE media_assets SET is_public = true WHERE object_key IS NULL;
 
 -- Display summary of inserted data
 SELECT 'Database initialization completed successfully!' as status;
