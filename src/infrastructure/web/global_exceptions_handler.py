@@ -217,3 +217,38 @@ async def handle_google_api_exception(request: Request, exc: Exception) -> JSONR
 			}
 		},
 	)
+
+
+def register_exception_handlers(app) -> None:
+	"""Register the global handler for the concrete exception types it handles.
+
+	The handler must be registered per concrete type, not for the broad
+	``Exception`` base class: with Starlette 1.0 + h11 (uvicorn's default
+	protocol), a handler keyed on ``Exception`` makes uvicorn close the TCP
+	connection after responding, so any keep-alive client reusing that socket
+	sees its next request fail with RemoteDisconnected. Keying the handler on the
+	specific types is handled on the clean path and leaves the connection open.
+	Exceptions not listed here (genuinely unexpected ones) fall through to
+	Starlette's ServerErrorMiddleware, which routes its 500s back through
+	``global_exception_handler`` via the status-code registration below.
+	"""
+	for exc_type in (
+		BaseAPIException,
+		ValueError,
+		NoResultFound,
+		MultipleResultsFound,
+		IntegrityError,
+		json.JSONDecodeError,
+	):
+		app.add_exception_handler(exc_type, global_exception_handler)
+
+	try:
+		from google.api_core.exceptions import GoogleCloudError
+	except ImportError:
+		# google.api_core is only present with the google-genai transport stack;
+		# without it the google branch of global_exception_handler is unreachable.
+		pass
+	else:
+		app.add_exception_handler(GoogleCloudError, global_exception_handler)
+
+	app.add_exception_handler(500, global_exception_handler)
