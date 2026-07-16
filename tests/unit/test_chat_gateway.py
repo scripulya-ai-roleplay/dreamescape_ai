@@ -238,6 +238,59 @@ class TestChatGateway:
 			await chat_gateway.update(chat_id, new_name)
 
 	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_set_persona_success(self, chat_gateway, mock_session):
+		# Arrange
+		chat_id = uuid4()
+		character_id = uuid4()
+		mock_session.scalar.return_value = 1  # persona character exists
+		mock_result = AsyncMock()
+		mock_result.rowcount = 1  # chat row updated
+		mock_session.execute.return_value = mock_result
+		mock_session.commit = AsyncMock()
+
+		# Act
+		result = await chat_gateway.set_persona(chat_id, character_id)
+
+		# Assert
+		assert result == chat_id
+		mock_session.execute.assert_called_once()
+		mock_session.commit.assert_called_once()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_set_persona_character_not_found(self, chat_gateway, mock_session):
+		# A nonexistent persona must 404 (ValueError) before touching the chat row,
+		# rather than tripping the FK and leaking the constraint name (409).
+		chat_id = uuid4()
+		character_id = uuid4()
+		mock_session.scalar.return_value = 0  # character missing
+
+		with pytest.raises(ValueError, match="Character with ID .* not found"):
+			await chat_gateway.set_persona(chat_id, character_id)
+
+		mock_session.execute.assert_not_called()
+		mock_session.commit.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_set_persona_chat_not_found(self, chat_gateway, mock_session):
+		# Arrange
+		chat_id = uuid4()
+		character_id = uuid4()
+		mock_session.scalar.return_value = 1  # persona character exists
+		mock_result = AsyncMock()
+		mock_result.rowcount = 0  # no chat matched
+		mock_session.execute.return_value = mock_result
+		mock_session.commit = AsyncMock()
+
+		# Act & Assert
+		with pytest.raises(ValueError, match="Chat with ID .* not found"):
+			await chat_gateway.set_persona(chat_id, character_id)
+
+		mock_session.commit.assert_not_called()
+
+	@pytest.mark.unit
 	def test_to_domain_chat_conversion(self, chat_gateway, sample_chat_model):
 		# Act
 		result = chat_gateway._to_domain_chat(sample_chat_model)

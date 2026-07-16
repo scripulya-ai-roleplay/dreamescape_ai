@@ -2,6 +2,8 @@ import pytest
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+from sqlalchemy.exc import NoResultFound
+
 from src.application.scene.service import SceneService
 from src.domain.models import Scene
 from src.application.ports import Page, LikeState, BookmarkState
@@ -297,3 +299,40 @@ class TestSceneService:
 		# Assert
 		assert result == BookmarkState(bookmarked=True)
 		mock_scene_gateway.is_bookmarked.assert_called_once_with(scene_uuid, user_id)
+
+	@pytest.mark.asyncio
+	async def test_like_missing_scene_raises_without_mutating(self, scene_service, mock_scene_gateway):
+		# A missing target must surface as NoResultFound (→ 404) before any write.
+		scene_uuid = uuid4()
+		user_id = uuid4()
+		mock_scene_gateway.get_one.side_effect = NoResultFound("scene not found")
+
+		with pytest.raises(NoResultFound):
+			await scene_service.like(scene_uuid, user_id)
+
+		mock_scene_gateway.set_like.assert_not_called()
+		mock_scene_gateway.count_likes.assert_not_called()
+
+	@pytest.mark.asyncio
+	async def test_get_like_state_missing_scene_raises(self, scene_service, mock_scene_gateway):
+		# The read path must also 404 rather than silently report likes_count: 0.
+		scene_uuid = uuid4()
+		user_id = uuid4()
+		mock_scene_gateway.get_one.side_effect = NoResultFound("scene not found")
+
+		with pytest.raises(NoResultFound):
+			await scene_service.get_like_state(scene_uuid, user_id)
+
+		mock_scene_gateway.is_liked.assert_not_called()
+		mock_scene_gateway.count_likes.assert_not_called()
+
+	@pytest.mark.asyncio
+	async def test_bookmark_missing_scene_raises_without_mutating(self, scene_service, mock_scene_gateway):
+		scene_uuid = uuid4()
+		user_id = uuid4()
+		mock_scene_gateway.get_one.side_effect = NoResultFound("scene not found")
+
+		with pytest.raises(NoResultFound):
+			await scene_service.bookmark(scene_uuid, user_id)
+
+		mock_scene_gateway.set_bookmark.assert_not_called()

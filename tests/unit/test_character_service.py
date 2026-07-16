@@ -2,6 +2,8 @@ import pytest
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+from sqlalchemy.exc import NoResultFound
+
 from src.application.character.service import CharacterService
 from src.domain.models import Character
 from src.application.ports import Page, LikeState, BookmarkState
@@ -279,3 +281,43 @@ class TestCharacterService:
 		# Assert
 		assert result == BookmarkState(bookmarked=True)
 		mock_character_gateway.is_bookmarked.assert_called_once_with(character_uuid, user_id)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_like_missing_character_raises_without_mutating(self, character_service, mock_character_gateway):
+		# A missing target must surface as NoResultFound (→ 404) before any write.
+		character_uuid = uuid4()
+		user_id = uuid4()
+		mock_character_gateway.get_one.side_effect = NoResultFound("character not found")
+
+		with pytest.raises(NoResultFound):
+			await character_service.like(character_uuid, user_id)
+
+		mock_character_gateway.set_like.assert_not_called()
+		mock_character_gateway.count_likes.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_get_like_state_missing_character_raises(self, character_service, mock_character_gateway):
+		# The read path must also 404 rather than silently report likes_count: 0.
+		character_uuid = uuid4()
+		user_id = uuid4()
+		mock_character_gateway.get_one.side_effect = NoResultFound("character not found")
+
+		with pytest.raises(NoResultFound):
+			await character_service.get_like_state(character_uuid, user_id)
+
+		mock_character_gateway.is_liked.assert_not_called()
+		mock_character_gateway.count_likes.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_bookmark_missing_character_raises_without_mutating(self, character_service, mock_character_gateway):
+		character_uuid = uuid4()
+		user_id = uuid4()
+		mock_character_gateway.get_one.side_effect = NoResultFound("character not found")
+
+		with pytest.raises(NoResultFound):
+			await character_service.bookmark(character_uuid, user_id)
+
+		mock_character_gateway.set_bookmark.assert_not_called()

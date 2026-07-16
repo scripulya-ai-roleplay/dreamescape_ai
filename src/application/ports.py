@@ -335,6 +335,9 @@ class IChatGateway(abc.ABC):
 	@abc.abstractmethod
 	async def update(self, target_chat_uuid: UUID, chat_name: str) -> UUID: ...
 
+	@abc.abstractmethod
+	async def set_persona(self, chat_uuid: UUID, user_character_id: UUID) -> UUID: ...
+
 
 class IChatService(abc.ABC):
 	@abc.abstractmethod
@@ -351,6 +354,9 @@ class IChatService(abc.ABC):
 
 	@abc.abstractmethod
 	async def update(self, target_chat_uuid: UUID, chat_name: str) -> UUID: ...
+
+	@abc.abstractmethod
+	async def set_persona(self, chat_uuid: UUID, user_character_id: UUID) -> UUID: ...
 
 
 class IChatSettingsGateway(abc.ABC):

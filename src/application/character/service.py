@@ -87,10 +87,17 @@ class CharacterService(ICharacterService):
 				logger.error(f"Failed to update character {target_character_uuid}: {e}")
 				raise
 
+	# Every like/bookmark verb resolves the character first. A missing target then
+	# raises NoResultFound (→ 404 via the global handler) instead of a raw INSERT
+	# tripping the FK (→ 409 leaking the constraint name) on the writes, or the
+	# reads silently reporting likes_count: 0 / bookmarked: false. Matches how
+	# delete/update already gate on get_one.
+
 	async def like(self, character_uuid: UUID, user_id: UUID) -> LikeState:
 		logger.info(f"User {user_id} liking character {character_uuid}")
 
 		async with self.uow:
+			await self.gateway.get_one(character_uuid)
 			await self.gateway.set_like(character_uuid, user_id)
 			# Read the count inside the same tx so it reflects this like.
 			count = await self.gateway.count_likes(character_uuid)
@@ -100,11 +107,13 @@ class CharacterService(ICharacterService):
 		logger.info(f"User {user_id} unliking character {character_uuid}")
 
 		async with self.uow:
+			await self.gateway.get_one(character_uuid)
 			await self.gateway.unset_like(character_uuid, user_id)
 			count = await self.gateway.count_likes(character_uuid)
 		return LikeState(liked=False, likes_count=count)
 
 	async def get_like_state(self, character_uuid: UUID, user_id: UUID) -> LikeState:
+		await self.gateway.get_one(character_uuid)
 		liked = await self.gateway.is_liked(character_uuid, user_id)
 		count = await self.gateway.count_likes(character_uuid)
 		return LikeState(liked=liked, likes_count=count)
@@ -113,6 +122,7 @@ class CharacterService(ICharacterService):
 		logger.info(f"User {user_id} bookmarking character {character_uuid}")
 
 		async with self.uow:
+			await self.gateway.get_one(character_uuid)
 			await self.gateway.set_bookmark(character_uuid, user_id)
 		return BookmarkState(bookmarked=True)
 
@@ -120,9 +130,11 @@ class CharacterService(ICharacterService):
 		logger.info(f"User {user_id} unbookmarking character {character_uuid}")
 
 		async with self.uow:
+			await self.gateway.get_one(character_uuid)
 			await self.gateway.unset_bookmark(character_uuid, user_id)
 		return BookmarkState(bookmarked=False)
 
 	async def get_bookmark_state(self, character_uuid: UUID, user_id: UUID) -> BookmarkState:
+		await self.gateway.get_one(character_uuid)
 		bookmarked = await self.gateway.is_bookmarked(character_uuid, user_id)
 		return BookmarkState(bookmarked=bookmarked)

@@ -60,6 +60,59 @@ class TestChatsAPI:
 		assert detail_response.status_code == 200
 		assert detail_response.json()["result"]["user_character_id"] == character_id
 
+	HELPFUL_ASSISTANT_ID = "43341001-4ea1-4f03-b315-811d3264b6a3"
+
+	def _create_persona_less_chat(self, client, auth_headers, title):
+		payload = {
+			"title": title,
+			"user_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
+			"scene_id": "5c194d75-401f-4fa2-808c-7092153135b7",
+		}
+		response = client.post("/api/v1/chats/", json=payload, headers=auth_headers)
+		assert response.status_code == 200
+		return response.json()["result"]["id"]
+
+	def test_set_persona_makes_persona_less_chat_messagable(self, client, auth_headers, cleanup_test_chats):
+		"""A chat created without a persona can have one set afterwards via the persona endpoint."""
+		chat_id = self._create_persona_less_chat(client, auth_headers, "Persona-Less Chat")
+
+		# Sanity: created without a persona.
+		before = client.get(f"/api/v1/chats/{chat_id}")
+		assert before.status_code == 200
+		assert before.json()["result"]["user_character_id"] is None
+
+		# Set the persona and confirm it round-trips.
+		set_response = client.post(
+			f"/api/v1/chats/{chat_id}/persona",
+			json={"user_character_id": self.HELPFUL_ASSISTANT_ID},
+			headers=auth_headers,
+		)
+		assert set_response.status_code == 200
+
+		after = client.get(f"/api/v1/chats/{chat_id}")
+		assert after.status_code == 200
+		assert after.json()["result"]["user_character_id"] == self.HELPFUL_ASSISTANT_ID
+
+	def test_set_persona_unknown_chat_returns_404(self, client, auth_headers):
+		unknown_chat_id = "00000000-0000-0000-0000-000000000000"
+		response = client.post(
+			f"/api/v1/chats/{unknown_chat_id}/persona",
+			json={"user_character_id": self.HELPFUL_ASSISTANT_ID},
+			headers=auth_headers,
+		)
+		assert response.status_code == 404
+
+	def test_set_persona_unknown_character_returns_404(self, client, auth_headers, cleanup_test_chats):
+		chat_id = self._create_persona_less_chat(client, auth_headers, "Persona Bad Target Chat")
+		unknown_character_id = "00000000-0000-0000-0000-000000000000"
+		response = client.post(
+			f"/api/v1/chats/{chat_id}/persona",
+			json={"user_character_id": unknown_character_id},
+			headers=auth_headers,
+		)
+		# A nonexistent persona must 404, not 409 via the FK constraint.
+		assert response.status_code == 404
+
 	def test_create_chat_missing_required_fields(self, client, auth_headers):
 		"""Test creating a chat with missing required fields."""
 		# Missing title
@@ -335,6 +388,8 @@ def cleanup_test_chats(client):
 		"Unauthorized Chat",
 		"Test Chat for Details",
 		"Persona Chat",
+		"Persona-Less Chat",
+		"Persona Bad Target Chat",
 		"Updated Chat Name",
 	]
 

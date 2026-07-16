@@ -103,6 +103,21 @@ class TestChatService:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
+	async def test_set_persona_success(self, chat_service, mock_chat_gateway):
+		# Arrange
+		chat_id = uuid4()
+		character_id = uuid4()
+		mock_chat_gateway.set_persona.return_value = chat_id
+
+		# Act
+		result = await chat_service.set_persona(chat_id, character_id)
+
+		# Assert
+		assert result == chat_id
+		mock_chat_gateway.set_persona.assert_called_once_with(chat_id, character_id)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
 	async def test_start_chat_gateway_error(self, chat_service, mock_chat_gateway, sample_chat):
 		# Arrange
 		mock_chat_gateway.create.side_effect = ValueError("Database error")
