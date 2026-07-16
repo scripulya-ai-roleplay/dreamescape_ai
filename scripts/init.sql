@@ -38,7 +38,8 @@ CREATE TABLE scenes (
     title TEXT NOT NULL,
     description TEXT,
     background_prompt TEXT NOT NULL,
-    initial_message_text TEXT NOT NULL
+    initial_message_text TEXT NOT NULL,
+    is_public BOOLEAN NOT NULL DEFAULT false
 );
 
 -- Create character_scene junction table for many-to-many relationship
@@ -59,6 +60,9 @@ CREATE TABLE chats (
 
 -- Create index on user_id for chats
 CREATE INDEX idx_chats_user_id ON chats(user_id);
+
+-- Create index on scene_id for chats
+CREATE INDEX idx_chats_scene_id ON chats(scene_id);
 
 -- Create chat_settings table (1:1 with chats; settings stored as a JSONB blob)
 CREATE TABLE chat_settings (
@@ -143,6 +147,9 @@ INSERT INTO scenes (id, owner_id, title, description, background_prompt, initial
     ('2f263740-29f7-4622-b4ce-fd7ac29d04d5', 'f3ba11a5-4026-4c16-9aed-061f0d490ade', 'Beach Resort Paradise', 'Tropical paradise with white sand beaches, crystal clear waters, and endless sunshine.', 'You are relaxing on a pristine tropical beach with gentle waves lapping at the shore, palm trees swaying in the warm breeze, and the sound of seagulls in the distance.', 'Welcome to paradise! Feel the warm sand between your toes and breathe in the fresh ocean air. This tropical haven is the perfect place to unwind and let your worries drift away with the waves. What brings you to our peaceful shore today?'),
     ('5277db85-10c6-4f12-ab23-810f289ca6df', '7edb0c2c-8dcd-402a-a979-cc7853d9b627', 'Space Station Alpha', 'Advanced space station orbiting Earth with cutting-edge technology and stunning views.', 'You are aboard a sophisticated space station with panoramic views of Earth below, advanced control systems, and the vastness of space surrounding you.', 'Welcome aboard Space Station Alpha! From our orbital vantage point, Earth appears as a beautiful blue marble suspended in the cosmic void. Our advanced systems are at your disposal for any space-related inquiries or cosmic conversations. What aspects of space exploration interest you most?'),
     ('e1daa2c4-3c0b-4ac5-9937-c9540f80c85e', '53c41979-a116-4bb7-8281-57fadfd89a13', 'Underground Laboratory', 'Secret research facility beneath the city for conducting advanced experiments.', 'You are in a high-tech underground laboratory filled with mysterious equipment, glowing screens, and the hum of advanced machinery.', 'Welcome to Laboratory Complex Omega! You''ve gained access to our most advanced research facility. The equipment around us represents the cutting edge of scientific innovation. What experiments or research topics would you like to explore in our secure environment?');
+
+-- Mark a few seeded scenes public (the rest stay private via the column default)
+UPDATE scenes SET is_public = true WHERE title IN ('Cozy Coffee Shop', 'Beach Resort Paradise', 'Space Station Alpha');
 
 -- Insert test character_scene associations
 INSERT INTO character_scene (character_id, scene_id) VALUES

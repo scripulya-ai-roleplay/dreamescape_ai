@@ -14,6 +14,7 @@ class TestScenesAPI:
 			"description": "A test scene for e2e testing",
 			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 			"initial_message_text": "Welcome to this magical world! What adventure awaits you today?",
+			"is_public": True,
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
@@ -200,6 +201,64 @@ class TestScenesAPI:
 		assert "items" in result
 		assert isinstance(result["items"], list)
 
+	def test_search_scenes_by_title_search(self, client):
+		"""Test searching scenes with a case-insensitive title substring."""
+		params = {"title_search": "adventure", "limit": 10}
+
+		response = client.get("/api/v1/scenes/", params=params)
+
+		assert response.status_code == 200
+		data = response.json()
+		result = data["result"]
+
+		assert "items" in result
+		assert isinstance(result["items"], list)
+		# every returned scene must contain the searched substring (case-insensitive)
+		for scene in result["items"]:
+			assert "adventure" in scene["title"].lower()
+
+	def test_search_scenes_sort_by_messages_count(self, client):
+		"""Test sorting scenes by message count (descending)."""
+		params = {"sort_by": "messages_count", "sort_order": "desc", "limit": 10}
+
+		response = client.get("/api/v1/scenes/", params=params)
+
+		assert response.status_code == 200
+		data = response.json()
+		result = data["result"]
+
+		assert "items" in result
+		assert isinstance(result["items"], list)
+
+	def test_search_scenes_sort_by_chats_count(self, client):
+		"""Test sorting scenes by chat count (ascending)."""
+		params = {"sort_by": "chats_count", "sort_order": "asc", "limit": 10}
+
+		response = client.get("/api/v1/scenes/", params=params)
+
+		assert response.status_code == 200
+		data = response.json()
+		result = data["result"]
+
+		assert "items" in result
+		assert isinstance(result["items"], list)
+
+	def test_search_scenes_invalid_sort_by(self, client):
+		"""An unknown sort_by value must be rejected with 422."""
+		params = {"sort_by": "not_a_real_field"}
+
+		response = client.get("/api/v1/scenes/", params=params)
+
+		assert response.status_code == 422
+
+	def test_search_scenes_invalid_sort_order(self, client):
+		"""An unknown sort_order value must be rejected with 422."""
+		params = {"sort_by": "title", "sort_order": "sideways"}
+
+		response = client.get("/api/v1/scenes/", params=params)
+
+		assert response.status_code == 422
+
 	def test_search_scenes_with_invalid_uuid(self, client):
 		"""Test searching scenes with invalid UUID format."""
 		params = {"ids": ["not-a-uuid"], "limit": 10}
@@ -250,6 +309,7 @@ class TestScenesAPI:
 			assert isinstance(scene, dict)
 			assert "title" in scene
 			assert "background_prompt" in scene
+			assert "is_public" in scene
 
 	def test_get_scene_details_with_invalid_uuid(self, client):
 		"""Test getting scene details with invalid UUID format."""

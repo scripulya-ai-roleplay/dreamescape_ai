@@ -2,14 +2,19 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select, delete, func, and_, update
+from sqlalchemy import select, delete, func, and_, update, asc, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.application.ports import ISceneGateway, Page
-from src.application.scene.schemas import SceneFilterDTO
+from src.application.scene.schemas import SceneFilterDTO, SceneSortBy, SortOrder
 from src.domain.models import Scene
-from src.infrastructure.database.models import Scene as SceneModel, Character as CharacterModel
+from src.infrastructure.database.models import (
+	Scene as SceneModel,
+	Character as CharacterModel,
+	Chat as ChatModel,
+	Message as MessageModel,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -44,6 +49,7 @@ class SceneGateway(ISceneGateway):
 			"description": new_scene_data.description,
 			"background_prompt": new_scene_data.background_prompt,
 			"initial_message_text": new_scene_data.initial_message_text,
+			"is_public": new_scene_data.is_public,
 		}
 
 		if new_scene_data.owner_id is not None:
@@ -56,6 +62,18 @@ class SceneGateway(ISceneGateway):
 	async def search(self, dto: SceneFilterDTO) -> Page[Scene]:
 		logger.info(f"Searching scenes with filters: {dto}")
 
+		# Correlated scalar subqueries counting a scene's chats / messages. They
+		# are only referenced when ordering by the matching count, and because
+		# they live in ORDER BY (not the SELECT list) the row shape stays a plain
+		# SceneModel, so selectinload(characters) and the rest are unaffected.
+		chats_count_sq = select(func.count(ChatModel.id)).where(ChatModel.scene_id == SceneModel.id).scalar_subquery()
+		messages_count_sq = (
+			select(func.count(MessageModel.id))
+			.join(ChatModel, ChatModel.id == MessageModel.chat_id)
+			.where(ChatModel.scene_id == SceneModel.id)
+			.scalar_subquery()
+		)
+
 		# Build query with joins for character filtering
 		query = select(SceneModel).options(selectinload(SceneModel.characters))
 
@@ -66,6 +84,10 @@ class SceneGateway(ISceneGateway):
 
 		if dto.title:
 			conditions.append(SceneModel.title.in_(dto.title))
+
+		if dto.title_search:
+			# case-insensitive substring match
+			conditions.append(SceneModel.title.ilike(f"%{dto.title_search}%"))
 
 		if dto.owner:
 			conditions.append(SceneModel.owner_id.in_(dto.owner))
@@ -82,6 +104,17 @@ class SceneGateway(ISceneGateway):
 
 		if conditions:
 			query = query.where(and_(*conditions))
+
+		# Optional ordering by title or by per-scene chat / message counts.
+		if dto.sort_by is not None:
+			sort_column = {
+				SceneSortBy.title: SceneModel.title,
+				SceneSortBy.chats_count: chats_count_sq,
+				SceneSortBy.messages_count: messages_count_sq,
+			}[dto.sort_by]
+			order_func = desc if dto.sort_order == SortOrder.desc else asc
+			# unique tiebreaker so offset/limit pagination stays stable across pages
+			query = query.order_by(order_func(sort_column), SceneModel.id)
 
 		# Get total count
 		count_query = select(func.count(SceneModel.id.distinct()))
@@ -120,6 +153,7 @@ class SceneGateway(ISceneGateway):
 			background_prompt=scene.background_prompt,
 			owner_id=scene.owner_id,
 			initial_message_text=scene.initial_message_text,
+			is_public=scene.is_public,
 		)
 
 		self.session.add(scene_model)
@@ -137,4 +171,5 @@ class SceneGateway(ISceneGateway):
 			background_prompt=scene_model.background_prompt,
 			owner_id=scene_model.owner_id,
 			initial_message_text=scene_model.initial_message_text,
+			is_public=scene_model.is_public,
 		)

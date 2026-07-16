@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.infrastructure.gateways.scenes_gateway import SceneGateway
 from src.domain.models import Scene
 from src.application.ports import Page
-from src.application.scene.schemas import SceneFilterDTO
+from src.application.scene.schemas import SceneFilterDTO, SceneSortBy, SortOrder
+from sqlalchemy.dialects import postgresql
 
 
 @pytest.mark.unit
@@ -39,6 +40,7 @@ class TestSceneGateway:
 		scene_model.owner_id = uuid4()
 		scene_model.characters = []
 		scene_model.initial_message_text = "Welcome to the test scene!"
+		scene_model.is_public = True
 		return scene_model
 
 	@pytest.fixture
@@ -56,6 +58,7 @@ class TestSceneGateway:
 			background_prompt="Test background prompt",
 			owner_id=uuid4(),
 			initial_message_text="Welcome to the test scene!",
+			is_public=True,
 		)
 
 	@pytest.mark.asyncio
@@ -75,6 +78,7 @@ class TestSceneGateway:
 		assert result.id == sample_scene_model.id
 		assert result.title == sample_scene_model.title
 		assert result.description == sample_scene_model.description
+		assert result.is_public == sample_scene_model.is_public
 		mock_session.execute.assert_called_once()
 
 	@pytest.mark.asyncio
@@ -318,6 +322,121 @@ class TestSceneGateway:
 		assert result.count == 1
 		assert len(result.items) == 1
 
+	def _compile_main_query(self, mock_session) -> str:
+		"""Compile the main (non-count) SELECT issued by search() to SQL text.
+
+		search() executes the count query first, then the row query, so the last
+		execute call holds the statement we want to inspect.
+		"""
+		main_stmt = mock_session.execute.call_args_list[-1].args[0]
+		return str(main_stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+
+	@pytest.mark.asyncio
+	async def test_search_title_search_builds_ilike(self, scene_gateway, mock_session, sample_scene_model):
+		"""title_search compiles to a case-insensitive ILIKE substring filter."""
+		# Arrange
+		filters = SceneFilterDTO(title_search="dragon")
+
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
+
+		# Act
+		await scene_gateway.search(filters)
+
+		# Assert
+		compiled = self._compile_main_query(mock_session)
+		assert "ILIKE" in compiled
+		assert "%dragon%" in compiled
+
+	@pytest.mark.asyncio
+	async def test_search_sort_by_messages_count_desc(self, scene_gateway, mock_session, sample_scene_model):
+		"""sort_by=messages_count orders by a correlated count(messages) subquery, desc."""
+		# Arrange
+		filters = SceneFilterDTO(sort_by=SceneSortBy.messages_count, sort_order=SortOrder.desc)
+
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
+
+		# Act
+		await scene_gateway.search(filters)
+
+		# Assert
+		compiled = self._compile_main_query(mock_session)
+		assert "ORDER BY" in compiled
+		assert "DESC" in compiled
+		assert "count(" in compiled.lower()
+		assert "messages" in compiled
+
+	@pytest.mark.asyncio
+	async def test_search_sort_by_chats_count_asc(self, scene_gateway, mock_session, sample_scene_model):
+		"""sort_by=chats_count orders by a correlated count(chats) subquery, asc."""
+		# Arrange
+		filters = SceneFilterDTO(sort_by=SceneSortBy.chats_count, sort_order=SortOrder.asc)
+
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
+
+		# Act
+		await scene_gateway.search(filters)
+
+		# Assert
+		compiled = self._compile_main_query(mock_session)
+		assert "ORDER BY" in compiled
+		assert "ASC" in compiled
+		assert "chats" in compiled
+
+	@pytest.mark.asyncio
+	async def test_search_sort_adds_id_tiebreaker(self, scene_gateway, mock_session, sample_scene_model):
+		"""A sort emits scene.id as a deterministic secondary key so tied rows
+		(common for count sorts where many scenes share a value, often 0) stay in a
+		stable order across offset/limit pages."""
+		# Arrange
+		filters = SceneFilterDTO(sort_by=SceneSortBy.chats_count, sort_order=SortOrder.desc)
+
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
+
+		# Act
+		await scene_gateway.search(filters)
+
+		# Assert
+		compiled = self._compile_main_query(mock_session)
+		assert "ORDER BY" in compiled
+		order_by_clause = compiled[compiled.index("ORDER BY") :]
+		assert "scenes.id" in order_by_clause
+		assert order_by_clause.index("scenes.id") > order_by_clause.index("count(")
+
+	@pytest.mark.asyncio
+	async def test_search_without_sort_has_no_order_by(self, scene_gateway, mock_session, sample_scene_model):
+		"""No sort_by means no ORDER BY is emitted (rows in DB order)."""
+		# Arrange
+		filters = SceneFilterDTO()
+
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
+
+		# Act
+		await scene_gateway.search(filters)
+
+		# Assert
+		compiled = self._compile_main_query(mock_session)
+		assert "ORDER BY" not in compiled
+
 	def test_to_domain_scene_conversion(self, scene_gateway, sample_scene_model):
 		"""Test conversion from SceneModel to domain Scene"""
 		# Act
@@ -330,6 +449,7 @@ class TestSceneGateway:
 		assert result.description == sample_scene_model.description
 		assert result.background_prompt == sample_scene_model.background_prompt
 		assert result.owner_id == sample_scene_model.owner_id
+		assert result.is_public == sample_scene_model.is_public
 
 	@pytest.mark.asyncio
 	async def test_session_error_handling(self, scene_gateway, mock_session):
