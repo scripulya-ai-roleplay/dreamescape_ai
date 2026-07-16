@@ -49,6 +49,7 @@ class SceneGateway(ISceneGateway):
 			"description": new_scene_data.description,
 			"background_prompt": new_scene_data.background_prompt,
 			"initial_message_text": new_scene_data.initial_message_text,
+			"is_public": new_scene_data.is_public,
 		}
 
 		if new_scene_data.owner_id is not None:
@@ -111,7 +112,9 @@ class SceneGateway(ISceneGateway):
 				SceneSortBy.chats_count: chats_count_sq,
 				SceneSortBy.messages_count: messages_count_sq,
 			}[dto.sort_by]
-			query = query.order_by(desc(sort_column) if dto.sort_order == SortOrder.desc else asc(sort_column))
+			order_func = desc if dto.sort_order == SortOrder.desc else asc
+			# unique tiebreaker so offset/limit pagination stays stable across pages
+			query = query.order_by(order_func(sort_column), SceneModel.id)
 
 		# Get total count
 		count_query = select(func.count(SceneModel.id.distinct()))
@@ -150,6 +153,7 @@ class SceneGateway(ISceneGateway):
 			background_prompt=scene.background_prompt,
 			owner_id=scene.owner_id,
 			initial_message_text=scene.initial_message_text,
+			is_public=scene.is_public,
 		)
 
 		self.session.add(scene_model)
@@ -167,4 +171,5 @@ class SceneGateway(ISceneGateway):
 			background_prompt=scene_model.background_prompt,
 			owner_id=scene_model.owner_id,
 			initial_message_text=scene_model.initial_message_text,
+			is_public=scene_model.is_public,
 		)

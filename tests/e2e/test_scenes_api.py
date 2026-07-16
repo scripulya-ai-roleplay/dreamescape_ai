@@ -14,6 +14,7 @@ class TestScenesAPI:
 			"description": "A test scene for e2e testing",
 			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 			"initial_message_text": "Welcome to this magical world! What adventure awaits you today?",
+			"is_public": True,
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
@@ -308,6 +309,7 @@ class TestScenesAPI:
 			assert isinstance(scene, dict)
 			assert "title" in scene
 			assert "background_prompt" in scene
+			assert "is_public" in scene
 
 	def test_get_scene_details_with_invalid_uuid(self, client):
 		"""Test getting scene details with invalid UUID format."""

@@ -61,6 +61,7 @@ class Scene(Base):
 	description: Mapped[str] = mapped_column(Text)
 	initial_message_text: Mapped[str] = mapped_column(Text)
 	background_prompt: Mapped[str] = mapped_column(Text)
+	is_public: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
 
 	owner: Mapped["User"] = relationship(back_populates="scenes")
 	chats: Mapped[List["Chat"]] = relationship(back_populates="scene")
@@ -75,7 +76,7 @@ class Chat(Base):
 	)
 	name: Mapped[str] = mapped_column(Text)
 	user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-	scene_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("scenes.id", ondelete="SET NULL"))
+	scene_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("scenes.id", ondelete="SET NULL"), index=True)
 	created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 	user: Mapped["User"] = relationship(back_populates="chats")

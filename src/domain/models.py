@@ -63,6 +63,7 @@ class Scene(BaseModel):
 	title: str
 	background_prompt: str
 	initial_message_text: str
+	is_public: bool = False
 
 
 class Chat(BaseModel):
