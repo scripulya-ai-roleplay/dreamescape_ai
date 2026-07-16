@@ -73,6 +73,7 @@ class Chat(BaseModel):
 	title: str
 	user_id: UUID
 	scene_id: UUID
+	user_character_id: None | UUID = None
 
 
 class Message(BaseModel):

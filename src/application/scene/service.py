@@ -2,7 +2,14 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.application.ports import ISceneService, Page, IUnitOfWork, ISceneGateway
+from src.application.ports import (
+	ISceneService,
+	IUnitOfWork,
+	ISceneGateway,
+	Page,
+	LikeState,
+	BookmarkState,
+)
 from src.application.scene.schemas import SceneFilterDTO
 from src.domain.models import Scene
 
@@ -79,3 +86,43 @@ class SceneService(ISceneService):
 			except Exception as e:
 				logger.error(f"Failed to update scene {target_scene_uuid}: {e}")
 				raise
+
+	async def like(self, scene_uuid: UUID, user_id: UUID) -> LikeState:
+		logger.info(f"User {user_id} liking scene {scene_uuid}")
+
+		async with self.uow:
+			await self.gateway.set_like(scene_uuid, user_id)
+			# Read the count inside the same tx so it reflects this like.
+			count = await self.gateway.count_likes(scene_uuid)
+		return LikeState(liked=True, likes_count=count)
+
+	async def unlike(self, scene_uuid: UUID, user_id: UUID) -> LikeState:
+		logger.info(f"User {user_id} unliking scene {scene_uuid}")
+
+		async with self.uow:
+			await self.gateway.unset_like(scene_uuid, user_id)
+			count = await self.gateway.count_likes(scene_uuid)
+		return LikeState(liked=False, likes_count=count)
+
+	async def get_like_state(self, scene_uuid: UUID, user_id: UUID) -> LikeState:
+		liked = await self.gateway.is_liked(scene_uuid, user_id)
+		count = await self.gateway.count_likes(scene_uuid)
+		return LikeState(liked=liked, likes_count=count)
+
+	async def bookmark(self, scene_uuid: UUID, user_id: UUID) -> BookmarkState:
+		logger.info(f"User {user_id} bookmarking scene {scene_uuid}")
+
+		async with self.uow:
+			await self.gateway.set_bookmark(scene_uuid, user_id)
+		return BookmarkState(bookmarked=True)
+
+	async def unbookmark(self, scene_uuid: UUID, user_id: UUID) -> BookmarkState:
+		logger.info(f"User {user_id} unbookmarking scene {scene_uuid}")
+
+		async with self.uow:
+			await self.gateway.unset_bookmark(scene_uuid, user_id)
+		return BookmarkState(bookmarked=False)
+
+	async def get_bookmark_state(self, scene_uuid: UUID, user_id: UUID) -> BookmarkState:
+		bookmarked = await self.gateway.is_bookmarked(scene_uuid, user_id)
+		return BookmarkState(bookmarked=bookmarked)

@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from src.application.character.service import CharacterService
 from src.domain.models import Character
-from src.application.ports import Page
+from src.application.ports import Page, LikeState, BookmarkState
 from src.application.character.schemas import CharacterFilterDTO
 
 
@@ -188,3 +188,94 @@ class TestCharacterService:
 		# Act & Assert
 		with pytest.raises(Exception, match="Update error"):
 			await character_service.update(character_uuid, sample_character)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_like_sets_like_and_returns_state(self, character_service, mock_character_gateway, mock_uow):
+		# Arrange
+		character_uuid = uuid4()
+		user_id = uuid4()
+		mock_character_gateway.count_likes.return_value = 5
+
+		# Act
+		result = await character_service.like(character_uuid, user_id)
+
+		# Assert
+		assert result == LikeState(liked=True, likes_count=5)
+		mock_character_gateway.set_like.assert_called_once_with(character_uuid, user_id)
+		mock_character_gateway.count_likes.assert_called_once_with(character_uuid)
+		mock_uow.__aenter__.assert_awaited()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_unlike_unsets_like_and_returns_state(self, character_service, mock_character_gateway):
+		# Arrange
+		character_uuid = uuid4()
+		user_id = uuid4()
+		mock_character_gateway.count_likes.return_value = 4
+
+		# Act
+		result = await character_service.unlike(character_uuid, user_id)
+
+		# Assert
+		assert result == LikeState(liked=False, likes_count=4)
+		mock_character_gateway.unset_like.assert_called_once_with(character_uuid, user_id)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_get_like_state_reflects_gateway(self, character_service, mock_character_gateway):
+		# Arrange
+		character_uuid = uuid4()
+		user_id = uuid4()
+		mock_character_gateway.is_liked.return_value = True
+		mock_character_gateway.count_likes.return_value = 7
+
+		# Act
+		result = await character_service.get_like_state(character_uuid, user_id)
+
+		# Assert
+		assert result == LikeState(liked=True, likes_count=7)
+		mock_character_gateway.is_liked.assert_called_once_with(character_uuid, user_id)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_bookmark_sets_bookmark_and_returns_state(self, character_service, mock_character_gateway):
+		# Arrange
+		character_uuid = uuid4()
+		user_id = uuid4()
+
+		# Act
+		result = await character_service.bookmark(character_uuid, user_id)
+
+		# Assert
+		assert result == BookmarkState(bookmarked=True)
+		mock_character_gateway.set_bookmark.assert_called_once_with(character_uuid, user_id)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_unbookmark_unsets_bookmark_and_returns_state(self, character_service, mock_character_gateway):
+		# Arrange
+		character_uuid = uuid4()
+		user_id = uuid4()
+
+		# Act
+		result = await character_service.unbookmark(character_uuid, user_id)
+
+		# Assert
+		assert result == BookmarkState(bookmarked=False)
+		mock_character_gateway.unset_bookmark.assert_called_once_with(character_uuid, user_id)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_get_bookmark_state_reflects_gateway(self, character_service, mock_character_gateway):
+		# Arrange
+		character_uuid = uuid4()
+		user_id = uuid4()
+		mock_character_gateway.is_bookmarked.return_value = True
+
+		# Act
+		result = await character_service.get_bookmark_state(character_uuid, user_id)
+
+		# Assert
+		assert result == BookmarkState(bookmarked=True)
+		mock_character_gateway.is_bookmarked.assert_called_once_with(character_uuid, user_id)

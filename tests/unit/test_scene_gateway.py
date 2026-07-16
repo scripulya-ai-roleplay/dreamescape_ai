@@ -461,3 +461,49 @@ class TestSceneGateway:
 		# Act & Assert
 		with pytest.raises(Exception, match="Database connection error"):
 			await scene_gateway.get_one(scene_id)
+
+	@pytest.mark.asyncio
+	async def test_set_like_executes_insert(self, scene_gateway, mock_session):
+		await scene_gateway.set_like(uuid4(), uuid4())
+		mock_session.execute.assert_awaited_once()
+
+	@pytest.mark.asyncio
+	async def test_unset_like_executes_delete(self, scene_gateway, mock_session):
+		await scene_gateway.unset_like(uuid4(), uuid4())
+		mock_session.execute.assert_awaited_once()
+
+	@pytest.mark.asyncio
+	async def test_is_liked_true(self, scene_gateway, mock_session):
+		mock_session.scalar.return_value = True
+		assert await scene_gateway.is_liked(uuid4(), uuid4()) is True
+		mock_session.scalar.assert_awaited_once()
+
+	@pytest.mark.asyncio
+	async def test_is_liked_false(self, scene_gateway, mock_session):
+		mock_session.scalar.return_value = False
+		assert await scene_gateway.is_liked(uuid4(), uuid4()) is False
+
+	@pytest.mark.asyncio
+	async def test_count_likes_returns_int(self, scene_gateway, mock_session):
+		mock_session.scalar.return_value = 3
+		assert await scene_gateway.count_likes(uuid4()) == 3
+
+	@pytest.mark.asyncio
+	async def test_count_likes_coerces_none_to_zero(self, scene_gateway, mock_session):
+		mock_session.scalar.return_value = None
+		assert await scene_gateway.count_likes(uuid4()) == 0
+
+	@pytest.mark.asyncio
+	async def test_set_bookmark_executes_insert(self, scene_gateway, mock_session):
+		await scene_gateway.set_bookmark(uuid4(), uuid4())
+		mock_session.execute.assert_awaited_once()
+
+	@pytest.mark.asyncio
+	async def test_unset_bookmark_executes_delete(self, scene_gateway, mock_session):
+		await scene_gateway.unset_bookmark(uuid4(), uuid4())
+		mock_session.execute.assert_awaited_once()
+
+	@pytest.mark.asyncio
+	async def test_is_bookmarked_false(self, scene_gateway, mock_session):
+		mock_session.scalar.return_value = False
+		assert await scene_gateway.is_bookmarked(uuid4(), uuid4()) is False

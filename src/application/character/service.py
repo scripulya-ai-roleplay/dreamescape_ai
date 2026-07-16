@@ -3,7 +3,14 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from src.application.character.schemas import CharacterFilterDTO
-from src.application.ports import ICharacterService, Page, IUnitOfWork, ICharacterGateway
+from src.application.ports import (
+	ICharacterService,
+	IUnitOfWork,
+	ICharacterGateway,
+	Page,
+	LikeState,
+	BookmarkState,
+)
 from src.domain.models import Character
 
 logger = logging.getLogger(__name__)
@@ -79,3 +86,43 @@ class CharacterService(ICharacterService):
 			except Exception as e:
 				logger.error(f"Failed to update character {target_character_uuid}: {e}")
 				raise
+
+	async def like(self, character_uuid: UUID, user_id: UUID) -> LikeState:
+		logger.info(f"User {user_id} liking character {character_uuid}")
+
+		async with self.uow:
+			await self.gateway.set_like(character_uuid, user_id)
+			# Read the count inside the same tx so it reflects this like.
+			count = await self.gateway.count_likes(character_uuid)
+		return LikeState(liked=True, likes_count=count)
+
+	async def unlike(self, character_uuid: UUID, user_id: UUID) -> LikeState:
+		logger.info(f"User {user_id} unliking character {character_uuid}")
+
+		async with self.uow:
+			await self.gateway.unset_like(character_uuid, user_id)
+			count = await self.gateway.count_likes(character_uuid)
+		return LikeState(liked=False, likes_count=count)
+
+	async def get_like_state(self, character_uuid: UUID, user_id: UUID) -> LikeState:
+		liked = await self.gateway.is_liked(character_uuid, user_id)
+		count = await self.gateway.count_likes(character_uuid)
+		return LikeState(liked=liked, likes_count=count)
+
+	async def bookmark(self, character_uuid: UUID, user_id: UUID) -> BookmarkState:
+		logger.info(f"User {user_id} bookmarking character {character_uuid}")
+
+		async with self.uow:
+			await self.gateway.set_bookmark(character_uuid, user_id)
+		return BookmarkState(bookmarked=True)
+
+	async def unbookmark(self, character_uuid: UUID, user_id: UUID) -> BookmarkState:
+		logger.info(f"User {user_id} unbookmarking character {character_uuid}")
+
+		async with self.uow:
+			await self.gateway.unset_bookmark(character_uuid, user_id)
+		return BookmarkState(bookmarked=False)
+
+	async def get_bookmark_state(self, character_uuid: UUID, user_id: UUID) -> BookmarkState:
+		bookmarked = await self.gateway.is_bookmarked(character_uuid, user_id)
+		return BookmarkState(bookmarked=bookmarked)

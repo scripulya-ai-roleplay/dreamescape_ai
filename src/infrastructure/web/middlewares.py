@@ -5,7 +5,6 @@ from uuid import UUID
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt
-from jwt import InvalidTokenError
 from starlette import status
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -63,31 +62,24 @@ class TraceAndLogRequestsMiddleware(BaseHTTPMiddleware):
 			) from e
 
 	async def get_current_user(self, request) -> User | None:
-		if getattr(request.state, "credentials", None) is not None:
-			token = request.state.credentials.credentials
+		# Logging-only: resolve the bearer token to a user purely to enrich request
+		# logs. Auth is enforced by the route dependency, not here, so this must
+		# never fail the request — any decode/payload error is swallowed.
+		if getattr(request.state, "credentials", None) is None:
+			return None
 
-			try:
-				# For HS256, use secret key; for ES256, use public key
-				if self._algorithm.startswith("HS"):
-					key = self._secret_key
-				else:
-					key = self._public_key
-
-				payload = jwt.decode(token, key, algorithms=[self._algorithm])
-
-				user = User(
-					id=UUID(payload.get("sub")) if payload.get("sub") else None,
-					username=payload.get("username"),
-					role=UserRole(payload["role"]) if payload.get("role") else UserRole.API,
-				)
-
-				return user
-
-			except InvalidTokenError:
-				raise
-			except (KeyError, ValueError) as e:
-				msg = "Invalid token payload"
-				raise InvalidTokenError(msg) from e
+		token = request.state.credentials.credentials
+		try:
+			# For HS256, use secret key; for ES256, use public key
+			key = self._secret_key if self._algorithm.startswith("HS") else self._public_key
+			payload = jwt.decode(token, key, algorithms=[self._algorithm])
+			return User(
+				id=UUID(payload.get("sub")) if payload.get("sub") else None,
+				username=payload.get("username"),
+				role=UserRole(payload["role"]) if payload.get("role") else UserRole.API,
+			)
+		except Exception:
+			return None
 
 	async def dispatch(
 		self,

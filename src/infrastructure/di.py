@@ -161,24 +161,22 @@ class ServiceProvider(Provider):
 	def provide_chats_service(
 		self,
 		gateway_factory: IGatewayFactory,
-		message_gateway: IMessageGateway,
+		message_service: IMessageService,
 		chat_settings_gateway: IChatSettingsGateway,
 		chat_gateway: IChatGateway,
 		scene_gateway: ISceneGateway,
 		character_gateway: ICharacterGateway,
 		prompt_service: IPromptService,
-		uow: PostgresqlUOW,
 		events: IChatEventGateway,
 	) -> IChatsService:
 		return LLMChatsService(
 			gateway_factory=gateway_factory,
-			messages_gateway=message_gateway,
+			message_service=message_service,
 			chat_settings_gateway=chat_settings_gateway,
 			chat_gateway=chat_gateway,
 			scene_gateway=scene_gateway,
 			character_gateway=character_gateway,
 			prompt_service=prompt_service,
-			_uow=uow,
 			_events=events,
 		)
 

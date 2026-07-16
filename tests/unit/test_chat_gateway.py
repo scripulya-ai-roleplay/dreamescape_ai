@@ -28,6 +28,7 @@ class TestChatGateway:
 		model.name = "Test Chat"
 		model.user_id = uuid4()
 		model.scene_id = uuid4()
+		model.user_character_id = uuid4()
 		model.messages = []
 		return model
 
@@ -246,6 +247,7 @@ class TestChatGateway:
 		assert result.title == sample_chat_model.name  # Conversion from 'name' to 'title'
 		assert result.user_id == sample_chat_model.user_id
 		assert result.scene_id == sample_chat_model.scene_id
+		assert result.user_character_id == sample_chat_model.user_character_id
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio

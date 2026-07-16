@@ -36,13 +36,13 @@ class TestBuildSystemPrompt:
 		prompt = service.build_system_prompt(None, [_character(name="Aria", system_prompt="A brave knight.")])
 		assert "Aria" in prompt
 		assert "A brave knight." in prompt
-		assert "# Персонажи" in prompt
+		assert "# Characters" in prompt
 
 	def test_scene_block_included(self, service):
 		prompt = service.build_system_prompt(_scene(title="Dark Forest", background="Misty woodland."), [])
 		assert "Dark Forest" in prompt
 		assert "Misty woodland." in prompt
-		assert "# Сцена" in prompt
+		assert "# Scene" in prompt
 
 	def test_scene_and_characters_together(self, service):
 		prompt = service.build_system_prompt(
@@ -56,12 +56,22 @@ class TestBuildSystemPrompt:
 
 	def test_empty_characters_omits_characters_block(self, service):
 		prompt = service.build_system_prompt(None, [])
-		assert "# Персонажи" not in prompt
+		assert "# Characters" not in prompt
 
 	def test_no_scene_omits_scene_block(self, service):
 		prompt = service.build_system_prompt(None, [_character()])
-		assert "# Сцена" not in prompt
+		assert "# Scene" not in prompt
 
 	def test_scene_description_optional(self, service):
 		prompt = service.build_system_prompt(_scene(description="An ancient ruin."), [])
 		assert "An ancient ruin." in prompt
+
+	def test_user_character_block_included(self, service):
+		prompt = service.build_system_prompt(None, [], _character(name="Kael", system_prompt="A wandering bard."))
+		assert "# User" in prompt
+		assert "Kael" in prompt
+		assert "A wandering bard." in prompt
+
+	def test_no_user_character_omits_user_block(self, service):
+		prompt = service.build_system_prompt(None, [], None)
+		assert "# User" not in prompt

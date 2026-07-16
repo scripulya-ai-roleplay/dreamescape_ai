@@ -30,6 +30,23 @@ class Page[T](BaseModel):
 	limit: int
 
 
+class LikeState(BaseModel):
+	"""Like state of an entity for the requesting user plus its total like count."""
+
+	model_config = ConfigDict(frozen=True)
+
+	liked: bool
+	likes_count: int
+
+
+class BookmarkState(BaseModel):
+	"""Whether the requesting user has bookmarked an entity."""
+
+	model_config = ConfigDict(frozen=True)
+
+	bookmarked: bool
+
+
 class LLMModelType(StrEnum):
 	testing_mock = "testing_mock"
 	# Google
@@ -148,7 +165,9 @@ class IChatsService(abc.ABC):
 
 class IPromptService(abc.ABC):
 	@abc.abstractmethod
-	def build_system_prompt(self, scene: Scene | None, characters: list[Character]) -> str: ...
+	def build_system_prompt(
+		self, scene: Scene | None, characters: list[Character], user_character: Character | None = None
+	) -> str: ...
 
 
 class ICharacterService(abc.ABC):
@@ -167,6 +186,24 @@ class ICharacterService(abc.ABC):
 	@abc.abstractmethod
 	async def update(self, target_scene_uuid: UUID, new_scene_data: Character): ...
 
+	@abc.abstractmethod
+	async def like(self, character_uuid: UUID, user_id: UUID) -> LikeState: ...
+
+	@abc.abstractmethod
+	async def unlike(self, character_uuid: UUID, user_id: UUID) -> LikeState: ...
+
+	@abc.abstractmethod
+	async def get_like_state(self, character_uuid: UUID, user_id: UUID) -> LikeState: ...
+
+	@abc.abstractmethod
+	async def bookmark(self, character_uuid: UUID, user_id: UUID) -> BookmarkState: ...
+
+	@abc.abstractmethod
+	async def unbookmark(self, character_uuid: UUID, user_id: UUID) -> BookmarkState: ...
+
+	@abc.abstractmethod
+	async def get_bookmark_state(self, character_uuid: UUID, user_id: UUID) -> BookmarkState: ...
+
 
 class ISceneService(abc.ABC):
 	@abc.abstractmethod
@@ -184,6 +221,24 @@ class ISceneService(abc.ABC):
 	@abc.abstractmethod
 	async def update(self, target_scene_uuid: UUID, new_scene_data: Scene): ...
 
+	@abc.abstractmethod
+	async def like(self, scene_uuid: UUID, user_id: UUID) -> LikeState: ...
+
+	@abc.abstractmethod
+	async def unlike(self, scene_uuid: UUID, user_id: UUID) -> LikeState: ...
+
+	@abc.abstractmethod
+	async def get_like_state(self, scene_uuid: UUID, user_id: UUID) -> LikeState: ...
+
+	@abc.abstractmethod
+	async def bookmark(self, scene_uuid: UUID, user_id: UUID) -> BookmarkState: ...
+
+	@abc.abstractmethod
+	async def unbookmark(self, scene_uuid: UUID, user_id: UUID) -> BookmarkState: ...
+
+	@abc.abstractmethod
+	async def get_bookmark_state(self, scene_uuid: UUID, user_id: UUID) -> BookmarkState: ...
+
 
 class ISceneGateway(abc.ABC):
 	@abc.abstractmethod
@@ -200,6 +255,27 @@ class ISceneGateway(abc.ABC):
 
 	@abc.abstractmethod
 	async def update(self, target_scene_uuid: UUID, new_scene_data: Scene): ...
+
+	@abc.abstractmethod
+	async def set_like(self, scene_id: UUID, user_id: UUID) -> None: ...
+
+	@abc.abstractmethod
+	async def unset_like(self, scene_id: UUID, user_id: UUID) -> None: ...
+
+	@abc.abstractmethod
+	async def is_liked(self, scene_id: UUID, user_id: UUID) -> bool: ...
+
+	@abc.abstractmethod
+	async def count_likes(self, scene_id: UUID) -> int: ...
+
+	@abc.abstractmethod
+	async def set_bookmark(self, scene_id: UUID, user_id: UUID) -> None: ...
+
+	@abc.abstractmethod
+	async def unset_bookmark(self, scene_id: UUID, user_id: UUID) -> None: ...
+
+	@abc.abstractmethod
+	async def is_bookmarked(self, scene_id: UUID, user_id: UUID) -> bool: ...
 
 
 class ICharacterGateway(abc.ABC):
@@ -220,6 +296,27 @@ class ICharacterGateway(abc.ABC):
 
 	@abc.abstractmethod
 	async def update(self, target_scene_uuid: UUID, new_scene_data: Character): ...
+
+	@abc.abstractmethod
+	async def set_like(self, character_id: UUID, user_id: UUID) -> None: ...
+
+	@abc.abstractmethod
+	async def unset_like(self, character_id: UUID, user_id: UUID) -> None: ...
+
+	@abc.abstractmethod
+	async def is_liked(self, character_id: UUID, user_id: UUID) -> bool: ...
+
+	@abc.abstractmethod
+	async def count_likes(self, character_id: UUID) -> int: ...
+
+	@abc.abstractmethod
+	async def set_bookmark(self, character_id: UUID, user_id: UUID) -> None: ...
+
+	@abc.abstractmethod
+	async def unset_bookmark(self, character_id: UUID, user_id: UUID) -> None: ...
+
+	@abc.abstractmethod
+	async def is_bookmarked(self, character_id: UUID, user_id: UUID) -> bool: ...
 
 
 class IChatGateway(abc.ABC):

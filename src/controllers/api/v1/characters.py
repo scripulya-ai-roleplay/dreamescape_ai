@@ -8,7 +8,7 @@ from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 
 from src.application.character.schemas import CharacterFilterDTO
-from src.application.ports import ApiResponse, Page, ICharacterService
+from src.application.ports import ApiResponse, Page, ICharacterService, LikeState, BookmarkState
 from src.domain.models import Character
 from src.infrastructure.auth.dependencies import get_current_user
 
@@ -76,3 +76,75 @@ async def update_character(
 ) -> ApiResponse:
 	await character_service.update(character_id, update_data)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())
+
+
+@router.post("/{character_id}/like")
+@inject
+async def like_character(
+	character_service: FromDishka[ICharacterService],
+	character_id: UUID = Path(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse[LikeState]:
+	user_id = UUID(current_user["sub"])
+	state = await character_service.like(character_id, user_id)
+	return ApiResponse(result=state, correlation_id=correlation_id.get())
+
+
+@router.delete("/{character_id}/like")
+@inject
+async def unlike_character(
+	character_service: FromDishka[ICharacterService],
+	character_id: UUID = Path(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse[LikeState]:
+	user_id = UUID(current_user["sub"])
+	state = await character_service.unlike(character_id, user_id)
+	return ApiResponse(result=state, correlation_id=correlation_id.get())
+
+
+@router.get("/{character_id}/like")
+@inject
+async def get_character_like_state(
+	character_service: FromDishka[ICharacterService],
+	character_id: UUID = Path(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse[LikeState]:
+	user_id = UUID(current_user["sub"])
+	state = await character_service.get_like_state(character_id, user_id)
+	return ApiResponse(result=state, correlation_id=correlation_id.get())
+
+
+@router.post("/{character_id}/bookmark")
+@inject
+async def bookmark_character(
+	character_service: FromDishka[ICharacterService],
+	character_id: UUID = Path(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse[BookmarkState]:
+	user_id = UUID(current_user["sub"])
+	state = await character_service.bookmark(character_id, user_id)
+	return ApiResponse(result=state, correlation_id=correlation_id.get())
+
+
+@router.delete("/{character_id}/bookmark")
+@inject
+async def unbookmark_character(
+	character_service: FromDishka[ICharacterService],
+	character_id: UUID = Path(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse[BookmarkState]:
+	user_id = UUID(current_user["sub"])
+	state = await character_service.unbookmark(character_id, user_id)
+	return ApiResponse(result=state, correlation_id=correlation_id.get())
+
+
+@router.get("/{character_id}/bookmark")
+@inject
+async def get_character_bookmark_state(
+	character_service: FromDishka[ICharacterService],
+	character_id: UUID = Path(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse[BookmarkState]:
+	user_id = UUID(current_user["sub"])
+	state = await character_service.get_bookmark_state(character_id, user_id)
+	return ApiResponse(result=state, correlation_id=correlation_id.get())

@@ -266,3 +266,56 @@ class TestCharactersAPI:
 		assert "result" in data
 		assert "correlation_id" in data
 		assert data["correlation_id"] is not None
+
+	# Seeded "Helpful Assistant", owned by admin_test (the auth_headers user).
+	CHARACTER_ID = "43341001-4ea1-4f03-b315-811d3264b6a3"
+
+	def test_like_character_flow(self, client, auth_headers):
+		"""Like, re-like (idempotent), read state, then unlike — restores baseline count."""
+		before = client.get(f"/api/v1/characters/{self.CHARACTER_ID}/like", headers=auth_headers)
+		assert before.status_code == 200
+		baseline = before.json()["result"]["likes_count"]
+
+		liked = client.post(f"/api/v1/characters/{self.CHARACTER_ID}/like", headers=auth_headers)
+		assert liked.status_code == 200
+		assert liked.json()["result"]["liked"] is True
+		assert liked.json()["result"]["likes_count"] == baseline + 1
+
+		# Re-liking is idempotent: the count must not grow again.
+		again = client.post(f"/api/v1/characters/{self.CHARACTER_ID}/like", headers=auth_headers)
+		assert again.status_code == 200
+		assert again.json()["result"]["likes_count"] == baseline + 1
+
+		state = client.get(f"/api/v1/characters/{self.CHARACTER_ID}/like", headers=auth_headers)
+		assert state.status_code == 200
+		assert state.json()["result"]["liked"] is True
+
+		# Cleanup: unlike restores the baseline count.
+		unliked = client.delete(f"/api/v1/characters/{self.CHARACTER_ID}/like", headers=auth_headers)
+		assert unliked.status_code == 200
+		assert unliked.json()["result"]["liked"] is False
+		assert unliked.json()["result"]["likes_count"] == baseline
+
+	def test_bookmark_character_flow(self, client, auth_headers):
+		"""Bookmark, read state, then unbookmark a character."""
+		bookmarked = client.post(f"/api/v1/characters/{self.CHARACTER_ID}/bookmark", headers=auth_headers)
+		assert bookmarked.status_code == 200
+		assert bookmarked.json()["result"]["bookmarked"] is True
+
+		state = client.get(f"/api/v1/characters/{self.CHARACTER_ID}/bookmark", headers=auth_headers)
+		assert state.status_code == 200
+		assert state.json()["result"]["bookmarked"] is True
+
+		removed = client.delete(f"/api/v1/characters/{self.CHARACTER_ID}/bookmark", headers=auth_headers)
+		assert removed.status_code == 200
+		assert removed.json()["result"]["bookmarked"] is False
+
+	def test_like_character_requires_auth(self, client):
+		"""Liking without authentication must be rejected."""
+		response = client.post(f"/api/v1/characters/{self.CHARACTER_ID}/like")
+		assert response.status_code == 401
+
+	def test_like_character_invalid_uuid(self, client, auth_headers):
+		"""An invalid character UUID in the like path must be rejected with 422."""
+		response = client.post("/api/v1/characters/not-a-uuid/like", headers=auth_headers)
+		assert response.status_code == 422

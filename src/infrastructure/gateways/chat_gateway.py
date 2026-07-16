@@ -26,6 +26,7 @@ class ChatGateway(IChatGateway):
 			name=chat.title,  # Database uses 'name' field
 			user_id=chat.user_id,
 			scene_id=chat.scene_id,
+			user_character_id=chat.user_character_id,
 		)
 
 		self._session.add(chat_model)
@@ -127,4 +128,5 @@ class ChatGateway(IChatGateway):
 			title=chat_model.name,  # Convert database 'name' to domain 'title'
 			user_id=chat_model.user_id,
 			scene_id=chat_model.scene_id,
+			user_character_id=chat_model.user_character_id,
 		)

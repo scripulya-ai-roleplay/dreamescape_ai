@@ -9,6 +9,10 @@ DROP TABLE IF EXISTS media_assets CASCADE;
 DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS chat_settings CASCADE;
 DROP TABLE IF EXISTS chats CASCADE;
+DROP TABLE IF EXISTS scene_bookmarks CASCADE;
+DROP TABLE IF EXISTS character_bookmarks CASCADE;
+DROP TABLE IF EXISTS scene_likes CASCADE;
+DROP TABLE IF EXISTS character_likes CASCADE;
 DROP TABLE IF EXISTS character_scene CASCADE;
 DROP TABLE IF EXISTS scenes CASCADE;
 DROP TABLE IF EXISTS characters CASCADE;
@@ -49,12 +53,36 @@ CREATE TABLE character_scene (
     PRIMARY KEY (character_id, scene_id)
 );
 
+-- Like / bookmark junction tables (user <-> character/scene). A row's existence
+-- is the signal; the composite PK also makes (re)liking idempotent at insert time.
+CREATE TABLE character_likes (
+    character_id UUID NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (character_id, user_id)
+);
+CREATE TABLE scene_likes (
+    scene_id UUID NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (scene_id, user_id)
+);
+CREATE TABLE character_bookmarks (
+    character_id UUID NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (character_id, user_id)
+);
+CREATE TABLE scene_bookmarks (
+    scene_id UUID NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (scene_id, user_id)
+);
+
 -- Create chats table
 CREATE TABLE chats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     scene_id UUID REFERENCES scenes(id) ON DELETE SET NULL,
+    user_character_id UUID REFERENCES characters(id) ON DELETE SET NULL,  -- persona the user plays as in this chat
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -63,6 +91,9 @@ CREATE INDEX idx_chats_user_id ON chats(user_id);
 
 -- Create index on scene_id for chats
 CREATE INDEX idx_chats_scene_id ON chats(scene_id);
+
+-- Create index on user_character_id for chats
+CREATE INDEX idx_chats_user_character_id ON chats(user_character_id);
 
 -- Create chat_settings table (1:1 with chats; settings stored as a JSONB blob)
 CREATE TABLE chat_settings (
@@ -209,6 +240,15 @@ INSERT INTO chats (id, name, user_id, scene_id, created_at) VALUES
     ('8a32d249-137b-4f8c-95c8-1665f7b0b9fb', 'Mars Mission Chat', '5dbdc924-968a-4c50-94a8-44cdd165e460', '5277db85-10c6-4f12-ab23-810f289ca6df', NOW() - INTERVAL '7 days'),
     ('3b0ea7ee-d883-49d9-aabd-5cf497c6db79', 'Quantum Computing Analysis', 'f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'e1daa2c4-3c0b-4ac5-9937-c9540f80c85e', NOW() - INTERVAL '10 days');
 
+-- Seed a chat with a user persona (the character the user plays as in that chat)
+UPDATE chats SET user_character_id = '43341001-4ea1-4f03-b315-811d3264b6a3'  -- Helpful Assistant, owned by admin_test
+WHERE id = '048a7fe5-f4c2-40ef-9745-7d85d7c4c5fb';  -- Project Help Chat
+
+-- The E2E test chat also needs a persona: message e2e tests send into it, and a
+-- play-as character is required to play a story.
+UPDATE chats SET user_character_id = '43341001-4ea1-4f03-b315-811d3264b6a3'
+WHERE id = '82dc4309-0ab2-4a9d-86c9-a49f8931494a';  -- E2E Test Chat
+
 -- Insert test messages
 INSERT INTO messages (id, chat_id, role, content, cost_crystals, created_at) VALUES
     -- Chat 1 messages
@@ -316,6 +356,14 @@ UNION ALL
 SELECT 'scenes', COUNT(*) FROM scenes
 UNION ALL
 SELECT 'character_scene', COUNT(*) FROM character_scene
+UNION ALL
+SELECT 'character_likes', COUNT(*) FROM character_likes
+UNION ALL
+SELECT 'scene_likes', COUNT(*) FROM scene_likes
+UNION ALL
+SELECT 'character_bookmarks', COUNT(*) FROM character_bookmarks
+UNION ALL
+SELECT 'scene_bookmarks', COUNT(*) FROM scene_bookmarks
 UNION ALL
 SELECT 'chats', COUNT(*) FROM chats
 UNION ALL
