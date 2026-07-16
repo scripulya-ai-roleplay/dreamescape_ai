@@ -323,3 +323,58 @@ class TestCharacterGateway:
 		# Act & Assert
 		with pytest.raises(Exception, match="Database error"):
 			await character_gateway.get_one(character_uuid)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_set_like_executes_insert(self, character_gateway, mock_session):
+		await character_gateway.set_like(uuid4(), uuid4())
+		mock_session.execute.assert_awaited_once()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_unset_like_executes_delete(self, character_gateway, mock_session):
+		await character_gateway.unset_like(uuid4(), uuid4())
+		mock_session.execute.assert_awaited_once()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_is_liked_true(self, character_gateway, mock_session):
+		mock_session.scalar.return_value = True
+		assert await character_gateway.is_liked(uuid4(), uuid4()) is True
+		mock_session.scalar.assert_awaited_once()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_is_liked_false(self, character_gateway, mock_session):
+		mock_session.scalar.return_value = False
+		assert await character_gateway.is_liked(uuid4(), uuid4()) is False
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_count_likes_returns_int(self, character_gateway, mock_session):
+		mock_session.scalar.return_value = 3
+		assert await character_gateway.count_likes(uuid4()) == 3
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_count_likes_coerces_none_to_zero(self, character_gateway, mock_session):
+		mock_session.scalar.return_value = None
+		assert await character_gateway.count_likes(uuid4()) == 0
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_set_bookmark_executes_insert(self, character_gateway, mock_session):
+		await character_gateway.set_bookmark(uuid4(), uuid4())
+		mock_session.execute.assert_awaited_once()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_unset_bookmark_executes_delete(self, character_gateway, mock_session):
+		await character_gateway.unset_bookmark(uuid4(), uuid4())
+		mock_session.execute.assert_awaited_once()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_is_bookmarked_false(self, character_gateway, mock_session):
+		mock_session.scalar.return_value = False
+		assert await character_gateway.is_bookmarked(uuid4(), uuid4()) is False

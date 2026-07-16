@@ -30,7 +30,7 @@ def client():
 		def put(self, path, **kwargs):
 			return self.session.put(f"{self.base_url}{path}", timeout=30.0, **kwargs)
 
-	return ClientWrapper(session, "http://localhost:8000")
+	return ClientWrapper(session, os.getenv("BACKEND_HOST", "http://localhost:8000"))
 
 
 @pytest.fixture

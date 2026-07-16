@@ -411,3 +411,73 @@ class TestScenesAPI:
 		assert "correlation_id" in data
 		assert isinstance(data["correlation_id"], str)
 		assert len(data["correlation_id"]) > 0
+
+	# Seeded "E2E Test Scene", owned by admin_test (the auth_headers user).
+	SCENE_ID = "5c194d75-401f-4fa2-808c-7092153135b7"
+
+	def test_like_scene_flow(self, client, auth_headers):
+		"""Like, re-like (idempotent), read state, then unlike — restores baseline count."""
+		before = client.get(f"/api/v1/scenes/{self.SCENE_ID}/like", headers=auth_headers)
+		assert before.status_code == 200
+		baseline = before.json()["result"]["likes_count"]
+
+		liked = client.post(f"/api/v1/scenes/{self.SCENE_ID}/like", headers=auth_headers)
+		assert liked.status_code == 200
+		assert liked.json()["result"]["liked"] is True
+		assert liked.json()["result"]["likes_count"] == baseline + 1
+
+		# Re-liking is idempotent: the count must not grow again.
+		again = client.post(f"/api/v1/scenes/{self.SCENE_ID}/like", headers=auth_headers)
+		assert again.status_code == 200
+		assert again.json()["result"]["likes_count"] == baseline + 1
+
+		state = client.get(f"/api/v1/scenes/{self.SCENE_ID}/like", headers=auth_headers)
+		assert state.status_code == 200
+		assert state.json()["result"]["liked"] is True
+
+		# Cleanup: unlike restores the baseline count.
+		unliked = client.delete(f"/api/v1/scenes/{self.SCENE_ID}/like", headers=auth_headers)
+		assert unliked.status_code == 200
+		assert unliked.json()["result"]["liked"] is False
+		assert unliked.json()["result"]["likes_count"] == baseline
+
+	def test_bookmark_scene_flow(self, client, auth_headers):
+		"""Bookmark, read state, then unbookmark a scene."""
+		bookmarked = client.post(f"/api/v1/scenes/{self.SCENE_ID}/bookmark", headers=auth_headers)
+		assert bookmarked.status_code == 200
+		assert bookmarked.json()["result"]["bookmarked"] is True
+
+		state = client.get(f"/api/v1/scenes/{self.SCENE_ID}/bookmark", headers=auth_headers)
+		assert state.status_code == 200
+		assert state.json()["result"]["bookmarked"] is True
+
+		removed = client.delete(f"/api/v1/scenes/{self.SCENE_ID}/bookmark", headers=auth_headers)
+		assert removed.status_code == 200
+		assert removed.json()["result"]["bookmarked"] is False
+
+	def test_like_scene_requires_auth(self, client):
+		"""Liking without authentication must be rejected."""
+		response = client.post(f"/api/v1/scenes/{self.SCENE_ID}/like")
+		assert response.status_code == 401
+
+	def test_like_scene_invalid_uuid(self, client, auth_headers):
+		"""An invalid scene UUID in the like path must be rejected with 422."""
+		response = client.post("/api/v1/scenes/not-a-uuid/like", headers=auth_headers)
+		assert response.status_code == 422
+
+	# A valid-but-nonexistent id: every like/bookmark verb must 404 (not 409 on the
+	# writes via the FK, nor a silent 200 with likes_count: 0 on the reads).
+	UNKNOWN_SCENE_ID = "00000000-0000-0000-0000-000000000000"
+
+	def test_like_bookmark_unknown_scene_returns_404(self, client, auth_headers):
+		verbs = [
+			("post", f"/api/v1/scenes/{self.UNKNOWN_SCENE_ID}/like"),
+			("get", f"/api/v1/scenes/{self.UNKNOWN_SCENE_ID}/like"),
+			("delete", f"/api/v1/scenes/{self.UNKNOWN_SCENE_ID}/like"),
+			("post", f"/api/v1/scenes/{self.UNKNOWN_SCENE_ID}/bookmark"),
+			("get", f"/api/v1/scenes/{self.UNKNOWN_SCENE_ID}/bookmark"),
+			("delete", f"/api/v1/scenes/{self.UNKNOWN_SCENE_ID}/bookmark"),
+		]
+		for method, path in verbs:
+			response = getattr(client, method)(path, headers=auth_headers)
+			assert response.status_code == 404, f"{method.upper()} {path} -> {response.status_code}"

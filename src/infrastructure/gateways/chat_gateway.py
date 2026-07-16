@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from src.application.ports import IChatGateway, Page
 from src.application.chats.schemas import ChatFilterDTO
 from src.domain.models import Chat
-from src.infrastructure.database.models import Chat as ChatModel
+from src.infrastructure.database.models import Chat as ChatModel, Character as CharacterModel
 
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ class ChatGateway(IChatGateway):
 			name=chat.title,  # Database uses 'name' field
 			user_id=chat.user_id,
 			scene_id=chat.scene_id,
+			user_character_id=chat.user_character_id,
 		)
 
 		self._session.add(chat_model)
@@ -121,10 +122,35 @@ class ChatGateway(IChatGateway):
 
 		return target_chat_uuid
 
+	async def set_persona(self, chat_uuid: UUID, user_character_id: UUID) -> UUID:
+		logger.info(f"Setting persona {user_character_id} on chat {chat_uuid}")
+
+		# Validate the persona character exists first; otherwise the UPDATE below
+		# would trip the user_character_id FK and the global handler would return a
+		# 409 leaking the constraint name. Resolve it to a clean 404 instead,
+		# matching how the rest of the API treats a missing target.
+		character_exists = await self._session.scalar(
+			select(func.count()).select_from(CharacterModel).where(CharacterModel.id == user_character_id)
+		)
+		if not character_exists:
+			raise ValueError(f"Character with ID {user_character_id} not found")
+
+		result = await self._session.execute(
+			update(ChatModel).where(ChatModel.id == chat_uuid).values(user_character_id=user_character_id)
+		)
+		if result.rowcount == 0:
+			raise ValueError(f"Chat with ID {chat_uuid} not found")
+
+		await self._session.commit()
+		logger.info(f"Successfully set persona on chat: {chat_uuid}")
+
+		return chat_uuid
+
 	def _to_domain_chat(self, chat_model: ChatModel) -> Chat:
 		return Chat(
 			id=chat_model.id,
 			title=chat_model.name,  # Convert database 'name' to domain 'title'
 			user_id=chat_model.user_id,
 			scene_id=chat_model.scene_id,
+			user_character_id=chat_model.user_character_id,
 		)

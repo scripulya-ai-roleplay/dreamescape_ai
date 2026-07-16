@@ -78,3 +78,15 @@ class ImageTooLargeException(BaseAPIException):
 			error_code="IMAGE_TOO_LARGE",
 			**kwargs,
 		)
+
+
+class PersonaRequiredException(BaseAPIException):
+	"""Raised when a user tries to play a story without choosing a character to play as."""
+
+	def __init__(self, message: str = "To play a story choose who to play as", **kwargs):
+		super().__init__(
+			message=message,
+			status_code=status.HTTP_400_BAD_REQUEST,
+			error_code="PERSONA_REQUIRED",
+			**kwargs,
+		)

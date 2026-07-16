@@ -7,7 +7,7 @@ from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 
-from src.application.ports import ISceneService, ApiResponse, Page
+from src.application.ports import ISceneService, ApiResponse, Page, LikeState, BookmarkState
 from src.application.scene.schemas import SceneFilterDTO
 from src.domain.models import Scene
 from src.infrastructure.auth.dependencies import get_current_user
@@ -79,3 +79,75 @@ async def update_scene(
 ) -> ApiResponse:
 	await scene_service.update(scene_id, update_data)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())
+
+
+@router.post("/{scene_id}/like")
+@inject
+async def like_scene(
+	scene_service: FromDishka[ISceneService],
+	scene_id: UUID = Path(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse[LikeState]:
+	user_id = UUID(current_user["sub"])
+	state = await scene_service.like(scene_id, user_id)
+	return ApiResponse(result=state, correlation_id=correlation_id.get())
+
+
+@router.delete("/{scene_id}/like")
+@inject
+async def unlike_scene(
+	scene_service: FromDishka[ISceneService],
+	scene_id: UUID = Path(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse[LikeState]:
+	user_id = UUID(current_user["sub"])
+	state = await scene_service.unlike(scene_id, user_id)
+	return ApiResponse(result=state, correlation_id=correlation_id.get())
+
+
+@router.get("/{scene_id}/like")
+@inject
+async def get_scene_like_state(
+	scene_service: FromDishka[ISceneService],
+	scene_id: UUID = Path(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse[LikeState]:
+	user_id = UUID(current_user["sub"])
+	state = await scene_service.get_like_state(scene_id, user_id)
+	return ApiResponse(result=state, correlation_id=correlation_id.get())
+
+
+@router.post("/{scene_id}/bookmark")
+@inject
+async def bookmark_scene(
+	scene_service: FromDishka[ISceneService],
+	scene_id: UUID = Path(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse[BookmarkState]:
+	user_id = UUID(current_user["sub"])
+	state = await scene_service.bookmark(scene_id, user_id)
+	return ApiResponse(result=state, correlation_id=correlation_id.get())
+
+
+@router.delete("/{scene_id}/bookmark")
+@inject
+async def unbookmark_scene(
+	scene_service: FromDishka[ISceneService],
+	scene_id: UUID = Path(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse[BookmarkState]:
+	user_id = UUID(current_user["sub"])
+	state = await scene_service.unbookmark(scene_id, user_id)
+	return ApiResponse(result=state, correlation_id=correlation_id.get())
+
+
+@router.get("/{scene_id}/bookmark")
+@inject
+async def get_scene_bookmark_state(
+	scene_service: FromDishka[ISceneService],
+	scene_id: UUID = Path(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse[BookmarkState]:
+	user_id = UUID(current_user["sub"])
+	state = await scene_service.get_bookmark_state(scene_id, user_id)
+	return ApiResponse(result=state, correlation_id=correlation_id.get())

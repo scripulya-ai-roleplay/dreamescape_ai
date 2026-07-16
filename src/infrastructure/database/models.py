@@ -19,6 +19,34 @@ character_scene = Table(
 	Column("scene_id", UUID(as_uuid=True), ForeignKey("scenes.id", ondelete="CASCADE"), primary_key=True),
 )
 
+# User → Character/Scene likes and bookmarks. Pure join tables (composite PK,
+# CASCADE on both sides) modelled after character_scene; the existence of a row
+# is the signal, so no extra columns are needed.
+character_likes = Table(
+	"character_likes",
+	Base.metadata,
+	Column("character_id", UUID(as_uuid=True), ForeignKey("characters.id", ondelete="CASCADE"), primary_key=True),
+	Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+)
+scene_likes = Table(
+	"scene_likes",
+	Base.metadata,
+	Column("scene_id", UUID(as_uuid=True), ForeignKey("scenes.id", ondelete="CASCADE"), primary_key=True),
+	Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+)
+character_bookmarks = Table(
+	"character_bookmarks",
+	Base.metadata,
+	Column("character_id", UUID(as_uuid=True), ForeignKey("characters.id", ondelete="CASCADE"), primary_key=True),
+	Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+)
+scene_bookmarks = Table(
+	"scene_bookmarks",
+	Base.metadata,
+	Column("scene_id", UUID(as_uuid=True), ForeignKey("scenes.id", ondelete="CASCADE"), primary_key=True),
+	Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+)
+
 
 class User(Base):
 	__tablename__ = "users"
@@ -77,6 +105,10 @@ class Chat(Base):
 	name: Mapped[str] = mapped_column(Text)
 	user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
 	scene_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("scenes.id", ondelete="SET NULL"), index=True)
+	# Persona the user plays as in this chat (nullable; resolved on demand, no relationship)
+	user_character_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+		ForeignKey("characters.id", ondelete="SET NULL"), index=True
+	)
 	created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 	user: Mapped["User"] = relationship(back_populates="chats")

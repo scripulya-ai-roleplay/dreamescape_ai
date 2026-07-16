@@ -2,14 +2,20 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select, delete, func, and_, update
+from sqlalchemy import select, delete, func, and_, update, exists
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.application.character.schemas import CharacterFilterDTO
 from src.application.ports import ICharacterGateway, Page
 from src.domain.models import Character
-from src.infrastructure.database.models import Character as CharacterModel, Scene as SceneModel
+from src.infrastructure.database.models import (
+	Character as CharacterModel,
+	Scene as SceneModel,
+	character_likes,
+	character_bookmarks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +132,56 @@ class CharacterGateway(ICharacterGateway):
 
 		logger.info(f"Successfully created character with ID: {character_model.id}")
 		return character_model.id
+
+	async def set_like(self, character_id: UUID, user_id: UUID) -> None:
+		# ON CONFLICT DO NOTHING keeps POST /like idempotent and concurrency-safe:
+		# unlike INSERT ... WHERE NOT EXISTS, two racing likes can't fail on the PK.
+		stmt = pg_insert(character_likes).values(character_id=character_id, user_id=user_id).on_conflict_do_nothing()
+		await self.session.execute(stmt)
+
+	async def unset_like(self, character_id: UUID, user_id: UUID) -> None:
+		stmt = delete(character_likes).where(
+			and_(character_likes.c.character_id == character_id, character_likes.c.user_id == user_id)
+		)
+		await self.session.execute(stmt)
+
+	async def is_liked(self, character_id: UUID, user_id: UUID) -> bool:
+		stmt = select(
+			exists().where(
+				and_(
+					character_likes.c.character_id == character_id,
+					character_likes.c.user_id == user_id,
+				)
+			)
+		)
+		return bool(await self.session.scalar(stmt))
+
+	async def count_likes(self, character_id: UUID) -> int:
+		stmt = select(func.count()).select_from(character_likes).where(character_likes.c.character_id == character_id)
+		return int(await self.session.scalar(stmt) or 0)
+
+	async def set_bookmark(self, character_id: UUID, user_id: UUID) -> None:
+		stmt = (
+			pg_insert(character_bookmarks).values(character_id=character_id, user_id=user_id).on_conflict_do_nothing()
+		)
+		await self.session.execute(stmt)
+
+	async def unset_bookmark(self, character_id: UUID, user_id: UUID) -> None:
+		stmt = delete(character_bookmarks).where(
+			and_(character_bookmarks.c.character_id == character_id, character_bookmarks.c.user_id == user_id)
+		)
+		await self.session.execute(stmt)
+
+	async def is_bookmarked(self, character_id: UUID, user_id: UUID) -> bool:
+		stmt = select(
+			exists().where(
+				and_(
+					character_bookmarks.c.character_id == character_id,
+					character_bookmarks.c.user_id == user_id,
+				)
+			)
+		)
+		return bool(await self.session.scalar(stmt))
 
 	def _to_domain_character(self, character_model: CharacterModel) -> Character:
 		return Character(

@@ -51,3 +51,10 @@ class ChatService(IChatService):
 		result = await self.chat_gateway.update(target_chat_uuid, chat_name)
 		logger.info(f"Successfully updated chat: {target_chat_uuid}")
 		return result
+
+	async def set_persona(self, chat_uuid: UUID, user_character_id: UUID) -> UUID:
+		logger.info(f"Setting persona {user_character_id} on chat {chat_uuid}")
+
+		result = await self.chat_gateway.set_persona(chat_uuid, user_character_id)
+		logger.info(f"Successfully set persona on chat: {chat_uuid}")
+		return result

@@ -2,7 +2,8 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select, delete, func, and_, update, asc, desc
+from sqlalchemy import select, delete, func, and_, update, asc, desc, exists
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,6 +15,8 @@ from src.infrastructure.database.models import (
 	Character as CharacterModel,
 	Chat as ChatModel,
 	Message as MessageModel,
+	scene_likes,
+	scene_bookmarks,
 )
 
 
@@ -162,6 +165,40 @@ class SceneGateway(ISceneGateway):
 
 		logger.info(f"Successfully created scene with ID: {scene_model.id}")
 		return scene_model.id
+
+	async def set_like(self, scene_id: UUID, user_id: UUID) -> None:
+		# ON CONFLICT DO NOTHING keeps POST /like idempotent and concurrency-safe:
+		# unlike INSERT ... WHERE NOT EXISTS, two racing likes can't fail on the PK.
+		stmt = pg_insert(scene_likes).values(scene_id=scene_id, user_id=user_id).on_conflict_do_nothing()
+		await self.session.execute(stmt)
+
+	async def unset_like(self, scene_id: UUID, user_id: UUID) -> None:
+		stmt = delete(scene_likes).where(and_(scene_likes.c.scene_id == scene_id, scene_likes.c.user_id == user_id))
+		await self.session.execute(stmt)
+
+	async def is_liked(self, scene_id: UUID, user_id: UUID) -> bool:
+		stmt = select(exists().where(and_(scene_likes.c.scene_id == scene_id, scene_likes.c.user_id == user_id)))
+		return bool(await self.session.scalar(stmt))
+
+	async def count_likes(self, scene_id: UUID) -> int:
+		stmt = select(func.count()).select_from(scene_likes).where(scene_likes.c.scene_id == scene_id)
+		return int(await self.session.scalar(stmt) or 0)
+
+	async def set_bookmark(self, scene_id: UUID, user_id: UUID) -> None:
+		stmt = pg_insert(scene_bookmarks).values(scene_id=scene_id, user_id=user_id).on_conflict_do_nothing()
+		await self.session.execute(stmt)
+
+	async def unset_bookmark(self, scene_id: UUID, user_id: UUID) -> None:
+		stmt = delete(scene_bookmarks).where(
+			and_(scene_bookmarks.c.scene_id == scene_id, scene_bookmarks.c.user_id == user_id)
+		)
+		await self.session.execute(stmt)
+
+	async def is_bookmarked(self, scene_id: UUID, user_id: UUID) -> bool:
+		stmt = select(
+			exists().where(and_(scene_bookmarks.c.scene_id == scene_id, scene_bookmarks.c.user_id == user_id))
+		)
+		return bool(await self.session.scalar(stmt))
 
 	def _to_domain_scene(self, scene_model: SceneModel) -> Scene:
 		return Scene(
