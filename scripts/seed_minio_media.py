@@ -156,14 +156,21 @@ def object_exists(client: Minio, bucket: str, object_key: str) -> bool:
 
 
 def _read_cache(backup_dir: str | None, object_key: str) -> bytes | None:
-	"""Return cached image bytes for ``object_key``, or None if no backup dir / no cached file."""
+	"""Return cached image bytes for ``object_key``, or None if no backup dir / no cached file.
+
+	A read error degrades to a cache miss (mirrors _write_cache) so the scene still generates via the API.
+	"""
 	if not backup_dir:
 		return None
 	path = os.path.join(backup_dir, object_key)
 	if not os.path.isfile(path):
 		return None
-	with open(path, "rb") as fh:
-		return fh.read()
+	try:
+		with open(path, "rb") as fh:
+			return fh.read()
+	except OSError as exc:
+		log.warning("could not read cache %s: %s", object_key, exc)
+		return None
 
 
 def _write_cache(backup_dir: str | None, object_key: str, data: bytes) -> None:
@@ -175,12 +182,20 @@ def _write_cache(backup_dir: str | None, object_key: str, data: bytes) -> None:
 	if not backup_dir:
 		return
 	path = os.path.join(backup_dir, object_key)
+	tmp_path = f"{path}.tmp"
 	try:
 		os.makedirs(os.path.dirname(path), exist_ok=True)
-		with open(path, "wb") as fh:
+		# Write a sibling .tmp then atomically rename, so an interrupt can't leave a
+		# half-written file the next run would read back as a corrupt image.
+		with open(tmp_path, "wb") as fh:
 			fh.write(data)
+		os.replace(tmp_path, path)
 	except OSError as exc:
 		log.warning("could not cache %s: %s", object_key, exc)
+		try:
+			os.remove(tmp_path)
+		except OSError:
+			pass
 
 
 def build_prompt(title: str, background_prompt: str) -> str:
@@ -258,7 +273,7 @@ def main() -> int:
 		settings.force,
 	)
 
-	uploaded = skipped = failed = restored = 0
+	uploaded = skipped = failed = restored = generated = 0
 	for row in targets:
 		object_key = row["object_key"]
 		label = f"{object_key} ({row['title']})"
@@ -271,14 +286,14 @@ def main() -> int:
 			# Prefer a locally cached image (free, deterministic) over an API call.
 			# FORCE_REGENERATE_MEDIA ignores the cache on read so `make regen-media` is a true regen.
 			data = None if settings.force else _read_cache(settings.backup_dir, object_key)
-			if data is not None:
+			from_cache = data is not None
+			if from_cache:
 				log.info("restored from cache: %s", label)
-				restored += 1
+			elif gen_client is None:
+				log.warning("skip (no API key, not in cache): %s", label)
+				skipped += 1
+				continue
 			else:
-				if gen_client is None:
-					log.warning("skip (no API key, not in cache): %s", label)
-					skipped += 1
-					continue
 				data = generate_image(gen_client, settings.image_api_model, row["title"], row["background_prompt"])
 				_write_cache(settings.backup_dir, object_key, data)
 				log.info("generated + cached: %s", label)
@@ -289,11 +304,16 @@ def main() -> int:
 			update_size_bytes(settings, row["id"], len(data))
 			log.info("uploaded: %s (%d bytes)", label, len(data))
 			uploaded += 1
+			# Counted post-upload: a failed put_object must not inflate restored and
+			# drive generated below zero.
+			if from_cache:
+				restored += 1
+			else:
+				generated += 1
 		except Exception as exc:  # per-scene failure must not abort the rest
 			log.error("failed: %s -> %s", label, exc)
 			failed += 1
 
-	generated = uploaded - restored
 	log.info(
 		"Done: %d uploaded (%d restored from cache, %d generated), %d skipped, %d failed.",
 		uploaded,
