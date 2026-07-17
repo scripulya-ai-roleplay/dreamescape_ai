@@ -13,6 +13,13 @@ so adding/changing a scene image is a one-file edit in ``init.sql``.
 Idempotent: objects already present are skipped unless ``FORCE_REGENERATE_MEDIA=1``, so it
 only spends API quota when the MinIO volume is fresh (``make reseed``) or when forced.
 
+Offline cache (``MEDIA_BACKUP_DIR``): when set, a generated image is also written to
+``$MEDIA_BACKUP_DIR/<object_key>`` and, on later runs, re-uploaded from there instead of
+calling the image API. This is what makes ``make up`` after a ``docker compose down -v``
+free: the host-mounted ``media-backup/`` survives the volume wipe, so the seeder restores
+the PNGs without spending any quota. ``FORCE_REGENERATE_MEDIA=1`` bypasses the cache on read
+(but still writes through) so ``make regen-media`` stays a true regeneration.
+
 Best-effort: a missing API key logs a warning and exits 0 (the app still runs, just without
 seeded art); a per-scene failure is logged and skipped. Only infrastructure errors (DB or
 MinIO unreachable) exit non-zero.
@@ -66,6 +73,7 @@ class Settings:
 	image_api_key: str
 	image_api_model: str
 	force: bool
+	backup_dir: str | None  # host dir of pre-generated PNGs; None disables the offline cache
 
 
 def _truthy(value: str | None) -> bool:
@@ -96,6 +104,7 @@ def load_settings() -> Settings:
 		image_api_key=image_api_key,
 		image_api_model=os.environ.get("IMAGE_API_MODEL", "imagen-4.0-generate-001"),
 		force=_truthy(os.environ.get("FORCE_REGENERATE_MEDIA")),
+		backup_dir=os.environ.get("MEDIA_BACKUP_DIR") or None,
 	)
 
 
@@ -146,6 +155,49 @@ def object_exists(client: Minio, bucket: str, object_key: str) -> bool:
 		raise
 
 
+def _read_cache(backup_dir: str | None, object_key: str) -> bytes | None:
+	"""Return cached image bytes for ``object_key``, or None if no backup dir / no cached file.
+
+	A read error degrades to a cache miss (mirrors _write_cache) so the scene still generates via the API.
+	"""
+	if not backup_dir:
+		return None
+	path = os.path.join(backup_dir, object_key)
+	if not os.path.isfile(path):
+		return None
+	try:
+		with open(path, "rb") as fh:
+			return fh.read()
+	except OSError as exc:
+		log.warning("could not read cache %s: %s", object_key, exc)
+		return None
+
+
+def _write_cache(backup_dir: str | None, object_key: str, data: bytes) -> None:
+	"""Persist a freshly generated image so future seeds skip the API call.
+
+	Caching is an optimization, not a requirement: a write failure is logged and swallowed
+	(the image is still uploaded to MinIO for this run).
+	"""
+	if not backup_dir:
+		return
+	path = os.path.join(backup_dir, object_key)
+	tmp_path = f"{path}.tmp"
+	try:
+		os.makedirs(os.path.dirname(path), exist_ok=True)
+		# Write a sibling .tmp then atomically rename, so an interrupt can't leave a
+		# half-written file the next run would read back as a corrupt image.
+		with open(tmp_path, "wb") as fh:
+			fh.write(data)
+		os.replace(tmp_path, path)
+	except OSError as exc:
+		log.warning("could not cache %s: %s", object_key, exc)
+		try:
+			os.remove(tmp_path)
+		except OSError:
+			pass
+
+
 def build_prompt(title: str, background_prompt: str) -> str:
 	return (
 		"Anime-style background illustration, atmospheric, cinematic lighting, "
@@ -186,12 +238,17 @@ def update_size_bytes(settings: Settings, media_id: str, size_bytes: int) -> Non
 def main() -> int:
 	settings = load_settings()
 
-	if not settings.image_api_key:
+	if not settings.image_api_key and not settings.backup_dir:
 		log.warning(
-			"IMAGE_API_KEY (or GEMINI_API_KEY) is not set — skipping scene image generation. "
-			"The app still runs; set it in scripulya_deploy/.env to populate scene art."
+			"IMAGE_API_KEY (or GEMINI_API_KEY) is not set and MEDIA_BACKUP_DIR is not configured — "
+			"nothing to seed. The app still runs; set a key (to generate) or a backup dir (to restore)."
 		)
 		return 0
+	if not settings.image_api_key:
+		log.warning(
+			"IMAGE_API_KEY (or GEMINI_API_KEY) is not set — restoring from the MEDIA_BACKUP_DIR cache "
+			"only; any scene without a cached image will be skipped (set a key to generate fresh art)."
+		)
 
 	# Infrastructure setup: these errors are worth surfacing (exit 1).
 	minio_client = Minio(
@@ -201,7 +258,7 @@ def main() -> int:
 		secure=settings.minio_secure,
 	)
 	ensure_public_bucket(minio_client, settings.bucket_public)
-	gen_client = genai.Client(api_key=settings.image_api_key)
+	gen_client = genai.Client(api_key=settings.image_api_key) if settings.image_api_key else None
 	targets = fetch_scene_targets(settings)
 
 	if not targets:
@@ -216,7 +273,7 @@ def main() -> int:
 		settings.force,
 	)
 
-	uploaded = skipped = failed = 0
+	uploaded = skipped = failed = restored = generated = 0
 	for row in targets:
 		object_key = row["object_key"]
 		label = f"{object_key} ({row['title']})"
@@ -225,18 +282,46 @@ def main() -> int:
 				log.info("skip (exists): %s", label)
 				skipped += 1
 				continue
-			data = generate_image(gen_client, settings.image_api_model, row["title"], row["background_prompt"])
+
+			# Prefer a locally cached image (free, deterministic) over an API call.
+			# FORCE_REGENERATE_MEDIA ignores the cache on read so `make regen-media` is a true regen.
+			data = None if settings.force else _read_cache(settings.backup_dir, object_key)
+			from_cache = data is not None
+			if from_cache:
+				log.info("restored from cache: %s", label)
+			elif gen_client is None:
+				log.warning("skip (no API key, not in cache): %s", label)
+				skipped += 1
+				continue
+			else:
+				data = generate_image(gen_client, settings.image_api_model, row["title"], row["background_prompt"])
+				_write_cache(settings.backup_dir, object_key, data)
+				log.info("generated + cached: %s", label)
+
 			minio_client.put_object(
 				settings.bucket_public, object_key, io.BytesIO(data), length=len(data), content_type="image/png"
 			)
 			update_size_bytes(settings, row["id"], len(data))
 			log.info("uploaded: %s (%d bytes)", label, len(data))
 			uploaded += 1
+			# Counted post-upload: a failed put_object must not inflate restored and
+			# drive generated below zero.
+			if from_cache:
+				restored += 1
+			else:
+				generated += 1
 		except Exception as exc:  # per-scene failure must not abort the rest
 			log.error("failed: %s -> %s", label, exc)
 			failed += 1
 
-	log.info("Done: %d uploaded, %d skipped, %d failed.", uploaded, skipped, failed)
+	log.info(
+		"Done: %d uploaded (%d restored from cache, %d generated), %d skipped, %d failed.",
+		uploaded,
+		restored,
+		generated,
+		skipped,
+		failed,
+	)
 	return 0
 
 
