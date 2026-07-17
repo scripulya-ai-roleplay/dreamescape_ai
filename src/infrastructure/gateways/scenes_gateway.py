@@ -17,6 +17,7 @@ from src.infrastructure.database.models import (
 	Message as MessageModel,
 	scene_likes,
 	scene_bookmarks,
+	character_scene,
 )
 
 
@@ -165,6 +166,14 @@ class SceneGateway(ISceneGateway):
 
 		logger.info(f"Successfully created scene with ID: {scene_model.id}")
 		return scene_model.id
+
+	async def attach_characters(self, scene_id: UUID, character_ids: list[UUID]) -> None:
+		# ON CONFLICT DO NOTHING makes POST /scenes/{id}/characters idempotent:
+		# re-adding a character already in the scene is a no-op, and racing
+		# attaches can't both fail on the composite PK.
+		rows = [{"scene_id": scene_id, "character_id": cid} for cid in character_ids]
+		stmt = pg_insert(character_scene).values(rows).on_conflict_do_nothing()
+		await self.session.execute(stmt)
 
 	async def set_like(self, scene_id: UUID, user_id: UUID) -> None:
 		# ON CONFLICT DO NOTHING keeps POST /like idempotent and concurrency-safe:

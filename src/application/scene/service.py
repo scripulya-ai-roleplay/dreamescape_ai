@@ -138,3 +138,11 @@ class SceneService(ISceneService):
 		await self.gateway.get_one(scene_uuid)
 		bookmarked = await self.gateway.is_bookmarked(scene_uuid, user_id)
 		return BookmarkState(bookmarked=bookmarked)
+
+	async def attach_characters(self, scene_uuid: UUID, character_ids: list[UUID]) -> None:
+		logger.info(f"Attaching {len(character_ids)} character(s) to scene {scene_uuid}")
+
+		async with self.uow:
+			# Resolve first so a missing scene 404s instead of a bare INSERT.
+			await self.gateway.get_one(scene_uuid)
+			await self.gateway.attach_characters(scene_uuid, character_ids)

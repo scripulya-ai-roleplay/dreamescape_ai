@@ -336,3 +336,26 @@ class TestSceneService:
 			await scene_service.bookmark(scene_uuid, user_id)
 
 		mock_scene_gateway.set_bookmark.assert_not_called()
+
+	@pytest.mark.asyncio
+	async def test_attach_characters_calls_get_one_then_attach(self, scene_service, mock_scene_gateway):
+		# Arrange
+		scene_uuid = uuid4()
+		character_ids = [uuid4(), uuid4()]
+
+		# Act
+		await scene_service.attach_characters(scene_uuid, character_ids)
+
+		# Assert
+		mock_scene_gateway.get_one.assert_called_once_with(scene_uuid)
+		mock_scene_gateway.attach_characters.assert_called_once_with(scene_uuid, character_ids)
+
+	@pytest.mark.asyncio
+	async def test_attach_characters_missing_scene_raises_without_mutating(self, scene_service, mock_scene_gateway):
+		scene_uuid = uuid4()
+		mock_scene_gateway.get_one.side_effect = NoResultFound("scene not found")
+
+		with pytest.raises(NoResultFound):
+			await scene_service.attach_characters(scene_uuid, [uuid4()])
+
+		mock_scene_gateway.attach_characters.assert_not_called()

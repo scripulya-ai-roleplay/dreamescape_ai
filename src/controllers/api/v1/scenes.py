@@ -8,7 +8,7 @@ from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 
 from src.application.ports import ISceneService, ApiResponse, Page, LikeState, BookmarkState
-from src.application.scene.schemas import SceneFilterDTO
+from src.application.scene.schemas import SceneFilterDTO, AttachCharactersDTO
 from src.domain.models import Scene
 from src.infrastructure.auth.dependencies import get_current_user
 
@@ -151,3 +151,23 @@ async def get_scene_bookmark_state(
 	user_id = UUID(current_user["sub"])
 	state = await scene_service.get_bookmark_state(scene_id, user_id)
 	return ApiResponse(result=state, correlation_id=correlation_id.get())
+
+
+@router.post("/{scene_id}/characters")
+@inject
+async def attach_characters_to_scene(
+	scene_service: FromDishka[ISceneService],
+	scene_id: UUID = Path(),
+	dto: AttachCharactersDTO = Body(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse:
+	user_id = UUID(current_user["sub"])
+
+	# Attaching mutates the scene every chat in it sees, so (unlike a personal
+	# like/bookmark) only the owner may change which characters belong to it.
+	scene = await scene_service.get_one(scene_id)
+	if scene.owner_id != user_id:
+		raise HTTPException(status_code=403, detail="Only the scene owner can attach characters")
+
+	await scene_service.attach_characters(scene_id, dto.character_ids)
+	return ApiResponse(result=[], correlation_id=correlation_id.get())

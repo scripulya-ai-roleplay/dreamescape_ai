@@ -507,3 +507,15 @@ class TestSceneGateway:
 	async def test_is_bookmarked_false(self, scene_gateway, mock_session):
 		mock_session.scalar.return_value = False
 		assert await scene_gateway.is_bookmarked(uuid4(), uuid4()) is False
+
+	@pytest.mark.asyncio
+	async def test_attach_characters_inserts_on_conflict_do_nothing(self, scene_gateway, mock_session):
+		# Idempotent bulk insert into character_scene; re-adding a character is a no-op.
+		scene_id, char_id = uuid4(), uuid4()
+		await scene_gateway.attach_characters(scene_id, [char_id])
+
+		stmt = mock_session.execute.call_args_list[-1].args[0]
+		compiled = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+		assert "INSERT INTO character_scene" in compiled
+		assert "ON CONFLICT DO NOTHING" in compiled
+		assert str(char_id) in compiled

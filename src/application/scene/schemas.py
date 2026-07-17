@@ -37,3 +37,9 @@ class SceneFilterDTO(BaseModel):
 
 	offset: int = Field(default=0, ge=0)
 	limit: int = Field(default=50, ge=0)
+
+
+class AttachCharactersDTO(BaseModel):
+	"""Character ids to add to a scene's roster after it exists (e.g. mid-chat)."""
+
+	character_ids: list[UUID] = Field(min_length=1)
