@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects import postgresql
 
 from src.infrastructure.gateways.character_gateway import CharacterGateway
 from src.domain.models import Character
@@ -256,6 +257,36 @@ class TestCharacterGateway:
 		# Assert
 		assert isinstance(result, Page)
 		assert result.count == 1
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_search_bookmarked_by_uses_exists_not_join(
+		self, character_gateway, mock_session, sample_character_model
+	):
+		# Regression: bookmarked_by filters via a correlated EXISTS, never a JOIN.
+		# A JOIN produces one row per bookmarking user and duplicates the character.
+		u1, u2 = uuid4(), uuid4()
+		filter_dto = CharacterFilterDTO(bookmarked_by=[u1, u2])
+
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_result = Mock()
+		mock_scalars = Mock()
+		mock_scalars.all.return_value = [sample_character_model]
+		mock_result.scalars.return_value = mock_scalars
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
+
+		await character_gateway.search(filter_dto)
+
+		compiled = self._compile_main_query(mock_session)
+		assert "EXISTS" in compiled
+		assert "JOIN" not in compiled
+		assert str(u1) in compiled
+		assert str(u2) in compiled
+
+	def _compile_main_query(self, mock_session) -> str:
+		main_stmt = mock_session.execute.call_args_list[-1].args[0]
+		return str(main_stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio

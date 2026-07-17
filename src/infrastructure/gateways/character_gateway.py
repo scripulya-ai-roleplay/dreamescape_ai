@@ -87,6 +87,18 @@ class CharacterGateway(ICharacterGateway):
 		if dto.owner_ids:
 			conditions.append(CharacterModel.owner_id.in_(dto.owner_ids))
 
+		if dto.bookmarked_by:
+			# EXISTS, not a JOIN: a character saved by several of these users would
+			# otherwise produce one row per bookmark and show up duplicated.
+			conditions.append(
+				exists().where(
+					and_(
+						character_bookmarks.c.character_id == CharacterModel.id,
+						character_bookmarks.c.user_id.in_(dto.bookmarked_by),
+					)
+				)
+			)
+
 		if conditions:
 			query = query.where(and_(*conditions))
 

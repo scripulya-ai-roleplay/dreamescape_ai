@@ -64,6 +64,8 @@ class Scene(BaseModel):
 	background_prompt: str
 	initial_message_text: str
 	is_public: bool = False
+	chats_count: int = 0
+	messages_count: int = 0
 
 
 class Chat(BaseModel):

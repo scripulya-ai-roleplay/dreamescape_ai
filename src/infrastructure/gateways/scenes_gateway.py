@@ -76,9 +76,11 @@ class SceneGateway(ISceneGateway):
 			.where(ChatModel.scene_id == SceneModel.id)
 			.scalar_subquery()
 		)
-
-		# Build query with joins for character filtering
-		query = select(SceneModel).options(selectinload(SceneModel.characters))
+		query = select(
+			SceneModel,
+			chats_count_sq.label("chats_count"),
+			messages_count_sq.label("messages_count"),
+		).options(selectinload(SceneModel.characters))
 
 		conditions = []
 
@@ -138,10 +140,10 @@ class SceneGateway(ISceneGateway):
 
 		# Execute query (no pagination parameters in DTO, so return all)
 		result = await self.session.execute(query)
-		scene_models = result.scalars().all()
+		rows = result.all()
 
 		# Convert to domain models
-		domain_scenes = [self._to_domain_scene(scene_model) for scene_model in scene_models]
+		domain_scenes = [self._to_domain_scene(row[0], row[1] or 0, row[2] or 0) for row in rows]
 
 		logger.info(f"Found {len(domain_scenes)} scenes out of {total_count} total")
 
@@ -200,7 +202,7 @@ class SceneGateway(ISceneGateway):
 		)
 		return bool(await self.session.scalar(stmt))
 
-	def _to_domain_scene(self, scene_model: SceneModel) -> Scene:
+	def _to_domain_scene(self, scene_model: SceneModel, chats_count: int = 0, messages_count: int = 0) -> Scene:
 		return Scene(
 			id=scene_model.id,
 			title=scene_model.title,
@@ -209,4 +211,6 @@ class SceneGateway(ISceneGateway):
 			owner_id=scene_model.owner_id,
 			initial_message_text=scene_model.initial_message_text,
 			is_public=scene_model.is_public,
+			chats_count=chats_count,
+			messages_count=messages_count,
 		)

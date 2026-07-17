@@ -176,7 +176,7 @@ class TestSceneGateway:
 		"""Test successful scene search with filters"""
 		# Arrange
 		mock_result = Mock()
-		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_result.all.return_value = [(sample_scene_model, 1, 1)]
 		mock_session.execute.return_value = mock_result
 
 		# Mock count query
@@ -193,6 +193,8 @@ class TestSceneGateway:
 		assert result.offset == 0
 		assert len(result.items) == 1
 		assert result.items[0].title == sample_scene_model.title
+		assert result.items[0].chats_count == 1
+		assert result.items[0].messages_count == 1
 		assert mock_session.execute.call_count == 2
 
 	@pytest.mark.asyncio
@@ -203,7 +205,7 @@ class TestSceneGateway:
 		filters = SceneFilterDTO(ids=[scene_id], title=[], owner=[], characters=[])
 
 		mock_result = Mock()
-		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_result.all.return_value = [(sample_scene_model, 1, 1)]
 		mock_session.execute.return_value = mock_result
 
 		mock_count_result = Mock()
@@ -224,7 +226,7 @@ class TestSceneGateway:
 		filters = SceneFilterDTO(ids=[], title=["Test Scene"], owner=[], characters=[])
 
 		mock_result = Mock()
-		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_result.all.return_value = [(sample_scene_model, 1, 1)]
 		mock_session.execute.return_value = mock_result
 
 		mock_count_result = Mock()
@@ -246,7 +248,7 @@ class TestSceneGateway:
 		filters = SceneFilterDTO(ids=[], title=[], owner=[owner_id], characters=[])
 
 		mock_result = Mock()
-		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_result.all.return_value = [(sample_scene_model, 1, 1)]
 		mock_session.execute.return_value = mock_result
 
 		mock_count_result = Mock()
@@ -268,7 +270,7 @@ class TestSceneGateway:
 		filters = SceneFilterDTO(ids=[], title=[], owner=[], characters=[character_id])
 
 		mock_result = Mock()
-		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_result.all.return_value = [(sample_scene_model, 1, 1)]
 		mock_session.execute.return_value = mock_result
 
 		mock_count_result = Mock()
@@ -287,7 +289,7 @@ class TestSceneGateway:
 		"""Test scene search with no results"""
 		# Arrange
 		mock_result = Mock()
-		mock_result.scalars.return_value.all.return_value = []
+		mock_result.all.return_value = []
 		mock_session.execute.return_value = mock_result
 
 		mock_count_result = Mock()
@@ -308,7 +310,7 @@ class TestSceneGateway:
 		filters = SceneFilterDTO(ids=[], title=[], owner=[], characters=[])
 
 		mock_result = Mock()
-		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_result.all.return_value = [(sample_scene_model, 1, 1)]
 		mock_session.execute.return_value = mock_result
 
 		mock_count_result = Mock()
@@ -338,7 +340,7 @@ class TestSceneGateway:
 		filters = SceneFilterDTO(title_search="dragon")
 
 		mock_result = Mock()
-		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_result.all.return_value = [(sample_scene_model, 1, 1)]
 		mock_count_result = Mock()
 		mock_count_result.scalar.return_value = 1
 		mock_session.execute.side_effect = [mock_count_result, mock_result]
@@ -358,7 +360,7 @@ class TestSceneGateway:
 		filters = SceneFilterDTO(sort_by=SceneSortBy.messages_count, sort_order=SortOrder.desc)
 
 		mock_result = Mock()
-		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_result.all.return_value = [(sample_scene_model, 1, 1)]
 		mock_count_result = Mock()
 		mock_count_result.scalar.return_value = 1
 		mock_session.execute.side_effect = [mock_count_result, mock_result]
@@ -380,7 +382,7 @@ class TestSceneGateway:
 		filters = SceneFilterDTO(sort_by=SceneSortBy.chats_count, sort_order=SortOrder.asc)
 
 		mock_result = Mock()
-		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_result.all.return_value = [(sample_scene_model, 1, 1)]
 		mock_count_result = Mock()
 		mock_count_result.scalar.return_value = 1
 		mock_session.execute.side_effect = [mock_count_result, mock_result]
@@ -403,7 +405,7 @@ class TestSceneGateway:
 		filters = SceneFilterDTO(sort_by=SceneSortBy.chats_count, sort_order=SortOrder.desc)
 
 		mock_result = Mock()
-		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_result.all.return_value = [(sample_scene_model, 1, 1)]
 		mock_count_result = Mock()
 		mock_count_result.scalar.return_value = 1
 		mock_session.execute.side_effect = [mock_count_result, mock_result]
@@ -425,7 +427,7 @@ class TestSceneGateway:
 		filters = SceneFilterDTO()
 
 		mock_result = Mock()
-		mock_result.scalars.return_value.all.return_value = [sample_scene_model]
+		mock_result.all.return_value = [(sample_scene_model, 1, 1)]
 		mock_count_result = Mock()
 		mock_count_result.scalar.return_value = 1
 		mock_session.execute.side_effect = [mock_count_result, mock_result]
