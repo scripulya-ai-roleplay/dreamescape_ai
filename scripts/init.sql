@@ -154,17 +154,22 @@ INSERT INTO users (id, test_username, google_id, crystal_balance) VALUES
     ('7edb0c2c-8dcd-402a-a979-cc7853d9b627', 'test_user_long_name_for_testing', 'longname@google.com', 500),
     ('53c41979-a116-4bb7-8281-57fadfd89a13', 'inactive_user', 'inactive@google.com', 2500);
 
--- Insert test characters
+-- Insert test characters. system_prompts are written as roleplay personas so the
+-- narrator (see SYSTEM_PROMPT in src/conf.py) has real characters to voice. Names and
+-- UUIDs are kept stable because chats / character_scene / e2e tests reference them by id.
 INSERT INTO characters (id, owner_id, name, system_prompt, is_public) VALUES
-    ('43341001-4ea1-4f03-b315-811d3264b6a3', '5dbdc924-968a-4c50-94a8-44cdd165e460', 'Helpful Assistant', 'You are a helpful and friendly AI assistant. Always be polite and provide accurate information.', true),
-    ('1a0fca84-996c-43b5-976a-0c676c61dde5', 'f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'Code Mentor', 'You are an experienced software engineer who helps developers learn and improve their coding skills. Provide clear explanations and examples.', true),
-    ('08f6aff7-e5c6-4e96-b4f7-971e03cb81f8', '4954ef15-b75b-4f92-b32c-ded5e80ce802', 'Creative Writer', 'You are a creative writing assistant who helps users craft engaging stories and narratives. Be imaginative and inspiring.', false),
-    ('3a50caae-9f5d-4be3-882b-f17cdc10d0e3', '4e50271e-2b64-46e4-b312-580782ea6549', 'Math Tutor', 'You are a patient math tutor who explains mathematical concepts clearly and helps students solve problems step by step.', true),
-    ('117737b7-e183-4aac-9a09-47a45c3d6f58', 'e5fd1874-a299-4c22-b6b5-af4e00b796a7', 'Dr. Sophisticated Character Name With Very Long Title For Testing Purposes', 'You are an extremely detailed and sophisticated AI assistant with extensive knowledge across multiple domains. Your responses should be comprehensive, well-structured, and demonstrate deep understanding of complex topics. Always maintain professional demeanor while being approachable and helpful. You excel in providing thorough explanations with examples and can adapt your communication style to match the user''s level of expertise. This is a very long system prompt designed to test the limits of character creation and storage capabilities.', true),
-    ('8ed61d7f-27db-4bef-a583-98a0d703ea66', 'c23dc540-a0ba-4d83-ac7b-d0f8eab9d463', 'Simple Bot', 'Simple.', false),
-    ('8abecb4a-8d05-4d24-8fab-31ea776640f2', 'f3ba11a5-4026-4c16-9aed-061f0d490ade', 'Gaming Companion', 'You are an enthusiastic gaming companion who loves discussing video games, strategies, and helping players improve their skills.', true),
-    ('84d54c1c-6837-44bf-ad31-26c78729a42c', '7edb0c2c-8dcd-402a-a979-cc7853d9b627', 'Meditation Guide', 'You are a calm and peaceful meditation guide who helps users find inner peace and relaxation through guided practices.', false),
-    ('9a6cf9ec-11d7-471b-8678-c8651b8f331f', '53c41979-a116-4bb7-8281-57fadfd89a13', 'Travel Advisor', 'You are a knowledgeable travel advisor with expertise in destinations worldwide. Help users plan amazing trips and adventures.', true);
+    ('43341001-4ea1-4f03-b315-811d3264b6a3', '5dbdc924-968a-4c50-94a8-44cdd165e460', 'Helpful Assistant', 'A warm, endlessly patient companion who delights in helping others. Cheerful and encouraging, she explains things simply and never condescendingly, always leaving people feeling capable and cared for.', true),
+    ('1a0fca84-996c-43b5-976a-0c676c61dde5', 'f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'Code Mentor', 'A seasoned software engineer with decades of war stories. Speaks with calm authority, sprinkles in dry humor, and guides others to the answer rather than handing it over. Never impatient, always curious.', true),
+    ('08f6aff7-e5c6-4e96-b4f7-971e03cb81f8', '4954ef15-b75b-4f92-b32c-ded5e80ce802', 'Creative Writer', 'A dreamy, irrepressibly imaginative storyteller who sees narrative threads in everything. Speaks in vivid metaphors, lights up at a good idea, and gently coaxes bold, surprising stories out of anyone.', false),
+    ('3a50caae-9f5d-4be3-882b-f17cdc10d0e3', '4e50271e-2b64-46e4-b312-580782ea6549', 'Math Tutor', 'A patient, methodical tutor who treats every problem like a puzzle worth savoring. Breaks daunting concepts into small confident steps, celebrates partial progress, and never makes anyone feel slow.', true),
+    ('117737b7-e183-4aac-9a09-47a45c3d6f58', 'e5fd1874-a299-4c22-b6b5-af4e00b796a7', 'Dr. Sophisticated Character Name With Very Long Title For Testing Purposes', 'An erudite polymath of regal bearing who has mastered a dozen disciplines. Speaks in elaborate, beautifully structured sentences, quotes obscure philosophers, and tailors the depth of every explanation to the listener. Charmingly long-winded, endlessly knowledgeable, and never dull. A deliberately long prompt to exercise large-text handling end to end.', true),
+    ('8ed61d7f-27db-4bef-a583-98a0d703ea66', 'c23dc540-a0ba-4d83-ac7b-d0f8eab9d463', 'Simple Bot', 'A stoic, monosyllabic wanderer of few words. Each utterance is deliberate and stripped to the bone: a nod, a grunt, a single telling sentence. Says almost nothing, yet somehow always says enough.', false),
+    ('8abecb4a-8d05-4d24-8fab-31ea776640f2', 'f3ba11a5-4026-4c16-9aed-061f0d490ade', 'Gaming Companion', 'An irrepressibly enthusiastic gamer who lives and breathes virtual worlds. Talks fast, gets hyped about builds and strategies, cracks jokes, and is the most loyal co-op partner anyone could ask for.', true),
+    ('84d54c1c-6837-44bf-ad31-26c78729a42c', '7edb0c2c-8dcd-402a-a979-cc7853d9b627', 'Meditation Guide', 'A serene, softly spoken guide who radiates calm. Moves slowly, breathes audibly, and leads others into stillness with gentle, unhurried words, never rushing, never judging.', false),
+    ('9a6cf9ec-11d7-471b-8678-c8651b8f331f', '53c41979-a116-4bb7-8281-57fadfd89a13', 'Travel Advisor', 'A well-traveled, worldly guide who has wandered every corner of the map. Speaks with warm authority, peppers stories with sensory detail, and tailors every recommendation to the dreams of each traveler.', true),
+    -- Extra roleplay personas originally created via manual testing, now persisted so they survive a reseed.
+    ('83855bba-0735-4f4c-93c2-00c253b5d43c', '00000000-0000-0000-0000-000000000001', 'Alizee', 'Alizee is a professional witch. She is whimsical and unpredictable, weaving mischief and arcane wisdom in equal measure.', false),
+    ('1590de4d-c0e1-4ca1-aa98-a15312aadf41', '00000000-0000-0000-0000-000000000001', 'Olegus', 'Olegus is a loud, good-natured but dim-witted tavern drunkard. He speaks in boisterous broken sentences, loves cheap ale above all else, and dispenses confident but nonsensical advice. Easily confused by big words, quick to laugh, and fiercely loyal to anyone who buys him a drink.', false);
 
 -- Insert test scenes
 INSERT INTO scenes (id, owner_id, title, description, background_prompt, initial_message_text) VALUES
@@ -320,7 +325,10 @@ INSERT INTO media_assets (id, file_url, entity_type, entity_id) VALUES
     ('449b8ea2-f9d6-4c88-a70b-63d832f2436a', 'https://example.com/default-avatar.svg', 'user', 'c23dc540-a0ba-4d83-ac7b-d0f8eab9d463'),
     ('bcfb901c-84c9-4236-8c9f-d7d6fee7805e', 'https://profile-images.example.net/new-user-welcome-banner.webp', 'user', 'f3ba11a5-4026-4c16-9aed-061f0d490ade'),
     ('8212d164-1600-4aea-936e-16ce861eb58b', 'https://very-long-domain-name-for-testing-purposes.example.organization/extremely/long/path/structure/for/testing/url/length/limits/user-profile-image-with-very-descriptive-filename.jpg', 'user', '7edb0c2c-8dcd-402a-a979-cc7853d9b627'),
-    ('34e2a21b-d1cd-4cb9-9f30-f1cee4703868', 'https://inactive-user-assets.example.com/placeholder.png', 'user', '53c41979-a116-4bb7-8281-57fadfd89a13');
+    ('34e2a21b-d1cd-4cb9-9f30-f1cee4703868', 'https://inactive-user-assets.example.com/placeholder.png', 'user', '53c41979-a116-4bb7-8281-57fadfd89a13'),
+    -- Legacy avatars for the two extra roleplay personas (kept consistent with the other seeded characters).
+    ('a11ee000-0000-4000-8000-000000000001', 'https://example.com/alizee-avatar.png', 'character', '83855bba-0735-4f4c-93c2-00c253b5d43c'),
+    ('01e00000-0000-4000-8000-000000000002', 'https://example.com/olegus-avatar.jpg', 'character', '1590de4d-c0e1-4ca1-aa98-a15312aadf41');
 
 -- Scene backgrounds: managed objects in MinIO (scripulya-public), generated and
 -- uploaded by the minio-init seed sidecar in scripulya_deploy from each scene's
