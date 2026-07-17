@@ -88,8 +88,16 @@ class CharacterGateway(ICharacterGateway):
 			conditions.append(CharacterModel.owner_id.in_(dto.owner_ids))
 
 		if dto.bookmarked_by:
-			query = query.join(character_bookmarks, character_bookmarks.c.character_id == CharacterModel.id)
-			conditions.append(character_bookmarks.c.user_id.in_(dto.bookmarked_by))
+			# EXISTS, not a JOIN: a character saved by several of these users would
+			# otherwise produce one row per bookmark and show up duplicated.
+			conditions.append(
+				exists().where(
+					and_(
+						character_bookmarks.c.character_id == CharacterModel.id,
+						character_bookmarks.c.user_id.in_(dto.bookmarked_by),
+					)
+				)
+			)
 
 		if conditions:
 			query = query.where(and_(*conditions))
@@ -102,9 +110,6 @@ class CharacterGateway(ICharacterGateway):
 
 		# Get total count
 		count_query = select(func.count(CharacterModel.id.distinct()))
-
-		if dto.bookmarked_by:
-			count_query = count_query.join(character_bookmarks, character_bookmarks.c.character_id == CharacterModel.id)
 
 		if conditions:
 			count_query = count_query.where(and_(*conditions))
