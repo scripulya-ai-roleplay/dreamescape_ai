@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 from starlette import status
 
+from src.infrastructure.logging.logger import Logger
 from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadDTO
 from src.application.ports import (
 	IImageReader,
@@ -17,8 +18,6 @@ from src.application.ports import (
 )
 from src.domain.models import MediaAsset
 
-logger = logging.getLogger(__name__)
-
 
 @dataclass
 class MediaService(IMediaService):
@@ -26,6 +25,7 @@ class MediaService(IMediaService):
 	gateway: IMediaGateway
 	reader: IImageReader
 	uow: IUnitOfWork
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def upload(self, dto: MediaUploadDTO) -> MediaAssetDTO:
 		# Authorize first: the uploader must own the target entity. Fails fast
@@ -34,7 +34,7 @@ class MediaService(IMediaService):
 		# not-owned and not-found cases to avoid leaking which entities exist.
 		entity_owner = await self.gateway.get_entity_owner(dto.entity_type, dto.entity_id)
 		if entity_owner is None or entity_owner != dto.owner_id:
-			logger.warning(
+			self.logger.warning(
 				"Rejected upload: user %s may not attach media to %s/%s (owner=%s)",
 				dto.owner_id,
 				dto.entity_type,
@@ -83,10 +83,10 @@ class MediaService(IMediaService):
 			try:
 				await self.storage.delete_object(bucket, object_key)
 			except Exception:
-				logger.exception("Failed to clean up orphaned object %s/%s", bucket, object_key)
+				self.logger.exception("Failed to clean up orphaned object %s/%s", bucket, object_key)
 			raise
 
-		logger.info("Uploaded media %s for %s/%s", asset.id, dto.entity_type, dto.entity_id)
+		self.logger.info("Uploaded media %s for %s/%s", asset.id, dto.entity_type, dto.entity_id)
 		return await self._to_dto(asset)
 
 	async def get_one(self, media_id: UUID, actor_id: UUID | None) -> MediaAssetDTO:
@@ -121,7 +121,7 @@ class MediaService(IMediaService):
 				try:
 					await self.storage.delete_object(asset.bucket, asset.object_key)
 				except Exception:
-					logger.exception("Failed to delete object %s/%s", asset.bucket, asset.object_key)
+					self.logger.exception("Failed to delete object %s/%s", asset.bucket, asset.object_key)
 			await self.gateway.delete(media_id)
 
 	async def _url_for(self, asset: MediaAsset) -> str:
@@ -129,7 +129,7 @@ class MediaService(IMediaService):
 		if asset.file_url:
 			return asset.file_url
 		if not (asset.bucket and asset.object_key):
-			logger.warning("Media %s has neither file_url nor object location", asset.id)
+			self.logger.warning("Media %s has neither file_url nor object location", asset.id)
 			return ""
 		if asset.is_public:
 			return self.storage.public_url(asset.bucket, asset.object_key)

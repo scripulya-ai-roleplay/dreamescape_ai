@@ -8,9 +8,8 @@ import anyio
 from minio import Minio
 from minio.error import S3Error
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import IObjectStorageGateway
-
-logger = logging.getLogger(__name__)
 
 # MinIO's default region. Preset on both clients so the minio SDK's region
 # lookup (triggered by presigned_get_object) short-circuits instead of making a
@@ -56,9 +55,10 @@ class MinioObjectStorageGateway(IObjectStorageGateway):
 	_public_endpoint: str  # host[:port], no scheme
 	_public_secure: bool
 	_presign_expiry_seconds: int
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	@classmethod
-	def from_settings(cls, settings) -> "MinioObjectStorageGateway":
+	def from_settings(cls, settings, logger: logging.Logger) -> "MinioObjectStorageGateway":
 		internal_host, _ = _parse_endpoint(settings.MINIO_INTERNAL_ENDPOINT)
 		public_host, scheme_secure = _parse_endpoint(settings.MINIO_PUBLIC_ENDPOINT)
 		secure = settings.MINIO_SECURE if scheme_secure is None else scheme_secure
@@ -77,6 +77,7 @@ class MinioObjectStorageGateway(IObjectStorageGateway):
 			_public_endpoint=public_host,
 			_public_secure=secure,
 			_presign_expiry_seconds=settings.MINIO_PRESIGN_EXPIRY_SECONDS,
+			logger=logger,
 		)
 
 	async def ensure_buckets(self) -> None:
@@ -87,12 +88,12 @@ class MinioObjectStorageGateway(IObjectStorageGateway):
 			try:
 				if not self._data_client.bucket_exists(bucket):
 					self._data_client.make_bucket(bucket)
-					logger.info("Created MinIO bucket: %s", bucket)
+					self.logger.info("Created MinIO bucket: %s", bucket)
 			except S3Error as e:
 				# Race-safe: another worker may have created it concurrently.
 				if e.code not in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
 					raise
-				logger.debug("MinIO bucket already exists: %s (%s)", bucket, e.code)
+				self.logger.debug("MinIO bucket already exists: %s (%s)", bucket, e.code)
 
 		# Anonymous read on the public bucket -> stable public URLs (no signature).
 		policy = {
@@ -107,7 +108,7 @@ class MinioObjectStorageGateway(IObjectStorageGateway):
 			],
 		}
 		self._data_client.set_bucket_policy(self._bucket_public, json.dumps(policy))
-		logger.debug("MinIO public bucket policy applied: %s", self._bucket_public)
+		self.logger.debug("MinIO public bucket policy applied: %s", self._bucket_public)
 
 	async def upload(
 		self,
@@ -119,7 +120,7 @@ class MinioObjectStorageGateway(IObjectStorageGateway):
 	) -> tuple[str, int]:
 		bucket = self._bucket_public if is_public else self._bucket_private
 		await anyio.to_thread.run_sync(self._data_client.put_object, bucket, object_key, data, length, content_type)
-		logger.info("Uploaded %s bytes to %s/%s", length, bucket, object_key)
+		self.logger.info("Uploaded %s bytes to %s/%s", length, bucket, object_key)
 		return bucket, length
 
 	async def presigned_get_url(self, bucket: str, object_key: str) -> str:
@@ -137,4 +138,4 @@ class MinioObjectStorageGateway(IObjectStorageGateway):
 
 	async def delete_object(self, bucket: str, object_key: str) -> None:
 		await anyio.to_thread.run_sync(self._data_client.remove_object, bucket, object_key)
-		logger.info("Deleted object %s/%s", bucket, object_key)
+		self.logger.info("Deleted object %s/%s", bucket, object_key)

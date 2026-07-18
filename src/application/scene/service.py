@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import (
 	ISceneService,
 	IUnitOfWork,
@@ -13,78 +14,77 @@ from src.application.ports import (
 from src.application.scene.schemas import SceneFilterDTO
 from src.domain.models import Scene
 
-logger = logging.getLogger(__name__)
-
 
 @dataclass
 class SceneService(ISceneService):
 	uow: IUnitOfWork
 	gateway: ISceneGateway
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def create_scene(self, scene: Scene) -> UUID:
-		logger.info(f"Creating scene: {scene.title}")
+		self.logger.info(f"Creating scene: {scene.title}")
 
 		async with self.uow:
 			try:
 				scene_id = await self.gateway.create(scene)
-				logger.info(f"Successfully created scene with ID: {scene_id}")
+				self.logger.info(f"Successfully created scene with ID: {scene_id}")
 				return scene_id
 			except Exception as e:
-				logger.error(f"Failed to create scene: {e}")
+				self.logger.error(f"Failed to create scene: {e}")
 				raise
 
 	async def get_one(self, scene_uuid: UUID) -> Scene:
-		logger.info(f"Getting scene: {scene_uuid}")
+		self.logger.info(f"Getting scene: {scene_uuid}")
 
 		try:
 			scene = await self.gateway.get_one(scene_uuid)
-			logger.info(f"Successfully retrieved scene: {scene_uuid}")
+			self.logger.info(f"Successfully retrieved scene: {scene_uuid}")
 			return scene
 		except Exception as e:
-			logger.error(f"Failed to get scene {scene_uuid}: {e}")
+			self.logger.error(f"Failed to get scene {scene_uuid}: {e}")
 			raise
 
 	async def search(self, dto: SceneFilterDTO) -> Page[Scene]:
-		logger.info(f"Searching scenes with filters: {dto}")
+		self.logger.info(f"Searching scenes with filters: {dto}")
 
 		try:
 			result = await self.gateway.search(dto)
-			logger.info(f"Found {result.count} scenes")
+			self.logger.info(f"Found {result.count} scenes")
 			return result
 		except Exception as e:
-			logger.error(f"Failed to search scenes: {e}")
+			self.logger.error(f"Failed to search scenes: {e}")
 			raise
 
 	async def delete(self, scene_uuid: UUID):
-		logger.info(f"Deleting scene: {scene_uuid}")
+		self.logger.info(f"Deleting scene: {scene_uuid}")
 
 		async with self.uow:
 			try:
 				# Check if scene exists before deleting
 				await self.gateway.get_one(scene_uuid)
 				await self.gateway.delete(scene_uuid)
-				logger.info(f"Successfully deleted scene: {scene_uuid}")
+				self.logger.info(f"Successfully deleted scene: {scene_uuid}")
 			except ValueError:
 				# Re-raise validation errors as-is
 				raise
 			except Exception as e:
-				logger.error(f"Failed to delete scene {scene_uuid}: {e}")
+				self.logger.error(f"Failed to delete scene {scene_uuid}: {e}")
 				raise
 
 	async def update(self, target_scene_uuid: UUID, new_scene_data: Scene):
-		logger.info(f"Updating scene: {target_scene_uuid}")
+		self.logger.info(f"Updating scene: {target_scene_uuid}")
 
 		async with self.uow:
 			try:
 				# Check if scene exists before updating
 				await self.gateway.get_one(target_scene_uuid)
 				await self.gateway.update(target_scene_uuid, new_scene_data)
-				logger.info(f"Successfully updated scene: {target_scene_uuid}")
+				self.logger.info(f"Successfully updated scene: {target_scene_uuid}")
 			except ValueError:
 				# Re-raise validation errors as-is
 				raise
 			except Exception as e:
-				logger.error(f"Failed to update scene {target_scene_uuid}: {e}")
+				self.logger.error(f"Failed to update scene {target_scene_uuid}: {e}")
 				raise
 
 	# Every like/bookmark verb resolves the scene first. A missing target then
@@ -94,7 +94,7 @@ class SceneService(ISceneService):
 	# delete/update already gate on get_one.
 
 	async def like(self, scene_uuid: UUID, user_id: UUID) -> LikeState:
-		logger.info(f"User {user_id} liking scene {scene_uuid}")
+		self.logger.info(f"User {user_id} liking scene {scene_uuid}")
 
 		async with self.uow:
 			await self.gateway.get_one(scene_uuid)
@@ -104,7 +104,7 @@ class SceneService(ISceneService):
 		return LikeState(liked=True, likes_count=count)
 
 	async def unlike(self, scene_uuid: UUID, user_id: UUID) -> LikeState:
-		logger.info(f"User {user_id} unliking scene {scene_uuid}")
+		self.logger.info(f"User {user_id} unliking scene {scene_uuid}")
 
 		async with self.uow:
 			await self.gateway.get_one(scene_uuid)
@@ -119,7 +119,7 @@ class SceneService(ISceneService):
 		return LikeState(liked=liked, likes_count=count)
 
 	async def bookmark(self, scene_uuid: UUID, user_id: UUID) -> BookmarkState:
-		logger.info(f"User {user_id} bookmarking scene {scene_uuid}")
+		self.logger.info(f"User {user_id} bookmarking scene {scene_uuid}")
 
 		async with self.uow:
 			await self.gateway.get_one(scene_uuid)
@@ -127,7 +127,7 @@ class SceneService(ISceneService):
 		return BookmarkState(bookmarked=True)
 
 	async def unbookmark(self, scene_uuid: UUID, user_id: UUID) -> BookmarkState:
-		logger.info(f"User {user_id} unbookmarking scene {scene_uuid}")
+		self.logger.info(f"User {user_id} unbookmarking scene {scene_uuid}")
 
 		async with self.uow:
 			await self.gateway.get_one(scene_uuid)
@@ -138,3 +138,11 @@ class SceneService(ISceneService):
 		await self.gateway.get_one(scene_uuid)
 		bookmarked = await self.gateway.is_bookmarked(scene_uuid, user_id)
 		return BookmarkState(bookmarked=bookmarked)
+
+	async def attach_characters(self, scene_uuid: UUID, character_ids: list[UUID]) -> None:
+		self.logger.info(f"Attaching {len(character_ids)} character(s) to scene {scene_uuid}")
+
+		async with self.uow:
+			# Resolve first so a missing scene 404s instead of a bare INSERT.
+			await self.gateway.get_one(scene_uuid)
+			await self.gateway.attach_characters(scene_uuid, character_ids)

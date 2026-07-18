@@ -9,20 +9,10 @@ from src.app import create_app
 from src.conf import settings
 from src.controllers.rabbit.v1.broker import broker
 from src.infrastructure.di import create_container
+from src.infrastructure.logging.logger import Logger
 
 
 logger = logging.getLogger(__name__)
-
-logging_level = logging.INFO
-if settings.DEBUG:
-	logging_level = logging.DEBUG
-
-
-def setup_logging() -> None:
-	logging.basicConfig(
-		level=logging_level,
-		format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-	)
 
 
 def run_http_server() -> None:
@@ -48,7 +38,7 @@ def run_http_server() -> None:
 
 
 def main() -> int:
-	setup_logging()
+	Logger.configure()
 	parser = argparse.ArgumentParser(
 		description="VAPI Local Networks Service",
 		formatter_class=argparse.RawDescriptionHelpFormatter,

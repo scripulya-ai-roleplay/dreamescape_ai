@@ -11,11 +11,5 @@ async def handle_agent_result(
 	message_service: FromDishka[IMessageService],
 	events: FromDishka[IChatEventGateway],
 ) -> None:
-	"""Consume an LLMResult from scripulya_agent.
-
-	Appends the reply as a fresh model message for the chat (COMPLETED + text on
-	success, FAILED + the error message on error) and pushes it to any open SSE
-	listeners. Correlation is by chat_id (scripulya_agent echoes it).
-	"""
 	message = await message_service.append_model_message(result)
 	events.publish_message(result.chat_id, message)

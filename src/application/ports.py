@@ -181,6 +181,9 @@ class ICharacterService(abc.ABC):
 	async def search(self, dto: CharacterFilterDTO) -> Page[Character]: ...
 
 	@abc.abstractmethod
+	async def get_for_scene(self, scene_id: UUID, actor_id: UUID) -> list[Character]: ...
+
+	@abc.abstractmethod
 	async def delete(self, scene_uuid: UUID): ...
 
 	@abc.abstractmethod
@@ -239,6 +242,9 @@ class ISceneService(abc.ABC):
 	@abc.abstractmethod
 	async def get_bookmark_state(self, scene_uuid: UUID, user_id: UUID) -> BookmarkState: ...
 
+	@abc.abstractmethod
+	async def attach_characters(self, scene_uuid: UUID, character_ids: list[UUID]) -> None: ...
+
 
 class ISceneGateway(abc.ABC):
 	@abc.abstractmethod
@@ -276,6 +282,9 @@ class ISceneGateway(abc.ABC):
 
 	@abc.abstractmethod
 	async def is_bookmarked(self, scene_id: UUID, user_id: UUID) -> bool: ...
+
+	@abc.abstractmethod
+	async def attach_characters(self, scene_id: UUID, character_ids: list[UUID]) -> None: ...
 
 
 class ICharacterGateway(abc.ABC):

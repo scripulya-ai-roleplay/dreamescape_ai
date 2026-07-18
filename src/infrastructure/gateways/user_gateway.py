@@ -7,6 +7,7 @@ from sqlalchemy import select, delete, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import IUserGateway, Page
 from src.domain.models import User, UserRole
 from src.application.user.schemas import UserDTO
@@ -14,15 +15,13 @@ from src.infrastructure.database.models import User as UserModel
 from src.domain.models import Character, Scene, Chat
 
 
-logger = logging.getLogger(__name__)
-
-
 @dataclass
 class UserGateway(IUserGateway):
 	_session: AsyncSession
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def find_users_by_filters(self, filters: UserDTO, offset: int = 10, limit: int = 0) -> Page[User]:
-		logger.info(f"Finding users with filters: {filters}")
+		self.logger.info(f"Finding users with filters: {filters}")
 
 		# Build query with filters
 		query = select(UserModel).options(
@@ -64,12 +63,12 @@ class UserGateway(IUserGateway):
 		# Convert to domain models
 		domain_users = [self._to_domain_user(user_model) for user_model in user_models]
 
-		logger.info(f"Found {len(domain_users)} users out of {total_count} total")
+		self.logger.info(f"Found {len(domain_users)} users out of {total_count} total")
 
 		return Page[User](items=domain_users, count=total_count, offset=offset, limit=limit)
 
 	async def create_user(self, user: User) -> User:
-		logger.info(f"Creating user in database: {user.username or user.test_username}")
+		self.logger.info(f"Creating user in database: {user.username or user.test_username}")
 
 		user_model = UserModel(
 			test_username=user.test_username, google_id=user.google_id, crystal_balance=user.crystal_balance
@@ -80,12 +79,12 @@ class UserGateway(IUserGateway):
 		await self._session.refresh(user_model)
 
 		created_user = self._to_domain_user(user_model)
-		logger.info(f"Successfully created user with ID: {created_user.id}")
+		self.logger.info(f"Successfully created user with ID: {created_user.id}")
 
 		return created_user
 
 	async def delete_user(self, user_id: UUID) -> None:
-		logger.info(f"Deleting user from database: {user_id}")
+		self.logger.info(f"Deleting user from database: {user_id}")
 
 		# The cascade delete in the database model will handle related records
 		query = delete(UserModel).where(UserModel.id == user_id)
@@ -95,10 +94,10 @@ class UserGateway(IUserGateway):
 			raise ValueError(f"User with ID {user_id} not found")
 
 		await self._session.commit()
-		logger.info(f"Successfully deleted user: {user_id}")
+		self.logger.info(f"Successfully deleted user: {user_id}")
 
 	async def get_user_by_id(self, user_id: UUID) -> Optional[User]:
-		logger.info(f"Getting user by ID: {user_id}")
+		self.logger.info(f"Getting user by ID: {user_id}")
 
 		query = (
 			select(UserModel)

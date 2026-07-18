@@ -1,15 +1,15 @@
 import logging
 from uuid import UUID
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from asgi_correlation_id import correlation_id
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 
-from src.application.ports import ISceneService, ApiResponse, Page, LikeState, BookmarkState
-from src.application.scene.schemas import SceneFilterDTO
-from src.domain.models import Scene
+from src.application.ports import ISceneService, ICharacterService, ApiResponse, Page, LikeState, BookmarkState
+from src.application.scene.schemas import SceneFilterDTO, AttachCharactersDTO
+from src.domain.models import Scene, Character
 from src.infrastructure.auth.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -151,3 +151,45 @@ async def get_scene_bookmark_state(
 	user_id = UUID(current_user["sub"])
 	state = await scene_service.get_bookmark_state(scene_id, user_id)
 	return ApiResponse(result=state, correlation_id=correlation_id.get())
+
+
+@router.post("/{scene_id}/characters")
+@inject
+async def attach_characters_to_scene(
+	scene_service: FromDishka[ISceneService],
+	character_service: FromDishka[ICharacterService],
+	scene_id: UUID = Path(),
+	dto: AttachCharactersDTO = Body(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse:
+	user_id = UUID(current_user["sub"])
+
+	# Attaching mutates the scene every chat in it sees, so (unlike a personal
+	# like/bookmark) only the owner may change which characters belong to it.
+	scene = await scene_service.get_one(scene_id)
+	if scene.owner_id != user_id:
+		raise HTTPException(status_code=403, detail="Only the scene owner can attach characters")
+
+	# Resolve + authorize each character before the INSERT: missing → 404 (not an
+	# FK 500), and a private non-owned character is 403 (it would leak via chats).
+	for character_id in dto.character_ids:
+		character = await character_service.get_one(character_id)
+		if not character.is_public and character.owner_id != user_id:
+			raise HTTPException(status_code=403, detail="Not allowed to attach this character")
+
+	await scene_service.attach_characters(scene_id, dto.character_ids)
+	return ApiResponse(result=[], correlation_id=correlation_id.get())
+
+
+@router.get("/{scene_id}/characters")
+@inject
+async def get_scene_characters(
+	scene_service: FromDishka[ISceneService],
+	character_service: FromDishka[ICharacterService],
+	scene_id: UUID = Path(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
+) -> ApiResponse[List[Character]]:
+	user_id = UUID(current_user["sub"])
+	await scene_service.get_one(scene_id)
+	characters = await character_service.get_for_scene(scene_id, actor_id=user_id)
+	return ApiResponse(result=characters, correlation_id=correlation_id.get())

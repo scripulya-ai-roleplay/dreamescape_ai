@@ -21,11 +21,6 @@ class Settings(BaseSettings):
 	QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 	LLM_TEMPERATURE: float = 0.7
 
-	# --- RabbitMQ / scripulya_agent integration ---
-	# The backend delegates LLM generation to the scripulya_agent worker over these queues.
-	# When false, a MockScripulyaAgentClient is used and the RabbitMQ broker is not started,
-	# so the app runs without RabbitMQ/scripulya_agent (local docker). Real models then drop
-	# their requests; use the testing_mock model for a fully offline chat.
 	LLM_AGENT_ENABLED: bool = True
 	RABBIT_URL: str = "amqp://guest:guest@rabbitmq:5672/"
 	LLM_AGENT_REQUEST_QUEUE: str = "llm.agent.request"
@@ -35,24 +30,14 @@ class Settings(BaseSettings):
 	# Database Settings
 	DATABASE_URL: str = "postgresql+asyncpg://user:password@postgres:5432/dbname"
 
-	# --- Object storage (MinIO / S3) for media assets ---
-	# MINIO_INTERNAL_ENDPOINT is the host the backend uses for data ops (put/get
-	# objects, create buckets) — the in-network service name. MINIO_PUBLIC_ENDPOINT
-	# is the host embedded in the URLs handed to clients (mobile/web), which must be
-	# reachable FROM the client: e.g. "localhost:9000" for compose,
-	# "localhost:30900" for the k8s NodePort, or real DNS in prod. The minio client
-	# signs presigned URLs over this host, so a wrong value makes every image 404.
 	MINIO_INTERNAL_ENDPOINT: str = "minio:9000"
 	MINIO_PUBLIC_ENDPOINT: str = "localhost:9000"
-	# Same values as the MinIO server's MINIO_ROOT_USER / MINIO_ROOT_PASSWORD — the
-	# app uses them as its S3 access key / secret.
 	MINIO_ROOT_USER: str = "minioadmin"
 	MINIO_ROOT_PASSWORD: str = "minioadmin"
 	MINIO_SECURE: bool = False
 	MINIO_BUCKET_PUBLIC: str = "scripulya-public"
 	MINIO_BUCKET_PRIVATE: str = "scripulya-private"
 	MINIO_PRESIGN_EXPIRY_SECONDS: int = 900
-	# Hard cap on a single uploaded file (enforced while streaming, not after read).
 	MEDIA_MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
 
 	# JWT Settings
@@ -62,14 +47,16 @@ class Settings(BaseSettings):
 	JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
 	SYSTEM_PROMPT: str = """
-    Ты — рассказчик и описываешь происходящее на основе персонажей и окружающей среды
-    Тут приведены описания персонажей
+    You are a narrator and describe what is happening based on the characters and the environment
+    The character descriptions are provided here
 
-    Персонажи общаются с пользователем или взаимодействуют с ним тем или иным способом
-    Твоя задача — отвечать на сообщения и параллельно описывать сцену для генерации картинки. Расписывай всё примерно в 3-4 абзацах
-    Твой ответ ВСЕГДА должен быть строго в формате JSON:
+    Characters communicate with the user or interact with them in one way or another
+    Your task is to respond to messages and, at the same time, describe the scene for image generation. Write it in roughly 3-4 paragraphs
+    Your response must ALWAYS be strictly in JSON format:
+    The user plays as the character indicated here under the User section. Describe how the world and the other characters
+    interact with the user in the second person, for example: 'someone looked at you' etc.
     {
-        "text": "Твой текстовый ответ",
+        "text": "Your text response",
     }
     """
 

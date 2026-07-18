@@ -6,21 +6,20 @@ from uuid import UUID
 from sqlalchemy import select, delete, func, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import IMessageGateway, Page
 from src.application.message.schemas import MessagesFilterDto
 from src.domain.models import Message, ChatRoles, MessageStatus
 from src.infrastructure.database.models import Message as MessageModel
 
 
-logger = logging.getLogger(__name__)
-
-
 @dataclass
 class MessageGateway(IMessageGateway):
 	_session: AsyncSession
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def create(self, message: Message) -> Message:
-		logger.info(f"Creating message in database for chat: {message.chat_id}")
+		self.logger.info(f"Creating message in database for chat: {message.chat_id}")
 		message_model = MessageModel(
 			chat_id=message.chat_id,
 			role=message.role.value,
@@ -34,12 +33,12 @@ class MessageGateway(IMessageGateway):
 		await self._session.refresh(message_model)
 
 		created_message = self._to_domain_message(message_model)
-		logger.info(f"Successfully created message with ID: {created_message.id}")
+		self.logger.info(f"Successfully created message with ID: {created_message.id}")
 
 		return created_message
 
 	async def search(self, dto: MessagesFilterDto) -> Page[Message]:
-		logger.info(f"Searching messages with filters: {dto}")
+		self.logger.info(f"Searching messages with filters: {dto}")
 
 		# Build query with filters
 		query = select(MessageModel)
@@ -76,12 +75,12 @@ class MessageGateway(IMessageGateway):
 		# Convert to domain models
 		domain_messages = [self._to_domain_message(message_model) for message_model in message_models]
 
-		logger.info(f"Found {len(domain_messages)} messages out of {total_count} total")
+		self.logger.info(f"Found {len(domain_messages)} messages out of {total_count} total")
 
 		return Page[Message](items=domain_messages, count=total_count, offset=dto.offset, limit=dto.limit)
 
 	async def get_one(self, message_uuid: UUID) -> Message:
-		logger.info(f"Getting message by ID: {message_uuid}")
+		self.logger.info(f"Getting message by ID: {message_uuid}")
 
 		query = select(MessageModel).where(MessageModel.id == message_uuid)
 
@@ -94,7 +93,7 @@ class MessageGateway(IMessageGateway):
 		return self._to_domain_message(message_model)
 
 	async def update(self, message_uuid: UUID, updated_text: str) -> UUID:
-		logger.info(f"Updating message {message_uuid} with new text")
+		self.logger.info(f"Updating message {message_uuid} with new text")
 
 		query = (
 			update(MessageModel)
@@ -108,12 +107,12 @@ class MessageGateway(IMessageGateway):
 			raise ValueError(f"Message with ID {message_uuid} not found")
 
 		await self._session.commit()
-		logger.info(f"Successfully updated message: {message_uuid}")
+		self.logger.info(f"Successfully updated message: {message_uuid}")
 
 		return message_uuid
 
 	async def delete(self, message_uuid: UUID) -> UUID:
-		logger.info(f"Deleting message from database: {message_uuid}")
+		self.logger.info(f"Deleting message from database: {message_uuid}")
 
 		query = delete(MessageModel).where(MessageModel.id == message_uuid)
 		result = await self._session.execute(query)
@@ -122,12 +121,12 @@ class MessageGateway(IMessageGateway):
 			raise ValueError(f"Message with ID {message_uuid} not found")
 
 		await self._session.commit()
-		logger.info(f"Successfully deleted message: {message_uuid}")
+		self.logger.info(f"Successfully deleted message: {message_uuid}")
 
 		return message_uuid
 
 	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]:
-		logger.info(f"Getting latest model message for chat: {chat_id}")
+		self.logger.info(f"Getting latest model message for chat: {chat_id}")
 		query = (
 			select(MessageModel)
 			.where(MessageModel.chat_id == chat_id, MessageModel.role == ChatRoles.MODEL.value)

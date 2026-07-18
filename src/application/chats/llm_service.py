@@ -1,6 +1,8 @@
 import logging
 from dataclasses import dataclass
 
+from src.conf import settings
+from src.infrastructure.logging.logger import Logger
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import (
 	ICharacterGateway,
@@ -16,8 +18,6 @@ from src.application.ports import (
 )
 from src.domain.models import ChatRoles, Message, MessageStatus
 from src.infrastructure.exceptions import PersonaRequiredException
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -35,9 +35,10 @@ class LLMChatsService(IChatsService):
 	character_gateway: ICharacterGateway
 	prompt_service: IPromptService
 	_events: IChatEventGateway
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def send_message(self, chat_dto: UserMessageDTO) -> Message:
-		logger.info(f"Processing LLM chat message with model: {chat_dto.llm_model}")
+		self.logger.info(f"Processing LLM chat message with model: {chat_dto.llm_model}")
 		gateway = self.gateway_factory.create_gateway(chat_dto.llm_model.value)
 
 		history_page = await self.message_service.search(MessagesFilterDto(chats_ids=[chat_dto.chat_id]))
@@ -66,6 +67,19 @@ class LLMChatsService(IChatsService):
 		)
 
 		chat_settings = await self.chat_settings_gateway.get_for_chat(chat_dto.chat_id)
+
+		# The assembled prompt embeds every attached character's system_prompt plus the
+		# user's message history — sensitive, so only dump it in DEBUG builds.
+		if settings.DEBUG:
+			history_preview = "\n\n".join(f"[{m.role}] {m.message}" for m in history) or "(none)"
+			self.logger.debug(
+				f"LLM prompt for chat {chat_dto.chat_id} | model={chat_dto.llm_model}\n"
+				f"===== SYSTEM PROMPT =====\n{system_prompt}\n"
+				f"===== HISTORY ({len(history)} turns) =====\n{history_preview}\n"
+				f"===== NEW MESSAGE [{chat_dto.role}] =====\n{chat_dto.message}\n"
+				f"===== END PROMPT ====="
+			)
+
 		response = await gateway.submit(chat_dto, history, chat_settings=chat_settings, system_prompt=system_prompt)
 		if response is not None:
 			model_message = await self.message_service.send_message(

@@ -3,10 +3,9 @@ from dataclasses import dataclass
 
 from fastapi import UploadFile
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import IImageReader, UploadedImage
 from src.infrastructure.exceptions import ImageTooLargeException, UnsupportedImageTypeException
-
-logger = logging.getLogger(__name__)
 
 # Image content types accepted on upload. The extension is derived from the
 # sniffed type (not the client-supplied filename) and doubles as the allowlist.
@@ -62,11 +61,12 @@ class ImageReader(IImageReader):
 	"""
 
 	max_bytes: int
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def read(self, file: UploadFile) -> UploadedImage:
 		content_type = (file.content_type or "").lower()
 		if content_type not in _CONTENT_TYPE_EXT:
-			logger.warning("Rejected upload: unsupported content_type=%s", content_type)
+			self.logger.warning("Rejected upload: unsupported content_type=%s", content_type)
 			raise UnsupportedImageTypeException(f"Unsupported image content type: {content_type or 'unknown'}")
 
 		# Stream into memory with a hard cap so a huge upload cannot OOM the process.
@@ -77,13 +77,15 @@ class ImageReader(IImageReader):
 				break
 			buf += chunk
 			if len(buf) > self.max_bytes:
-				logger.warning("Rejected upload: size exceeds %s bytes", self.max_bytes)
+				self.logger.warning("Rejected upload: size exceeds %s bytes", self.max_bytes)
 				raise ImageTooLargeException(f"Image exceeds the {self.max_bytes}-byte limit")
 
 		# The header is trivially forged, so the magic number is the source of truth.
 		sniffed = _sniff_image_type(buf)
 		if sniffed is None or sniffed != content_type:
-			logger.warning("Rejected upload: bytes do not match claimed type %s (sniffed=%s)", content_type, sniffed)
+			self.logger.warning(
+				"Rejected upload: bytes do not match claimed type %s (sniffed=%s)", content_type, sniffed
+			)
 			raise UnsupportedImageTypeException("File contents do not match the declared image content type")
 
 		return UploadedImage(
