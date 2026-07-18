@@ -8,6 +8,7 @@ import anyio
 from minio import Minio
 from minio.error import S3Error
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import IObjectStorageGateway
 
 # MinIO's default region. Preset on both clients so the minio SDK's region
@@ -54,7 +55,7 @@ class MinioObjectStorageGateway(IObjectStorageGateway):
 	_public_endpoint: str  # host[:port], no scheme
 	_public_secure: bool
 	_presign_expiry_seconds: int
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	@classmethod
 	def from_settings(cls, settings, logger: logging.Logger) -> "MinioObjectStorageGateway":

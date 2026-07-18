@@ -6,6 +6,7 @@ from sqlalchemy import select, delete, func, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import IChatGateway, Page
 from src.application.chats.schemas import ChatFilterDTO
 from src.domain.models import Chat
@@ -15,7 +16,7 @@ from src.infrastructure.database.models import Chat as ChatModel, Character as C
 @dataclass
 class ChatGateway(IChatGateway):
 	_session: AsyncSession
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def create(self, chat: Chat) -> UUID:
 		self.logger.info(f"Creating chat in database: {chat.title}")

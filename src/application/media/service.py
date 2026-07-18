@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 from starlette import status
 
+from src.infrastructure.logging.logger import Logger
 from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadDTO
 from src.application.ports import (
 	IImageReader,
@@ -24,7 +25,7 @@ class MediaService(IMediaService):
 	gateway: IMediaGateway
 	reader: IImageReader
 	uow: IUnitOfWork
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def upload(self, dto: MediaUploadDTO) -> MediaAssetDTO:
 		# Authorize first: the uploader must own the target entity. Fails fast

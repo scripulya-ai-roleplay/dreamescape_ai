@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     Characters communicate with the user or interact with them in one way or another
     Your task is to respond to messages and, at the same time, describe the scene for image generation. Write it in roughly 3-4 paragraphs
     Your response must ALWAYS be strictly in JSON format:
-    The user plays as the character indicated here via # User. Describe how the world and the other characters
+    The user plays as the character indicated here under the User section. Describe how the world and the other characters
     interact with the user in the second person, for example: 'someone looked at you' etc.
     {
         "text": "Your text response",

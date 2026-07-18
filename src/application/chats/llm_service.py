@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass
 
+from src.infrastructure.logging.logger import Logger
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import (
 	ICharacterGateway,
@@ -33,7 +34,7 @@ class LLMChatsService(IChatsService):
 	character_gateway: ICharacterGateway
 	prompt_service: IPromptService
 	_events: IChatEventGateway
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def send_message(self, chat_dto: UserMessageDTO) -> Message:
 		self.logger.info(f"Processing LLM chat message with model: {chat_dto.llm_model}")

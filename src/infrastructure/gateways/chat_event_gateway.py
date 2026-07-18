@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import IChatEventGateway
 from src.domain.models import Message
 
@@ -13,7 +14,7 @@ _LISTENER_MAXSIZE = 32
 
 @dataclass
 class ChatEventGateway(IChatEventGateway):
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 	_listeners: dict[UUID, set[asyncio.Queue]] = field(default_factory=dict)
 
 	def subscribe(self, chat_id: UUID) -> asyncio.Queue:

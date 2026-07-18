@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import (
 	ISceneService,
 	IUnitOfWork,
@@ -18,7 +19,7 @@ from src.domain.models import Scene
 class SceneService(ISceneService):
 	uow: IUnitOfWork
 	gateway: ISceneGateway
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def create_scene(self, scene: Scene) -> UUID:
 		self.logger.info(f"Creating scene: {scene.title}")

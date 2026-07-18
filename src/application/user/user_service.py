@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import IUserService, IUserGateway, Page, IUnitOfWork
 from src.domain.models import User
 from src.application.user.schemas import UserDTO
@@ -11,7 +12,7 @@ from src.application.user.schemas import UserDTO
 class UserService(IUserService):
 	_user_gateway: IUserGateway
 	uow: IUnitOfWork
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def find_users_by_dto(self, user_filters_dto: UserDTO) -> Page[User]:
 		self.logger.info(f"Searching users with filters: {user_filters_dto}")

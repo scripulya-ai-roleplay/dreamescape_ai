@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Optional
 from uuid import UUID
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import IUnitOfWork
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import IMessageService, IMessageGateway, Page, LLMResult
@@ -13,7 +14,7 @@ from src.domain.models import ChatRoles, Message, MessageStatus
 class MessageService(IMessageService):
 	message_gateway: IMessageGateway
 	_uow: IUnitOfWork
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def send_message(self, message: Message) -> Message:
 		async with self._uow:

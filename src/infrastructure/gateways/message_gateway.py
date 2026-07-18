@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import select, delete, func, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import IMessageGateway, Page
 from src.application.message.schemas import MessagesFilterDto
 from src.domain.models import Message, ChatRoles, MessageStatus
@@ -15,7 +16,7 @@ from src.infrastructure.database.models import Message as MessageModel
 @dataclass
 class MessageGateway(IMessageGateway):
 	_session: AsyncSession
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def create(self, message: Message) -> Message:
 		self.logger.info(f"Creating message in database for chat: {message.chat_id}")

@@ -7,6 +7,7 @@ from sqlalchemy import select, delete, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import IUserGateway, Page
 from src.domain.models import User, UserRole
 from src.application.user.schemas import UserDTO
@@ -17,7 +18,7 @@ from src.domain.models import Character, Scene, Chat
 @dataclass
 class UserGateway(IUserGateway):
 	_session: AsyncSession
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def find_users_by_filters(self, filters: UserDTO, offset: int = 10, limit: int = 0) -> Page[User]:
 		self.logger.info(f"Finding users with filters: {filters}")

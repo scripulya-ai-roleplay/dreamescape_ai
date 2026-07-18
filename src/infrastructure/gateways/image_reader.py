@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from fastapi import UploadFile
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import IImageReader, UploadedImage
 from src.infrastructure.exceptions import ImageTooLargeException, UnsupportedImageTypeException
 
@@ -60,7 +61,7 @@ class ImageReader(IImageReader):
 	"""
 
 	max_bytes: int
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def read(self, file: UploadFile) -> UploadedImage:
 		content_type = (file.content_type or "").lower()

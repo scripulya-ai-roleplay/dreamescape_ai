@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import select, delete, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.infrastructure.logging.logger import Logger
 from src.application.media.schemas import MediaFilterDTO
 from src.application.ports import IMediaGateway, Page
 from src.domain.models import MediaAsset, MediaEntityType
@@ -27,7 +28,7 @@ _ENTITY_OWNER_COLUMN: dict[MediaEntityType, tuple[type, object]] = {
 @dataclass
 class MediaGateway(IMediaGateway):
 	session: AsyncSession
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def create(self, asset: MediaAsset) -> MediaAsset:
 		self.logger.info("Creating media asset for %s/%s", asset.entity_type, asset.entity_id)

@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.infrastructure.logging.logger import Logger
 from src.application.character.schemas import CharacterFilterDTO
 from src.application.ports import ICharacterGateway, Page
 from src.domain.models import Character
@@ -21,7 +22,7 @@ from src.infrastructure.database.models import (
 @dataclass
 class CharacterGateway(ICharacterGateway):
 	session: AsyncSession
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def get_one(self, character_uuid: UUID) -> Character:
 		self.logger.info(f"Getting character by ID: {character_uuid}")

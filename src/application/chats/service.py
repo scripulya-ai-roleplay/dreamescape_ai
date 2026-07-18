@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import (
 	IChatService,
 	IChatGateway,
@@ -14,7 +15,7 @@ from src.domain.models import Chat
 @dataclass
 class ChatService(IChatService):
 	chat_gateway: IChatGateway
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def start_chat(self, chat: Chat) -> UUID:
 		self.logger.info(f"Starting chat: {chat.title}")

@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
+from src.infrastructure.logging.logger import Logger
 from src.application.chats.settings import ChatSettings
 from src.application.ports import IChatSettingsGateway, IChatSettingsService
 
@@ -9,7 +10,7 @@ from src.application.ports import IChatSettingsGateway, IChatSettingsService
 @dataclass
 class ChatSettingsService(IChatSettingsService):
 	chat_settings_gateway: IChatSettingsGateway
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def get_for_chat(self, chat_uuid: UUID) -> ChatSettings | None:
 		self.logger.info(f"Getting chat settings: {chat_uuid}")

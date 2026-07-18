@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
+from src.infrastructure.logging.logger import Logger
 from src.application.character.schemas import CharacterFilterDTO
 from src.application.ports import (
 	ICharacterService,
@@ -18,7 +19,7 @@ from src.domain.models import Character
 class CharacterService(ICharacterService):
 	uow: IUnitOfWork
 	gateway: ICharacterGateway
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def create_character(self, character: Character) -> UUID:
 		self.logger.info(f"Creating character: {character.name}")

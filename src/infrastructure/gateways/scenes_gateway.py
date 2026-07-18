@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import ISceneGateway, Page
 from src.application.scene.schemas import SceneFilterDTO, SceneSortBy, SortOrder
 from src.domain.models import Scene
@@ -24,7 +25,7 @@ from src.infrastructure.database.models import (
 @dataclass
 class SceneGateway(ISceneGateway):
 	session: AsyncSession
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def get_one(self, uuid: UUID) -> Scene:
 		self.logger.info(f"Getting scene by ID: {uuid}")

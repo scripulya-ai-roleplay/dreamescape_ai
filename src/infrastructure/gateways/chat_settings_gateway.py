@@ -6,6 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.infrastructure.logging.logger import Logger
 from src.application.chats.settings import ChatSettings
 from src.application.ports import IChatSettingsGateway
 from src.infrastructure.database.models import ChatSettings as ChatSettingsModel
@@ -14,7 +15,7 @@ from src.infrastructure.database.models import ChatSettings as ChatSettingsModel
 @dataclass
 class ChatSettingsGateway(IChatSettingsGateway):
 	_session: AsyncSession
-	logger: logging.Logger
+	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def get_for_chat(self, chat_id: UUID) -> ChatSettings | None:
 		self.logger.info(f"Getting chat settings for chat: {chat_id}")
