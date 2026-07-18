@@ -21,15 +21,13 @@ from src.infrastructure.database.models import (
 )
 
 
-logger = logging.getLogger(__name__)
-
-
 @dataclass
 class SceneGateway(ISceneGateway):
 	session: AsyncSession
+	logger: logging.Logger
 
 	async def get_one(self, uuid: UUID) -> Scene:
-		logger.info(f"Getting scene by ID: {uuid}")
+		self.logger.info(f"Getting scene by ID: {uuid}")
 
 		query = select(SceneModel).options(selectinload(SceneModel.characters)).where(SceneModel.id == uuid)
 
@@ -38,14 +36,14 @@ class SceneGateway(ISceneGateway):
 		return self._to_domain_scene(scene_model)
 
 	async def delete(self, uuid: UUID):
-		logger.info(f"Deleting scene: {uuid}")
+		self.logger.info(f"Deleting scene: {uuid}")
 
 		query = delete(SceneModel).where(SceneModel.id == uuid)
 		await self.session.execute(query)
-		logger.info(f"Successfully deleted scene: {uuid}")
+		self.logger.info(f"Successfully deleted scene: {uuid}")
 
 	async def update(self, target_scene_uuid: UUID, new_scene_data: Scene):
-		logger.info(f"Updating scene: {target_scene_uuid}")
+		self.logger.info(f"Updating scene: {target_scene_uuid}")
 
 		# Build update data with proper column names
 		update_data = {
@@ -61,10 +59,10 @@ class SceneGateway(ISceneGateway):
 
 		query = update(SceneModel).where(SceneModel.id == target_scene_uuid).values(**update_data)
 		await self.session.execute(query)
-		logger.info(f"Successfully updated scene: {target_scene_uuid}")
+		self.logger.info(f"Successfully updated scene: {target_scene_uuid}")
 
 	async def search(self, dto: SceneFilterDTO) -> Page[Scene]:
-		logger.info(f"Searching scenes with filters: {dto}")
+		self.logger.info(f"Searching scenes with filters: {dto}")
 
 		# Correlated scalar subqueries counting a scene's chats / messages. They
 		# are only referenced when ordering by the matching count, and because
@@ -144,12 +142,12 @@ class SceneGateway(ISceneGateway):
 		# Convert to domain models
 		domain_scenes = [self._to_domain_scene(scene_model) for scene_model in scene_models]
 
-		logger.info(f"Found {len(domain_scenes)} scenes out of {total_count} total")
+		self.logger.info(f"Found {len(domain_scenes)} scenes out of {total_count} total")
 
 		return Page[Scene](items=domain_scenes, count=total_count, offset=dto.offset, limit=len(domain_scenes))
 
 	async def create(self, scene: Scene) -> UUID:
-		logger.info(f"Creating scene: {scene.title}")
+		self.logger.info(f"Creating scene: {scene.title}")
 
 		scene_model = SceneModel(
 			title=scene.title,
@@ -164,7 +162,7 @@ class SceneGateway(ISceneGateway):
 		await self.session.flush()
 		await self.session.refresh(scene_model)
 
-		logger.info(f"Successfully created scene with ID: {scene_model.id}")
+		self.logger.info(f"Successfully created scene with ID: {scene_model.id}")
 		return scene_model.id
 
 	async def attach_characters(self, scene_id: UUID, character_ids: list[UUID]) -> None:

@@ -15,8 +15,6 @@ from src.infrastructure.database.models import (
 	User as UserModel,
 )
 
-logger = logging.getLogger(__name__)
-
 # Maps an entity kind to (table, owner-column) for ownership checks. Characters
 # and scenes are owned via owner_id; a user "owns" itself (its own id).
 _ENTITY_OWNER_COLUMN: dict[MediaEntityType, tuple[type, object]] = {
@@ -29,9 +27,10 @@ _ENTITY_OWNER_COLUMN: dict[MediaEntityType, tuple[type, object]] = {
 @dataclass
 class MediaGateway(IMediaGateway):
 	session: AsyncSession
+	logger: logging.Logger
 
 	async def create(self, asset: MediaAsset) -> MediaAsset:
-		logger.info("Creating media asset for %s/%s", asset.entity_type, asset.entity_id)
+		self.logger.info("Creating media asset for %s/%s", asset.entity_type, asset.entity_id)
 
 		model = MediaAssetModel(
 			object_key=asset.object_key,
@@ -48,18 +47,18 @@ class MediaGateway(IMediaGateway):
 		await self.session.flush()
 		await self.session.refresh(model)
 
-		logger.info("Created media asset with ID: %s", model.id)
+		self.logger.info("Created media asset with ID: %s", model.id)
 		return self._to_domain(model)
 
 	async def get_one(self, media_id: UUID) -> MediaAsset:
-		logger.info("Getting media asset: %s", media_id)
+		self.logger.info("Getting media asset: %s", media_id)
 
 		result = await self.session.execute(select(MediaAssetModel).where(MediaAssetModel.id == media_id))
 		model = result.scalar_one()
 		return self._to_domain(model)
 
 	async def get_entity_owner(self, entity_type: MediaEntityType, entity_id: UUID) -> UUID | None:
-		logger.info("Resolving owner of %s/%s", entity_type, entity_id)
+		self.logger.info("Resolving owner of %s/%s", entity_type, entity_id)
 
 		mapping = _ENTITY_OWNER_COLUMN.get(entity_type)
 		if mapping is None:
@@ -69,7 +68,7 @@ class MediaGateway(IMediaGateway):
 		return result.scalar_one_or_none()
 
 	async def get_for_entity(self, entity_type: MediaEntityType, entity_id: UUID) -> list[MediaAsset]:
-		logger.info("Getting media for %s/%s", entity_type, entity_id)
+		self.logger.info("Getting media for %s/%s", entity_type, entity_id)
 
 		result = await self.session.execute(
 			select(MediaAssetModel).where(
@@ -80,7 +79,7 @@ class MediaGateway(IMediaGateway):
 		return [self._to_domain(model) for model in result.scalars().all()]
 
 	async def search(self, dto: MediaFilterDTO, actor_id: UUID | None = None) -> Page[MediaAsset]:
-		logger.info("Searching media with filters: %s (actor=%s)", dto, actor_id)
+		self.logger.info("Searching media with filters: %s (actor=%s)", dto, actor_id)
 
 		conditions = []
 		if dto.entity_type is not None:
@@ -104,7 +103,7 @@ class MediaGateway(IMediaGateway):
 		# limit==0 means "no items": skip the items query so we never run an
 		# unbounded SELECT. The total is still reported for pagination.
 		if dto.limit == 0:
-			logger.info("limit=0 -> returning no items out of %s total", total)
+			self.logger.info("limit=0 -> returning no items out of %s total", total)
 			return Page[MediaAsset](items=[], count=total, offset=dto.offset, limit=dto.limit)
 
 		query = select(MediaAssetModel).where(where_clause).limit(dto.limit)
@@ -114,13 +113,13 @@ class MediaGateway(IMediaGateway):
 		result = await self.session.execute(query)
 		items = [self._to_domain(model) for model in result.scalars().all()]
 
-		logger.info("Found %s media assets out of %s total", len(items), total)
+		self.logger.info("Found %s media assets out of %s total", len(items), total)
 		return Page[MediaAsset](items=items, count=total, offset=dto.offset, limit=dto.limit)
 
 	async def delete(self, media_id: UUID) -> None:
-		logger.info("Deleting media asset: %s", media_id)
+		self.logger.info("Deleting media asset: %s", media_id)
 		await self.session.execute(delete(MediaAssetModel).where(MediaAssetModel.id == media_id))
-		logger.info("Deleted media asset: %s", media_id)
+		self.logger.info("Deleted media asset: %s", media_id)
 
 	def _to_domain(self, model: MediaAssetModel) -> MediaAsset:
 		return MediaAsset(

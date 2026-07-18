@@ -12,15 +12,13 @@ from src.domain.models import Chat
 from src.infrastructure.database.models import Chat as ChatModel, Character as CharacterModel
 
 
-logger = logging.getLogger(__name__)
-
-
 @dataclass
 class ChatGateway(IChatGateway):
 	_session: AsyncSession
+	logger: logging.Logger
 
 	async def create(self, chat: Chat) -> UUID:
-		logger.info(f"Creating chat in database: {chat.title}")
+		self.logger.info(f"Creating chat in database: {chat.title}")
 
 		chat_model = ChatModel(
 			name=chat.title,  # Database uses 'name' field
@@ -33,11 +31,11 @@ class ChatGateway(IChatGateway):
 		await self._session.commit()
 		await self._session.refresh(chat_model)
 
-		logger.info(f"Successfully created chat with ID: {chat_model.id}")
+		self.logger.info(f"Successfully created chat with ID: {chat_model.id}")
 		return chat_model.id
 
 	async def get_one(self, chat_uuid: UUID) -> Chat:
-		logger.info(f"Getting chat by ID: {chat_uuid}")
+		self.logger.info(f"Getting chat by ID: {chat_uuid}")
 
 		query = select(ChatModel).options(selectinload(ChatModel.messages)).where(ChatModel.id == chat_uuid)
 
@@ -50,7 +48,7 @@ class ChatGateway(IChatGateway):
 		return self._to_domain_chat(chat_model)
 
 	async def search(self, dto: ChatFilterDTO) -> Page[Chat]:
-		logger.info(f"Searching chats with filters: {dto}")
+		self.logger.info(f"Searching chats with filters: {dto}")
 
 		# Build query with filters
 		query = select(ChatModel).options(selectinload(ChatModel.messages))
@@ -89,12 +87,12 @@ class ChatGateway(IChatGateway):
 		# Convert to domain models
 		domain_chats = [self._to_domain_chat(chat_model) for chat_model in chat_models]
 
-		logger.info(f"Found {len(domain_chats)} chats out of {total_count} total")
+		self.logger.info(f"Found {len(domain_chats)} chats out of {total_count} total")
 
 		return Page[Chat](items=domain_chats, count=total_count, offset=dto.offset, limit=dto.limit)
 
 	async def delete(self, chat_uuid: UUID) -> UUID:
-		logger.info(f"Deleting chat from database: {chat_uuid}")
+		self.logger.info(f"Deleting chat from database: {chat_uuid}")
 
 		query = delete(ChatModel).where(ChatModel.id == chat_uuid)
 		result = await self._session.execute(query)
@@ -103,12 +101,12 @@ class ChatGateway(IChatGateway):
 			raise ValueError(f"Chat with ID {chat_uuid} not found")
 
 		await self._session.commit()
-		logger.info(f"Successfully deleted chat: {chat_uuid}")
+		self.logger.info(f"Successfully deleted chat: {chat_uuid}")
 
 		return chat_uuid
 
 	async def update(self, target_chat_uuid: UUID, chat_name: str) -> UUID:
-		logger.info(f"Updating chat {target_chat_uuid} with name: {chat_name}")
+		self.logger.info(f"Updating chat {target_chat_uuid} with name: {chat_name}")
 
 		query = update(ChatModel).where(ChatModel.id == target_chat_uuid).values(name=chat_name)
 
@@ -118,12 +116,12 @@ class ChatGateway(IChatGateway):
 			raise ValueError(f"Chat with ID {target_chat_uuid} not found")
 
 		await self._session.commit()
-		logger.info(f"Successfully updated chat: {target_chat_uuid}")
+		self.logger.info(f"Successfully updated chat: {target_chat_uuid}")
 
 		return target_chat_uuid
 
 	async def set_persona(self, chat_uuid: UUID, user_character_id: UUID) -> UUID:
-		logger.info(f"Setting persona {user_character_id} on chat {chat_uuid}")
+		self.logger.info(f"Setting persona {user_character_id} on chat {chat_uuid}")
 
 		# Validate the persona character exists first; otherwise the UPDATE below
 		# would trip the user_character_id FK and the global handler would return a
@@ -142,7 +140,7 @@ class ChatGateway(IChatGateway):
 			raise ValueError(f"Chat with ID {chat_uuid} not found")
 
 		await self._session.commit()
-		logger.info(f"Successfully set persona on chat: {chat_uuid}")
+		self.logger.info(f"Successfully set persona on chat: {chat_uuid}")
 
 		return chat_uuid
 

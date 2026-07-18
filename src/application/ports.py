@@ -181,6 +181,9 @@ class ICharacterService(abc.ABC):
 	async def search(self, dto: CharacterFilterDTO) -> Page[Character]: ...
 
 	@abc.abstractmethod
+	async def get_for_scene(self, scene_id: UUID) -> list[Character]: ...
+
+	@abc.abstractmethod
 	async def delete(self, scene_uuid: UUID): ...
 
 	@abc.abstractmethod

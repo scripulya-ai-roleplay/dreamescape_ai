@@ -1,15 +1,15 @@
 import logging
 from uuid import UUID
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from asgi_correlation_id import correlation_id
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 
-from src.application.ports import ISceneService, ApiResponse, Page, LikeState, BookmarkState
+from src.application.ports import ISceneService, ICharacterService, ApiResponse, Page, LikeState, BookmarkState
 from src.application.scene.schemas import SceneFilterDTO, AttachCharactersDTO
-from src.domain.models import Scene
+from src.domain.models import Scene, Character
 from src.infrastructure.auth.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -171,3 +171,15 @@ async def attach_characters_to_scene(
 
 	await scene_service.attach_characters(scene_id, dto.character_ids)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())
+
+
+@router.get("/{scene_id}/characters")
+@inject
+async def get_scene_characters(
+	scene_service: FromDishka[ISceneService],
+	character_service: FromDishka[ICharacterService],
+	scene_id: UUID = Path(),
+) -> ApiResponse[List[Character]]:
+	await scene_service.get_one(scene_id)
+	characters = await character_service.get_for_scene(scene_id)
+	return ApiResponse(result=characters, correlation_id=correlation_id.get())

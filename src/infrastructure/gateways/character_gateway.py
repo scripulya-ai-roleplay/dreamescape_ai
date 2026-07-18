@@ -17,15 +17,14 @@ from src.infrastructure.database.models import (
 	character_bookmarks,
 )
 
-logger = logging.getLogger(__name__)
-
 
 @dataclass
 class CharacterGateway(ICharacterGateway):
 	session: AsyncSession
+	logger: logging.Logger
 
 	async def get_one(self, character_uuid: UUID) -> Character:
-		logger.info(f"Getting character by ID: {character_uuid}")
+		self.logger.info(f"Getting character by ID: {character_uuid}")
 
 		query = (
 			select(CharacterModel)
@@ -38,7 +37,7 @@ class CharacterGateway(ICharacterGateway):
 		return self._to_domain_character(character_model)
 
 	async def get_for_scene(self, scene_id: UUID) -> list[Character]:
-		logger.info(f"Getting characters for scene: {scene_id}")
+		self.logger.info(f"Getting characters for scene: {scene_id}")
 
 		query = select(CharacterModel).join(CharacterModel.scenes).where(SceneModel.id == scene_id)
 
@@ -47,14 +46,14 @@ class CharacterGateway(ICharacterGateway):
 		return [self._to_domain_character(character_model) for character_model in character_models]
 
 	async def delete(self, character_uuid: UUID):
-		logger.info(f"Deleting character: {character_uuid}")
+		self.logger.info(f"Deleting character: {character_uuid}")
 
 		query = delete(CharacterModel).where(CharacterModel.id == character_uuid)
 		await self.session.execute(query)
-		logger.info(f"Successfully deleted character: {character_uuid}")
+		self.logger.info(f"Successfully deleted character: {character_uuid}")
 
 	async def update(self, target_character_uuid: UUID, new_character_data: Character):
-		logger.info(f"Updating character: {target_character_uuid}")
+		self.logger.info(f"Updating character: {target_character_uuid}")
 
 		# Build update data with proper column names
 		update_data = {
@@ -68,10 +67,10 @@ class CharacterGateway(ICharacterGateway):
 
 		query = update(CharacterModel).where(CharacterModel.id == target_character_uuid).values(**update_data)
 		await self.session.execute(query)
-		logger.info(f"Successfully updated character: {target_character_uuid}")
+		self.logger.info(f"Successfully updated character: {target_character_uuid}")
 
 	async def search(self, dto: CharacterFilterDTO) -> Page[Character]:
-		logger.info(f"Searching characters with filters: {dto}")
+		self.logger.info(f"Searching characters with filters: {dto}")
 
 		# Build query with joins for scene filtering
 		query = select(CharacterModel).options(selectinload(CharacterModel.scenes))
@@ -112,12 +111,12 @@ class CharacterGateway(ICharacterGateway):
 		# Convert to domain models
 		domain_characters = [self._to_domain_character(character_model) for character_model in character_models]
 
-		logger.info(f"Found {len(domain_characters)} characters out of {total_count} total")
+		self.logger.info(f"Found {len(domain_characters)} characters out of {total_count} total")
 
 		return Page[Character](items=domain_characters, count=total_count, offset=dto.offset, limit=dto.limit)
 
 	async def create(self, character: Character) -> UUID:
-		logger.info(f"Creating character: {character.name}")
+		self.logger.info(f"Creating character: {character.name}")
 
 		character_model = CharacterModel(
 			name=character.name,
@@ -130,7 +129,7 @@ class CharacterGateway(ICharacterGateway):
 		await self.session.flush()
 		await self.session.refresh(character_model)
 
-		logger.info(f"Successfully created character with ID: {character_model.id}")
+		self.logger.info(f"Successfully created character with ID: {character_model.id}")
 		return character_model.id
 
 	async def set_like(self, character_id: UUID, user_id: UUID) -> None:

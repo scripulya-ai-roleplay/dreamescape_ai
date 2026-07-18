@@ -17,8 +17,6 @@ from src.application.ports import (
 from src.domain.models import ChatRoles, Message, MessageStatus
 from src.infrastructure.exceptions import PersonaRequiredException
 
-logger = logging.getLogger(__name__)
-
 
 @dataclass
 class LLMChatsService(IChatsService):
@@ -35,9 +33,10 @@ class LLMChatsService(IChatsService):
 	character_gateway: ICharacterGateway
 	prompt_service: IPromptService
 	_events: IChatEventGateway
+	logger: logging.Logger
 
 	async def send_message(self, chat_dto: UserMessageDTO) -> Message:
-		logger.info(f"Processing LLM chat message with model: {chat_dto.llm_model}")
+		self.logger.info(f"Processing LLM chat message with model: {chat_dto.llm_model}")
 		gateway = self.gateway_factory.create_gateway(chat_dto.llm_model.value)
 
 		history_page = await self.message_service.search(MessagesFilterDto(chats_ids=[chat_dto.chat_id]))
@@ -66,6 +65,16 @@ class LLMChatsService(IChatsService):
 		)
 
 		chat_settings = await self.chat_settings_gateway.get_for_chat(chat_dto.chat_id)
+
+		history_preview = "\n\n".join(f"[{m.role}] {m.message}" for m in history) or "(none)"
+		self.logger.info(
+			f"LLM prompt for chat {chat_dto.chat_id} | model={chat_dto.llm_model}\n"
+			f"===== SYSTEM PROMPT =====\n{system_prompt}\n"
+			f"===== HISTORY ({len(history)} turns) =====\n{history_preview}\n"
+			f"===== NEW MESSAGE [{chat_dto.role}] =====\n{chat_dto.message}\n"
+			f"===== END PROMPT ====="
+		)
+
 		response = await gateway.submit(chat_dto, history, chat_settings=chat_settings, system_prompt=system_prompt)
 		if response is not None:
 			model_message = await self.message_service.send_message(

@@ -10,6 +10,7 @@ from src.controllers.rabbit.v1.broker import broker
 from src.infrastructure.database.postgresqluow import PostgresqlUOW
 from src.infrastructure.gateways.scripulya_agent_gateway import ScripulyaAgentClient, ScripulyaAgentGateway
 from src.infrastructure.gateways.mock_scripulya_agent_client import MockScripulyaAgentClient
+from src.infrastructure.logging.logger import Logger
 from src.application.ports import (
 	IUserService,
 	IUserGateway,
@@ -61,12 +62,13 @@ from src.application.media.service import MediaService
 from src.application.auth.jwt_service import JWTService
 
 
-logger = logging.getLogger(__name__)
-
-
 class GatewayProvider(Provider):
 	@provide(scope=Scope.APP)
-	def provide_scripulya_agent_client(self) -> IScripulyaAgentClient:
+	def provide_logger(self) -> logging.Logger:
+		return logging.getLogger(Logger.LOGGER_NAME)
+
+	@provide(scope=Scope.APP)
+	def provide_scripulya_agent_client(self, logger: logging.Logger) -> IScripulyaAgentClient:
 		if settings.LLM_AGENT_ENABLED:
 			return ScripulyaAgentClient(
 				broker=broker,
@@ -77,11 +79,13 @@ class GatewayProvider(Provider):
 		return MockScripulyaAgentClient(logger=logger)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_scripulya_agent_gateway(self, client: IScripulyaAgentClient) -> ScripulyaAgentGateway:
+	def provide_scripulya_agent_gateway(
+		self, client: IScripulyaAgentClient, logger: logging.Logger
+	) -> ScripulyaAgentGateway:
 		return ScripulyaAgentGateway(logger=logger, _client=client)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_mock_gateway(self) -> MockGateway:
+	def provide_mock_gateway(self, logger: logging.Logger) -> MockGateway:
 		return MockGateway(logger=logger)
 
 	@provide(scope=Scope.REQUEST)
@@ -94,58 +98,60 @@ class GatewayProvider(Provider):
 		return GatewayFactory(gateways)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_user_gateway(self, session: AsyncSession) -> IUserGateway:
-		return UserGateway(session)
+	def provide_user_gateway(self, session: AsyncSession, logger: logging.Logger) -> IUserGateway:
+		return UserGateway(session, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_scene_gateway(self, session: AsyncSession) -> ISceneGateway:
-		return SceneGateway(session)
+	def provide_scene_gateway(self, session: AsyncSession, logger: logging.Logger) -> ISceneGateway:
+		return SceneGateway(session, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_character_gateway(self, session: AsyncSession) -> ICharacterGateway:
-		return CharacterGateway(session)
+	def provide_character_gateway(self, session: AsyncSession, logger: logging.Logger) -> ICharacterGateway:
+		return CharacterGateway(session, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_chat_gateway(self, session: AsyncSession) -> IChatGateway:
-		return ChatGateway(session)
+	def provide_chat_gateway(self, session: AsyncSession, logger: logging.Logger) -> IChatGateway:
+		return ChatGateway(session, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_chat_settings_gateway(self, session: AsyncSession) -> IChatSettingsGateway:
-		return ChatSettingsGateway(session)
+	def provide_chat_settings_gateway(self, session: AsyncSession, logger: logging.Logger) -> IChatSettingsGateway:
+		return ChatSettingsGateway(session, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_message_gateway(self, session: AsyncSession) -> IMessageGateway:
-		return MessageGateway(session)
+	def provide_message_gateway(self, session: AsyncSession, logger: logging.Logger) -> IMessageGateway:
+		return MessageGateway(session, logger=logger)
 
 	@provide(scope=Scope.APP)
-	def provide_object_storage_gateway(self) -> IObjectStorageGateway:
+	def provide_object_storage_gateway(self, logger: logging.Logger) -> IObjectStorageGateway:
 		# Holds two long-lived minio clients (data + public-endpoint). Lazily
 		# provisioned on first upload / best-effort at startup (see app lifespan).
-		return MinioObjectStorageGateway.from_settings(settings)
+		return MinioObjectStorageGateway.from_settings(settings, logger=logger)
 
 	@provide(scope=Scope.APP)
-	def provide_image_reader(self) -> IImageReader:
+	def provide_image_reader(self, logger: logging.Logger) -> IImageReader:
 		# Stateless: just carries the upload size cap from settings.
-		return ImageReader(max_bytes=settings.MEDIA_MAX_UPLOAD_BYTES)
+		return ImageReader(max_bytes=settings.MEDIA_MAX_UPLOAD_BYTES, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_media_gateway(self, session: AsyncSession) -> IMediaGateway:
-		return MediaGateway(session)
+	def provide_media_gateway(self, session: AsyncSession, logger: logging.Logger) -> IMediaGateway:
+		return MediaGateway(session, logger=logger)
 
 	@provide(scope=Scope.APP)
-	def provide_chat_event_gateway(self) -> IChatEventGateway:
+	def provide_chat_event_gateway(self, logger: logging.Logger) -> IChatEventGateway:
 		# In-process SSE fan-out; shared by the chats service, the result subscriber,
 		# and the SSE service. Single-process only (see ChatEventGateway docstring).
-		return ChatEventGateway()
+		return ChatEventGateway(logger=logger)
 
 
 class ServiceProvider(Provider):
 	@provide(scope=Scope.REQUEST)
-	def provide_user_service(self, user_gateway: IUserGateway, uow: PostgresqlUOW) -> IUserService:
-		return UserService(user_gateway, uow)
+	def provide_user_service(
+		self, user_gateway: IUserGateway, uow: PostgresqlUOW, logger: logging.Logger
+	) -> IUserService:
+		return UserService(user_gateway, uow, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_jwt_service(self) -> IJWTService:
+	def provide_jwt_service(self, logger: logging.Logger) -> IJWTService:
 		return JWTService(
 			private_key=settings.JWT_SECRET_KEY,
 			public_key=settings.JWT_PUBLIC_KEY,
@@ -168,6 +174,7 @@ class ServiceProvider(Provider):
 		character_gateway: ICharacterGateway,
 		prompt_service: IPromptService,
 		events: IChatEventGateway,
+		logger: logging.Logger,
 	) -> IChatsService:
 		return LLMChatsService(
 			gateway_factory=gateway_factory,
@@ -178,11 +185,14 @@ class ServiceProvider(Provider):
 			character_gateway=character_gateway,
 			prompt_service=prompt_service,
 			_events=events,
+			logger=logger,
 		)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_chat_settings_service(self, chat_settings_gateway: IChatSettingsGateway) -> IChatSettingsService:
-		return ChatSettingsService(chat_settings_gateway=chat_settings_gateway)
+	def provide_chat_settings_service(
+		self, chat_settings_gateway: IChatSettingsGateway, logger: logging.Logger
+	) -> IChatSettingsService:
+		return ChatSettingsService(chat_settings_gateway=chat_settings_gateway, logger=logger)
 
 	@provide(scope=Scope.APP)
 	def provide_server_events_service(
@@ -191,12 +201,14 @@ class ServiceProvider(Provider):
 		return ServerEventsService(_events=events, _container=container)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_chat_service(self, chat_gateway: IChatGateway) -> IChatService:
-		return ChatService(chat_gateway=chat_gateway)
+	def provide_chat_service(self, chat_gateway: IChatGateway, logger: logging.Logger) -> IChatService:
+		return ChatService(chat_gateway=chat_gateway, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_message_service(self, message_gateway: IMessageGateway, uow: PostgresqlUOW) -> IMessageService:
-		return MessageService(message_gateway=message_gateway, _uow=uow)
+	def provide_message_service(
+		self, message_gateway: IMessageGateway, uow: PostgresqlUOW, logger: logging.Logger
+	) -> IMessageService:
+		return MessageService(message_gateway=message_gateway, _uow=uow, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_media_service(
@@ -205,16 +217,21 @@ class ServiceProvider(Provider):
 		media_gateway: IMediaGateway,
 		reader: IImageReader,
 		uow: PostgresqlUOW,
+		logger: logging.Logger,
 	) -> IMediaService:
-		return MediaService(storage=storage, gateway=media_gateway, reader=reader, uow=uow)
+		return MediaService(storage=storage, gateway=media_gateway, reader=reader, uow=uow, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_scene_service(self, scene_gateway: ISceneGateway, uow: PostgresqlUOW) -> ISceneService:
-		return SceneService(uow=uow, gateway=scene_gateway)
+	def provide_scene_service(
+		self, scene_gateway: ISceneGateway, uow: PostgresqlUOW, logger: logging.Logger
+	) -> ISceneService:
+		return SceneService(uow=uow, gateway=scene_gateway, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
-	def provide_character_service(self, character_gateway: ICharacterGateway, uow: PostgresqlUOW) -> ICharacterService:
-		return CharacterService(uow=uow, gateway=character_gateway)
+	def provide_character_service(
+		self, character_gateway: ICharacterGateway, uow: PostgresqlUOW, logger: logging.Logger
+	) -> ICharacterService:
+		return CharacterService(uow=uow, gateway=character_gateway, logger=logger)
 
 
 class DatabaseProvider(Provider):
