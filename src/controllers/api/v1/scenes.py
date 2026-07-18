@@ -157,6 +157,7 @@ async def get_scene_bookmark_state(
 @inject
 async def attach_characters_to_scene(
 	scene_service: FromDishka[ISceneService],
+	character_service: FromDishka[ICharacterService],
 	scene_id: UUID = Path(),
 	dto: AttachCharactersDTO = Body(),
 	current_user: Dict[str, Any] = Depends(get_current_user),
@@ -168,6 +169,13 @@ async def attach_characters_to_scene(
 	scene = await scene_service.get_one(scene_id)
 	if scene.owner_id != user_id:
 		raise HTTPException(status_code=403, detail="Only the scene owner can attach characters")
+
+	# Resolve + authorize each character before the INSERT: missing → 404 (not an
+	# FK 500), and a private non-owned character is 403 (it would leak via chats).
+	for character_id in dto.character_ids:
+		character = await character_service.get_one(character_id)
+		if not character.is_public and character.owner_id != user_id:
+			raise HTTPException(status_code=403, detail="Not allowed to attach this character")
 
 	await scene_service.attach_characters(scene_id, dto.character_ids)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())
