@@ -119,6 +119,25 @@ class TestCharacterService:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
+	async def test_get_for_scene_filters_to_public_or_owned(self, character_service, mock_character_gateway):
+		# Arrange: public, actor-owned private, and another user's private characters.
+		actor_id = uuid4()
+		other_id = uuid4()
+		public_char = Character(id=uuid4(), name="Public", system_prompt="p", is_public=True, owner_id=other_id)
+		owned_private = Character(id=uuid4(), name="Mine", system_prompt="p", is_public=False, owner_id=actor_id)
+		others_private = Character(id=uuid4(), name="Secret", system_prompt="p", is_public=False, owner_id=other_id)
+		mock_character_gateway.get_for_scene.return_value = [public_char, owned_private, others_private]
+
+		# Act
+		scene_id = uuid4()
+		result = await character_service.get_for_scene(scene_id, actor_id)
+
+		# Assert: public + own are visible; another user's private character is hidden.
+		assert result == [public_char, owned_private]
+		mock_character_gateway.get_for_scene.assert_called_once_with(scene_id)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
 	async def test_delete_success(self, character_service, mock_character_gateway, sample_character):
 		# Arrange
 		character_uuid = uuid4()

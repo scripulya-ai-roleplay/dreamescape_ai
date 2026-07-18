@@ -179,7 +179,9 @@ async def get_scene_characters(
 	scene_service: FromDishka[ISceneService],
 	character_service: FromDishka[ICharacterService],
 	scene_id: UUID = Path(),
+	current_user: Dict[str, Any] = Depends(get_current_user),
 ) -> ApiResponse[List[Character]]:
+	user_id = UUID(current_user["sub"])
 	await scene_service.get_one(scene_id)
-	characters = await character_service.get_for_scene(scene_id)
+	characters = await character_service.get_for_scene(scene_id, actor_id=user_id)
 	return ApiResponse(result=characters, correlation_id=correlation_id.get())

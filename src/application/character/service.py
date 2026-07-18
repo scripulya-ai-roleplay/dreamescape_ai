@@ -55,13 +55,15 @@ class CharacterService(ICharacterService):
 			self.logger.error(f"Failed to search characters: {e}")
 			raise
 
-	async def get_for_scene(self, scene_id: UUID) -> list[Character]:
+	async def get_for_scene(self, scene_id: UUID, actor_id: UUID) -> list[Character]:
 		self.logger.info(f"Getting characters for scene: {scene_id}")
 
 		try:
 			characters = await self.gateway.get_for_scene(scene_id)
-			self.logger.info(f"Found {len(characters)} character(s) for scene {scene_id}")
-			return characters
+			# Visibility: public or owned by the actor — mirrors MediaService (is_public OR owner_id == actor).
+			visible = [c for c in characters if c.is_public or c.owner_id == actor_id]
+			self.logger.info(f"Found {len(visible)} character(s) for scene {scene_id}")
+			return visible
 		except Exception as e:
 			self.logger.error(f"Failed to get characters for scene {scene_id}: {e}")
 			raise
