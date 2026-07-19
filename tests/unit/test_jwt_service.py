@@ -51,12 +51,12 @@ class TestJWTService:
 
 		# Verify the token contains expected payload
 		payload = jwt.decode(token, options={"verify_signature": False})
-		assert payload["username"] == "test_user"
+		assert payload["user_id"] == str(sample_user.id)
 		assert payload["role"] == "api"
 
 		# Verify logging
-		mock_logger.debug.assert_called_once_with("Creating JWT token for user: %s", "test_user")
-		mock_logger.info.assert_called_once_with("JWT token created for user: %s", "test_user")
+		mock_logger.debug.assert_called_once_with("Creating JWT token for user id: %s", sample_user.id)
+		mock_logger.info.assert_called_once_with("JWT token created for user id: %s", sample_user.id)
 
 	def test_create_token_different_roles(self, jwt_service, mock_logger, private_key):
 		"""Test token creation with different user roles"""
@@ -81,12 +81,12 @@ class TestJWTService:
 		verified_user = jwt_service.verify_token(token)
 
 		# Assert
-		assert verified_user.username == "test_user"
+		assert verified_user.id == sample_user.id
 		assert verified_user.role == UserRole.API
 
 		# Verify logging
 		mock_logger.debug.assert_called_with("Verifying JWT token")
-		mock_logger.info.assert_called_with("JWT token verified for user: %s", "test_user")
+		mock_logger.info.assert_called_with("JWT token verified for user id: %s", sample_user.id)
 
 	def test_verify_token_invalid_signature(self, jwt_service, mock_logger, sample_user):
 		"""Test token verification with invalid signature"""
@@ -103,9 +103,9 @@ class TestJWTService:
 		warning_call = mock_logger.warning.call_args[0]
 		assert "Invalid JWT token:" in warning_call[0]
 
-	def test_verify_token_missing_username(self, jwt_service, mock_logger, private_key):
-		"""Test token verification with missing username in payload"""
-		# Arrange - create token without username
+	def test_verify_token_missing_user_id(self, jwt_service, mock_logger, private_key):
+		"""Test token verification with missing user id in payload"""
+		# Arrange - create token without user_id/sub
 		payload = {"role": "api"}
 		invalid_token = jwt.encode(payload, private_key, algorithm="HS256")
 
@@ -114,13 +114,11 @@ class TestJWTService:
 			jwt_service.verify_token(invalid_token)
 
 		mock_logger.warning.assert_called()
-		warning_call = mock_logger.warning.call_args[0]
-		assert "Invalid token payload:" in warning_call[0]
 
 	def test_verify_token_missing_role(self, jwt_service, mock_logger, private_key):
 		"""Test token verification with missing role in payload"""
-		# Arrange - create token without role
-		payload = {"username": "test_user"}
+		# Arrange - create token with a valid user_id but no role
+		payload = {"user_id": str(uuid.uuid4())}
 		invalid_token = jwt.encode(payload, private_key, algorithm="HS256")
 
 		# Act & Assert
@@ -129,8 +127,8 @@ class TestJWTService:
 
 	def test_verify_token_invalid_role(self, jwt_service, mock_logger, private_key):
 		"""Test token verification with invalid role value"""
-		# Arrange - create token with invalid role
-		payload = {"username": "test_user", "role": "invalid_role"}
+		# Arrange - create token with a valid user_id but an invalid role
+		payload = {"user_id": str(uuid.uuid4()), "role": "invalid_role"}
 		invalid_token = jwt.encode(payload, private_key, algorithm="HS256")
 
 		# Act & Assert

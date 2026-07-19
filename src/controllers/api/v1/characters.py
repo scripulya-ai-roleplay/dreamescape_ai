@@ -1,6 +1,5 @@
 import logging
 from uuid import UUID
-from typing import Dict, Any
 
 from asgi_correlation_id import correlation_id
 from dishka import FromDishka
@@ -9,8 +8,8 @@ from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 
 from src.application.character.schemas import CharacterFilterDTO
 from src.application.ports import ApiResponse, Page, ICharacterService, LikeState, BookmarkState
-from src.domain.models import Character
-from src.infrastructure.auth.dependencies import get_current_user
+from src.domain.models import Character, User
+from src.controllers.api.v1.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +22,10 @@ router = APIRouter(prefix="/api/v1/characters", tags=["characters"])
 async def create_character(
 	character_service: FromDishka[ICharacterService],
 	character: Character = Body(),
-	current_user: Dict[str, Any] = Depends(get_current_user),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse:
 	logger.info(f"Current user payload: {current_user}")
-	user_id = UUID(current_user["sub"])
+	user_id = current_user.id
 	logger.info(f"Extracted user ID: {user_id}")
 
 	# Validate that the Character's owner_id matches the authenticated user
@@ -83,9 +82,9 @@ async def update_character(
 async def like_character(
 	character_service: FromDishka[ICharacterService],
 	character_id: UUID = Path(),
-	current_user: Dict[str, Any] = Depends(get_current_user),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[LikeState]:
-	user_id = UUID(current_user["sub"])
+	user_id = current_user.id
 	state = await character_service.like(character_id, user_id)
 	return ApiResponse(result=state, correlation_id=correlation_id.get())
 
@@ -95,9 +94,9 @@ async def like_character(
 async def unlike_character(
 	character_service: FromDishka[ICharacterService],
 	character_id: UUID = Path(),
-	current_user: Dict[str, Any] = Depends(get_current_user),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[LikeState]:
-	user_id = UUID(current_user["sub"])
+	user_id = current_user.id
 	state = await character_service.unlike(character_id, user_id)
 	return ApiResponse(result=state, correlation_id=correlation_id.get())
 
@@ -107,9 +106,9 @@ async def unlike_character(
 async def get_character_like_state(
 	character_service: FromDishka[ICharacterService],
 	character_id: UUID = Path(),
-	current_user: Dict[str, Any] = Depends(get_current_user),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[LikeState]:
-	user_id = UUID(current_user["sub"])
+	user_id = current_user.id
 	state = await character_service.get_like_state(character_id, user_id)
 	return ApiResponse(result=state, correlation_id=correlation_id.get())
 
@@ -119,9 +118,9 @@ async def get_character_like_state(
 async def bookmark_character(
 	character_service: FromDishka[ICharacterService],
 	character_id: UUID = Path(),
-	current_user: Dict[str, Any] = Depends(get_current_user),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[BookmarkState]:
-	user_id = UUID(current_user["sub"])
+	user_id = current_user.id
 	state = await character_service.bookmark(character_id, user_id)
 	return ApiResponse(result=state, correlation_id=correlation_id.get())
 
@@ -131,9 +130,9 @@ async def bookmark_character(
 async def unbookmark_character(
 	character_service: FromDishka[ICharacterService],
 	character_id: UUID = Path(),
-	current_user: Dict[str, Any] = Depends(get_current_user),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[BookmarkState]:
-	user_id = UUID(current_user["sub"])
+	user_id = current_user.id
 	state = await character_service.unbookmark(character_id, user_id)
 	return ApiResponse(result=state, correlation_id=correlation_id.get())
 
@@ -143,8 +142,8 @@ async def unbookmark_character(
 async def get_character_bookmark_state(
 	character_service: FromDishka[ICharacterService],
 	character_id: UUID = Path(),
-	current_user: Dict[str, Any] = Depends(get_current_user),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[BookmarkState]:
-	user_id = UUID(current_user["sub"])
+	user_id = current_user.id
 	state = await character_service.get_bookmark_state(character_id, user_id)
 	return ApiResponse(result=state, correlation_id=correlation_id.get())

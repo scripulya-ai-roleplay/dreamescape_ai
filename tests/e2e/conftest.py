@@ -1,9 +1,13 @@
+import logging
 import os
+from uuid import UUID
 
 import pytest
 import requests
 
-from src.infrastructure.auth.jwt_utils import create_test_token
+from src.application.auth.jwt_service import JWTService
+from src.conf import settings
+from src.domain.models import User, UserRole
 
 
 @pytest.fixture(scope="function")
@@ -35,9 +39,17 @@ def client():
 
 @pytest.fixture
 def auth_headers():
-	test_user_id = "5dbdc924-968a-4c50-94a8-44cdd165e460"
+	test_user_id = UUID("5dbdc924-968a-4c50-94a8-44cdd165e460")
+	user = User(id=test_user_id, username="test_user", role=UserRole.API)
 
-	token = create_test_token(test_user_id)
+	jwt_service = JWTService(
+		logger=logging.getLogger("test"),
+		private_key=settings.JWT_SECRET_KEY,
+		public_key=settings.JWT_PUBLIC_KEY,
+		algorithm=settings.JWT_ALGORITHM,
+		access_token_expire_minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES,
+	)
+	token = jwt_service.create_token(user)
 
 	return {"Authorization": f"Bearer {token}"}
 
