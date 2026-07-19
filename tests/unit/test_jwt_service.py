@@ -63,7 +63,7 @@ class TestJWTService:
 		roles = [UserRole.ADMIN, UserRole.API, UserRole.DEVELOPER]
 
 		for role in roles:
-			user = User(username=f"user_{role.value}", role=role, crystal_balance=1000)
+			user = User(id=uuid.uuid4(), username=f"user_{role.value}", role=role, crystal_balance=1000)
 
 			# Act
 			token = jwt_service.create_token(user)
@@ -71,6 +71,13 @@ class TestJWTService:
 			# Assert
 			payload = jwt.decode(token, options={"verify_signature": False})
 			assert payload["role"] == role.value
+
+	def test_create_token_missing_id(self, jwt_service):
+		"""A user without an id cannot back a verifiable token — fail fast."""
+		user = User(username="no_id", role=UserRole.API, crystal_balance=1000)
+
+		with pytest.raises(ValueError, match="user.id is missing"):
+			jwt_service.create_token(user)
 
 	def test_verify_token_success(self, jwt_service, mock_logger, sample_user, private_key, public_key):
 		"""Test successful token verification"""

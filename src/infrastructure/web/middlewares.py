@@ -26,63 +26,55 @@ class TraceAndLogRequestsMiddleware(BaseHTTPMiddleware):
 			access_token_expire_minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES,
 		)
 
-	async def get_current_user(self, request: Request) -> User | None:
-		# Logging-only: resolve the bearer token to a user purely to enrich request
-		# logs. Auth is enforced by the route dependency, not here, so this must
-		# never fail the request — any decode/payload error is swallowed.
+	async def _resolve_caller(self, request: Request) -> User | None:
+		# Logging-only: decode the bearer token to enrich request logs. Auth is
+		# enforced by the route dependency, not here, so any decode/payload error
+		# is swallowed. On success, publish the caller's id onto the request
+		# context (trace.set_user_id) BEFORE the route runs, so every downstream
+		# log line — including the error path in dispatch() — is correlatable.
 		credentials = getattr(request.state, "credentials", None)
 		if credentials is None:
 			return None
-
 		try:
-			return self._jwt_service.verify_token(credentials.credentials)
+			user = self._jwt_service.verify_token(credentials.credentials)
 		except Exception:  # noqa: BLE001 — logging must never break the request
 			return None
+		trace.set_user_id(str(user.id))
+		return user
 
 	async def dispatch(self, request: Request, call_next):
 		start_time = time.time()
+		client_host = request.client.host if request.client else "-"
 
-		logger.info(
-			"Request started",
-			extra={
-				"method": request.method,
-				"path": request.url.path,
-				"client_host": request.client.host if request.client else None,
-			},
-		)
+		# Resolve the caller up front; sets the user_id contextvar for the whole
+		# request (propagated into the route running inside call_next).
+		await self._resolve_caller(request)
+
+		logger.info("Request started: %s %s from %s", request.method, request.url.path, client_host)
 
 		try:
 			response = await call_next(request)
-			process_time = time.time() - start_time
-
-			log_extra = {
-				"method": request.method,
-				"path": request.url.path,
-				"status_code": response.status_code,
-				"duration": round(process_time, 3),
-			}
-
-			user = await self.get_current_user(request)
-			if user is not None:
-				log_extra["username"] = user.username
-				log_extra["user_role"] = user.role
-				logger.info("Request completed", extra=log_extra)
-
-			return response
 		except Exception as e:
 			process_time = time.time() - start_time
-
-			username = trace.get_username()
-
-			log_extra = {
-				"method": request.method,
-				"path": request.url.path,
-				"duration": round(process_time, 3),
-				"error": str(e),
-			}
-
-			if username:
-				log_extra["username"] = username
-
-			logger.error("Request failed", extra=log_extra, exc_info=True)
+			logger.error(
+				"Request failed: %s %s (in %.3fs): %s",
+				request.method,
+				request.url.path,
+				process_time,
+				e,
+				exc_info=True,
+			)
 			raise e
+
+		process_time = time.time() - start_time
+		# Always emit a completion line (anonymous requests included) so public
+		# endpoints don't look like dropped logs. The caller id is rendered from
+		# the user_id contextvar by RequestContextFilter, not repeated here.
+		logger.info(
+			"Request completed: %s %s -> %s in %.3fs",
+			request.method,
+			request.url.path,
+			response.status_code,
+			process_time,
+		)
+		return response

@@ -8,14 +8,6 @@ from src.domain.models import MediaEntityType
 
 
 class MediaAssetDTO(BaseModel):
-	"""Client-facing representation of a media asset.
-
-	``url`` is computed by the service: a stable public URL for public assets, a
-	short-lived presigned URL for private assets, or the legacy ``file_url`` as-is
-	for assets that still point at an external location. The object key / bucket
-	are intentionally NOT exposed.
-	"""
-
 	model_config = ConfigDict(frozen=True)
 
 	id: UUID
@@ -42,16 +34,6 @@ class MediaFilterDTO(BaseModel):
 
 
 class MediaUploadDTO(BaseModel):
-	"""Application-level input for a single media upload.
-
-	Assembled by the controller from the multipart form plus the authenticated
-	user, then consumed by the service as a single argument. ``owner_id`` is
-	authoritative (sourced from the auth token, never the client body). This DTO
-	is NOT parsed straight off the request: file uploads require multipart, which
-	FastAPI only advertises for a direct UploadFile parameter, so the controller
-	groups the form fields via the ``upload_form`` dependency and builds this.
-	"""
-
 	model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
 	file: UploadFile

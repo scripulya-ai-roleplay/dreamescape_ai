@@ -28,10 +28,6 @@ class MediaService(IMediaService):
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def upload(self, dto: MediaUploadDTO) -> MediaAssetDTO:
-		# Authorize first: the uploader must own the target entity. Fails fast
-		# before reading the file, so an attacker can't attach media to another
-		# user's character/scene (or to a fabricated UUID). 403 in both the
-		# not-owned and not-found cases to avoid leaking which entities exist.
 		entity_owner = await self.gateway.get_entity_owner(dto.entity_type, dto.entity_id)
 		if entity_owner is None or entity_owner != dto.owner_id:
 			self.logger.warning(
@@ -46,9 +42,6 @@ class MediaService(IMediaService):
 				detail="Not allowed to attach media to this entity",
 			)
 
-		# Read + validate the uploaded image (size cap + content-type sniff).
-		# Raises UnsupportedImageTypeException (415) / ImageTooLargeException (413),
-		# which the global exception handler maps to HTTP responses.
 		image = await self.reader.read(dto.file)
 
 		object_key = f"{dto.entity_type.value}/{uuid4().hex}.{image.ext}"

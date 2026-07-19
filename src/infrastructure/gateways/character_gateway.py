@@ -108,7 +108,6 @@ class CharacterGateway(ICharacterGateway):
 		if dto.offset >= 0:
 			query = query.offset(dto.offset)
 
-		# Get total count
 		count_query = select(func.count(CharacterModel.id.distinct()))
 
 		if conditions:
@@ -117,11 +116,9 @@ class CharacterGateway(ICharacterGateway):
 		count_result = await self.session.execute(count_query)
 		total_count = count_result.scalar() or 0
 
-		# Execute query
 		result = await self.session.execute(query)
 		character_models = result.scalars().all()
 
-		# Convert to domain models
 		domain_characters = [self._to_domain_character(character_model) for character_model in character_models]
 
 		self.logger.info(f"Found {len(domain_characters)} characters out of {total_count} total")

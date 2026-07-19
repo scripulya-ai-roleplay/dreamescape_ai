@@ -22,11 +22,6 @@ from src.infrastructure.exceptions import PersonaRequiredException
 
 @dataclass
 class LLMChatsService(IChatsService):
-	"""Orchestrates a single chat turn: builds the system prompt (scene, characters,
-	and the user's "play-as" persona), persists the user's message, and submits the
-	LLM request. All message persistence is delegated to MessageService — this
-	service performs no DB writes of its own."""
-
 	gateway_factory: IGatewayFactory
 	message_service: IMessageService
 	chat_settings_gateway: IChatSettingsGateway
@@ -50,8 +45,6 @@ class LLMChatsService(IChatsService):
 		chat = await self.chat_gateway.get_one(chat_dto.chat_id)
 		scene = await self.scene_gateway.get_one(chat.scene_id)
 		characters = await self.character_gateway.get_for_scene(chat.scene_id)
-		# A story can't be played without a persona: reject early (before persisting
-		# the user message) so the global handler returns a graceful 400 instead of a None.
 		if chat.user_character_id is None:
 			raise PersonaRequiredException()
 		user_character = await self.character_gateway.get_one(chat.user_character_id)
@@ -67,9 +60,6 @@ class LLMChatsService(IChatsService):
 		)
 
 		chat_settings = await self.chat_settings_gateway.get_for_chat(chat_dto.chat_id)
-
-		# The assembled prompt embeds every attached character's system_prompt plus the
-		# user's message history — sensitive, so only dump it in DEBUG builds.
 		if settings.DEBUG:
 			history_preview = "\n\n".join(f"[{m.role}] {m.message}" for m in history) or "(none)"
 			self.logger.debug(

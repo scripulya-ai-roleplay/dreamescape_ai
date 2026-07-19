@@ -80,7 +80,5 @@ async def set_chat_persona(
 	chat_id: UUID = Path(),
 	user_character_id: UUID = Body(embed=True),
 ) -> ApiResponse:
-	# Lets a persona-less chat (or one whose persona was cleared when the character
-	# was deleted) become messagable. send_message otherwise rejects such chats.
 	await chat_service.set_persona(chat_id, user_character_id)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())

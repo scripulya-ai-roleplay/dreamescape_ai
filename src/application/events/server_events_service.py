@@ -38,8 +38,7 @@ class ServerEventsService(IServerEventsService):
 		return f"event: {name}\ndata: {data}\n\n"
 
 	async def open_stream(self, chat_id: UUID, user_id: UUID) -> StreamingResponse:
-		# Prepare reads run in a short-lived REQUEST scope; exiting it closes the
-		# AsyncSession before the (potentially long-lived) stream body starts.
+
 		async with self._container(scope=Scope.REQUEST) as request_container:
 			chat_service = await request_container.get(IChatService)
 			message_service = await request_container.get(IMessageService)

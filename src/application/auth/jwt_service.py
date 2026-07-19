@@ -20,6 +20,11 @@ class JWTService(IJWTService):
 	access_token_expire_minutes: int = 30
 
 	def create_token(self, user: User) -> str:
+		# User.id is optional in the domain model, but a token without a subject
+		# can never be verified back. Fail fast instead of emitting sub/user_id="None".
+		if user.id is None:
+			raise ValueError("Cannot create token: user.id is missing")
+
 		self.logger.debug("Creating JWT token for user id: %s", user.id)
 
 		# Agreed token shape: {sub, user_id, role, exp}. ``sub`` and ``user_id``

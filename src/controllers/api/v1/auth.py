@@ -47,8 +47,9 @@ async def get_current_user(request: Request) -> User:
 			headers={"WWW-Authenticate": "Bearer"},
 		) from e
 
-	request.state.username = user.username
-	logger.info("User authenticated successfully: %s (role: %s)", user.username, user.role)
+	# Caller id is rendered on every log line via RequestContextFilter (set from
+	# the user_id contextvar by the logging middleware); only note the role here.
+	logger.info("User authenticated successfully (role: %s)", user.role)
 	return user
 
 

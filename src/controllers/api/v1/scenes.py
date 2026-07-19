@@ -163,15 +163,9 @@ async def attach_characters_to_scene(
 	current_user: User = Depends(get_current_user),
 ) -> ApiResponse:
 	user_id = current_user.id
-
-	# Attaching mutates the scene every chat in it sees, so (unlike a personal
-	# like/bookmark) only the owner may change which characters belong to it.
 	scene = await scene_service.get_one(scene_id)
 	if scene.owner_id != user_id:
 		raise HTTPException(status_code=403, detail="Only the scene owner can attach characters")
-
-	# Resolve + authorize each character before the INSERT: missing → 404 (not an
-	# FK 500), and a private non-owned character is 403 (it would leak via chats).
 	for character_id in dto.character_ids:
 		character = await character_service.get_one(character_id)
 		if not character.is_public and character.owner_id != user_id:

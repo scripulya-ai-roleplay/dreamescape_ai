@@ -18,14 +18,6 @@ router = APIRouter(prefix="/api/v1/media", tags=["media"])
 
 
 class _UploadForm(NamedTuple):
-	"""Multipart form fields for an upload, before the owner is resolved from auth.
-
-	Grouped via the ``upload_form`` dependency so the route handler stays terse.
-	Direct params (not a single Form() model) are required because file uploads
-	need multipart/form-data, which FastAPI only advertises for a direct
-	UploadFile parameter.
-	"""
-
 	file: UploadFile
 	entity_type: MediaEntityType
 	entity_id: UUID

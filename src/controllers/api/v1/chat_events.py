@@ -19,16 +19,5 @@ async def stream_chat_events(
 	current_user: User = Depends(get_current_user),
 	chat_id: UUID = Path(),
 ) -> StreamingResponse:
-	"""Server-Sent Events stream of model-message lifecycle events for a chat.
-
-	The client opens this after POSTing a message; the completed/failed reply is
-	pushed here when scripulya_agent answers (no polling). On connect, the latest
-	model message is emitted as a `state` reconciliation frame so a client that
-	connected after the reply landed (or on reconnect) can dedupe by message id.
-
-	Ownership of the chat is verified and the latest message read inside the service;
-	that DB work happens in a short-lived session that is closed before this response
-	starts streaming, so the SSE connection does not pin a DB connection.
-	"""
 	user_id = current_user.id
 	return await events_service.open_stream(chat_id, user_id)

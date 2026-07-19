@@ -80,23 +80,16 @@ class Chat(BaseModel):
 
 class Message(BaseModel):
 	model_config = ConfigDict(frozen=True)
-
-	# chat id is optional, because it is being generated automatically inside DB
-	# message length is not verified because an empty message can mean that user
-	# choose a 'continue' behaviour
 	id: None | UUID = None
 	message: str
 	chat_id: UUID
 	role: ChatRoles
 	status: MessageStatus = MessageStatus.COMPLETED
-	# timestamps are optional because they are generated automatically inside DB
 	date_created: None | datetime = None
 	date_edited: None | datetime = None
 
 
 class MediaEntityType(StrEnum):
-	"""The kind of entity a media asset (image) is attached to."""
-
 	CHARACTER = "character"
 	SCENE = "scene"
 	USER = "user"

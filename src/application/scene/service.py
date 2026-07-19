@@ -87,12 +87,6 @@ class SceneService(ISceneService):
 				self.logger.error(f"Failed to update scene {target_scene_uuid}: {e}")
 				raise
 
-	# Every like/bookmark verb resolves the scene first. A missing target then
-	# raises NoResultFound (→ 404 via the global handler) instead of a raw INSERT
-	# tripping the FK (→ 409 leaking the constraint name) on the writes, or the
-	# reads silently reporting likes_count: 0 / bookmarked: false. Matches how
-	# delete/update already gate on get_one.
-
 	async def like(self, scene_uuid: UUID, user_id: UUID) -> LikeState:
 		self.logger.info(f"User {user_id} liking scene {scene_uuid}")
 
@@ -143,6 +137,5 @@ class SceneService(ISceneService):
 		self.logger.info(f"Attaching {len(character_ids)} character(s) to scene {scene_uuid}")
 
 		async with self.uow:
-			# Resolve first so a missing scene 404s instead of a bare INSERT.
 			await self.gateway.get_one(scene_uuid)
 			await self.gateway.attach_characters(scene_uuid, character_ids)

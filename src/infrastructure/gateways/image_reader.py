@@ -39,12 +39,6 @@ _READ_CHUNK = 64 * 1024
 
 
 def _sniff_image_type(data: bytes | bytearray | memoryview) -> str | None:
-	"""Return the image content type implied by the leading bytes, or ``None``.
-
-	Used to validate the client-claimed Content-Type against the actual payload
-	so a browser cannot be tricked into rendering a hostile type (e.g. HTML/SVG)
-	under an image label.
-	"""
 	if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
 		return "image/webp"
 	for magic, content_type in _IMAGE_SIGNATURES:
@@ -55,11 +49,6 @@ def _sniff_image_type(data: bytes | bytearray | memoryview) -> str | None:
 
 @dataclass
 class ImageReader(IImageReader):
-	"""Reads and validates an uploaded image: enforces the size cap and verifies
-	the real content type via magic-number sniffing. Keeps byte-level upload
-	parsing out of the media service (single responsibility).
-	"""
-
 	max_bytes: int
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
