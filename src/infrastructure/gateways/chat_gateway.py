@@ -51,7 +51,6 @@ class ChatGateway(IChatGateway):
 	async def search(self, dto: ChatFilterDTO) -> Page[Chat]:
 		self.logger.info(f"Searching chats with filters: {dto}")
 
-		# Build query with filters
 		query = select(ChatModel).options(selectinload(ChatModel.messages))
 
 		conditions = []
@@ -71,7 +70,6 @@ class ChatGateway(IChatGateway):
 		if conditions:
 			query = query.where(and_(*conditions))
 
-		# Get total count
 		count_query = select(func.count(ChatModel.id))
 		if conditions:
 			count_query = count_query.where(and_(*conditions))
@@ -79,13 +77,11 @@ class ChatGateway(IChatGateway):
 		count_result = await self._session.execute(count_query)
 		total_count = count_result.scalar() or 0
 
-		# Apply pagination
 		query = query.offset(dto.offset).limit(dto.limit)
 
 		result = await self._session.execute(query)
 		chat_models = result.scalars().all()
 
-		# Convert to domain models
 		domain_chats = [self._to_domain_chat(chat_model) for chat_model in chat_models]
 
 		self.logger.info(f"Found {len(domain_chats)} chats out of {total_count} total")
@@ -124,10 +120,6 @@ class ChatGateway(IChatGateway):
 	async def set_persona(self, chat_uuid: UUID, user_character_id: UUID) -> UUID:
 		self.logger.info(f"Setting persona {user_character_id} on chat {chat_uuid}")
 
-		# Validate the persona character exists first; otherwise the UPDATE below
-		# would trip the user_character_id FK and the global handler would return a
-		# 409 leaking the constraint name. Resolve it to a clean 404 instead,
-		# matching how the rest of the API treats a missing target.
 		character_exists = await self._session.scalar(
 			select(func.count()).select_from(CharacterModel).where(CharacterModel.id == user_character_id)
 		)

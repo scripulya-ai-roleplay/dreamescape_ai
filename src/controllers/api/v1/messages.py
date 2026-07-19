@@ -1,6 +1,5 @@
 import logging
 from uuid import UUID
-from typing import Dict, Any
 
 from asgi_correlation_id import correlation_id
 from dishka import FromDishka
@@ -10,8 +9,8 @@ from fastapi import APIRouter, Query, Path, Body, Depends, status
 from src.application.ports import UserMessageDTO
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import ApiResponse, Page, IMessageService, IChatsService
-from src.domain.models import Message
-from src.infrastructure.auth.dependencies import get_current_user
+from src.domain.models import Message, User
+from src.controllers.api.v1.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +23,10 @@ router = APIRouter(prefix="/api/v1/messages", tags=["messages"])
 async def create_message(
 	llm_service: FromDishka[IChatsService],
 	message: UserMessageDTO = Body(),
-	current_user: Dict[str, Any] = Depends(get_current_user),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[Message]:
 	logger.info(f"Current user payload: {current_user}")
-	user_id = UUID(current_user["sub"])
+	user_id = current_user.id
 	logger.info(f"Extracted user ID: {user_id}")
 
 	# The service persists the user message, then publishes the request to

@@ -56,14 +56,6 @@ class FunctionsSettings(BaseModel):
 
 
 class ChatSettings(BaseModel):
-	"""Per-chat LLM generation settings.
-
-	The canonical wire contract shared by the DB (JSONB), the settings HTTP
-	endpoint, and the LLMRequest payload sent to scripulya_agent. Field names and
-	enum values are kept verbatim because they cross the RabbitMQ/HTTP boundary
-	as JSON and must serialize identically on both sides.
-	"""
-
 	aiControlBehavior: ControlBehavior
 	continueBehavior: ControlBehavior
 	perspective: Perspective

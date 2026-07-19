@@ -15,12 +15,6 @@ router = APIRouter(tags=["health"])
 @router.get("/health")
 @inject
 async def health(session: FromDishka[AsyncSession]) -> dict:
-	"""Liveness/readiness probe.
-
-	Returns 200 if Postgres is reachable (``SELECT 1``), otherwise 503. Used by the
-	Dockerfile ``HEALTHCHECK`` and the Kubernetes liveness/readiness probes, so it
-	must stay public (no JWT) and cheap.
-	"""
 	try:
 		await session.execute(text("SELECT 1"))
 	except Exception:

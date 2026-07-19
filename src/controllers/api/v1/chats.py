@@ -1,6 +1,5 @@
 import logging
 from uuid import UUID
-from typing import Dict, Any
 
 from asgi_correlation_id import correlation_id
 from dishka import FromDishka
@@ -9,8 +8,8 @@ from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 
 from src.application.chats.schemas import ChatFilterDTO
 from src.application.ports import ApiResponse, Page, IChatService
-from src.domain.models import Chat
-from src.infrastructure.auth.dependencies import get_current_user
+from src.domain.models import Chat, User
+from src.controllers.api.v1.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +22,10 @@ router = APIRouter(prefix="/api/v1/chats", tags=["chats"])
 async def create_chat(
 	chat_service: FromDishka[IChatService],
 	chat: Chat = Body(),
-	current_user: Dict[str, Any] = Depends(get_current_user),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse:
 	logger.info(f"Current user payload: {current_user}")
-	user_id = UUID(current_user["sub"])
+	user_id = current_user.id
 	logger.info(f"Extracted user ID: {user_id}")
 
 	# Validate that the Chat's user_id matches the authenticated user
@@ -81,7 +80,5 @@ async def set_chat_persona(
 	chat_id: UUID = Path(),
 	user_character_id: UUID = Body(embed=True),
 ) -> ApiResponse:
-	# Lets a persona-less chat (or one whose persona was cleared when the character
-	# was deleted) become messagable. send_message otherwise rejects such chats.
 	await chat_service.set_persona(chat_id, user_character_id)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())

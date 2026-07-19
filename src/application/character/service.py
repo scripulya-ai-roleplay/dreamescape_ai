@@ -100,19 +100,12 @@ class CharacterService(ICharacterService):
 				self.logger.error(f"Failed to update character {target_character_uuid}: {e}")
 				raise
 
-	# Every like/bookmark verb resolves the character first. A missing target then
-	# raises NoResultFound (→ 404 via the global handler) instead of a raw INSERT
-	# tripping the FK (→ 409 leaking the constraint name) on the writes, or the
-	# reads silently reporting likes_count: 0 / bookmarked: false. Matches how
-	# delete/update already gate on get_one.
-
 	async def like(self, character_uuid: UUID, user_id: UUID) -> LikeState:
 		self.logger.info(f"User {user_id} liking character {character_uuid}")
 
 		async with self.uow:
 			await self.gateway.get_one(character_uuid)
 			await self.gateway.set_like(character_uuid, user_id)
-			# Read the count inside the same tx so it reflects this like.
 			count = await self.gateway.count_likes(character_uuid)
 		return LikeState(liked=True, likes_count=count)
 

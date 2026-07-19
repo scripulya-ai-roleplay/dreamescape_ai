@@ -53,13 +53,6 @@ class MessageService(IMessageService):
 		return result
 
 	async def append_model_message(self, result: LLMResult) -> Message:
-		"""Persist the model reply for result.chat_id as a fresh message row.
-
-		Appends a COMPLETED row with the reply text on success, a FAILED row with
-		the error message on error (or when the agent returned neither). Unlike the
-		old complete_pending path this is a pure INSERT — it never mutates an
-		existing row and always returns the created message.
-		"""
 		if result.error is not None:
 			content = result.error.message or result.error.reason or "LLM generation failed"
 			status = MessageStatus.FAILED

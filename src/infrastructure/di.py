@@ -156,6 +156,7 @@ class ServiceProvider(Provider):
 			private_key=settings.JWT_SECRET_KEY,
 			public_key=settings.JWT_PUBLIC_KEY,
 			algorithm=settings.JWT_ALGORITHM,
+			access_token_expire_minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES,
 			logger=logger,
 		)
 

@@ -22,6 +22,5 @@ class PromptService(IPromptService):
 				scene_lines.append(scene.description.strip())
 			parts.append("\n\n".join(scene_lines))
 		if user_character is not None:
-			# The character the user is playing as in this scene, so the model addresses them in-role.
 			parts.append(f"# User\n## {user_character.name}\n{user_character.system_prompt}".rstrip())
 		return "\n\n".join(part for part in parts if part).strip()

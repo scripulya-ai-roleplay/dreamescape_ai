@@ -11,7 +11,6 @@ class Base(DeclarativeBase):
 	pass
 
 
-# Association table for many-to-many relationship between Character and Scene
 character_scene = Table(
 	"character_scene",
 	Base.metadata,
@@ -19,9 +18,6 @@ character_scene = Table(
 	Column("scene_id", UUID(as_uuid=True), ForeignKey("scenes.id", ondelete="CASCADE"), primary_key=True),
 )
 
-# User → Character/Scene likes and bookmarks. Pure join tables (composite PK,
-# CASCADE on both sides) modelled after character_scene; the existence of a row
-# is the signal, so no extra columns are needed.
 character_likes = Table(
 	"character_likes",
 	Base.metadata,
@@ -121,9 +117,6 @@ class Chat(Base):
 
 class ChatSettings(Base):
 	__tablename__ = "chat_settings"
-
-	# 1:1 with chats: each chat has a single owner (chats.user_id), so settings
-	# are keyed by chat_id. The settings object is stored verbatim as JSONB.
 	chat_id: Mapped[uuid.UUID] = mapped_column(
 		UUID(as_uuid=True), ForeignKey("chats.id", ondelete="CASCADE"), primary_key=True
 	)
@@ -165,8 +158,6 @@ class MediaAsset(Base):
 	id: Mapped[uuid.UUID] = mapped_column(
 		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
 	)
-	# A media asset either references a managed object in object storage
-	# (object_key + bucket) or a legacy/external absolute URL (file_url).
 	object_key: Mapped[Optional[str]] = mapped_column(Text)
 	bucket: Mapped[Optional[str]] = mapped_column(String(63))
 	file_url: Mapped[Optional[str]] = mapped_column(Text)
