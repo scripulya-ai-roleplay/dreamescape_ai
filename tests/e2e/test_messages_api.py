@@ -10,7 +10,6 @@ class TestMessagesAPI:
 		payload = {
 			"message": "Hello, this is a test message",
 			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
-			"role": "user",
 		}
 
 		response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
@@ -31,9 +30,9 @@ class TestMessagesAPI:
 		assert "chat_id" in data["result"]
 		assert "role" in data["result"]
 
-	def test_create_message_rejects_forged_model_role(self, client, auth_headers, cleanup_test_messages):
-		"""A client must not forge an assistant/model message: even when
-		``role: model`` is sent, the message is stored as ``user``."""
+	def test_create_message_rejects_forged_model_role(self, client, auth_headers):
+		"""A client must not forge an assistant/model message: ``role`` is not an
+		accepted field, so sending it is rejected with 422 (extra="forbid")."""
 		payload = {
 			"message": "AI response message",
 			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
@@ -42,19 +41,13 @@ class TestMessagesAPI:
 
 		response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
 
-		assert response.status_code == 202
-		data = response.json()
-		assert "result" in data
-		assert "correlation_id" in data
-		# forged role is neutralized — persisted as a user message
-		assert data["result"]["role"] == "user"
+		assert response.status_code == 422
 
 	def test_create_message_with_empty_content(self, client, auth_headers, cleanup_test_messages):
 		"""Test creating a message with empty content."""
 		payload = {
 			"message": "",
 			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
-			"role": "user",
 		}
 
 		response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
@@ -69,7 +62,6 @@ class TestMessagesAPI:
 		# Missing message content
 		payload = {
 			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
-			"role": "user",
 		}
 
 		response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
@@ -80,16 +72,15 @@ class TestMessagesAPI:
 		"""Test creating a message without chat_id."""
 		payload = {
 			"message": "Message without chat",
-			"role": "user",
 		}
 
 		response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
 
 		assert response.status_code == 422
 
-	def test_create_message_ignores_unknown_role(self, client, auth_headers, cleanup_test_messages):
-		"""An unrecognized ``role`` is ignored (role is not a client-set field)
-		and the message is created as a normal user message."""
+	def test_create_message_rejects_unknown_role(self, client, auth_headers):
+		"""``role`` is not an accepted field; any value for it is rejected with
+		422 (extra="forbid") rather than silently ignored."""
 		payload = {
 			"message": "Message with invalid role",
 			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
@@ -98,16 +89,13 @@ class TestMessagesAPI:
 
 		response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
 
-		assert response.status_code == 202
-		data = response.json()
-		assert data["result"]["role"] == "user"
+		assert response.status_code == 422
 
 	def test_create_message_without_authentication(self, client):
 		"""Test creating a message without authentication should return 401."""
 		payload = {
 			"message": "Unauthorized message",
 			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
-			"role": "user",
 		}
 
 		response = client.post("/api/v1/messages/", json=payload)
@@ -126,7 +114,7 @@ class TestMessagesAPI:
 		chat_id = create_response.json()["result"]["id"]
 
 		try:
-			intruder_payload = {"message": "intrusion attempt", "chat_id": chat_id, "role": "user"}
+			intruder_payload = {"message": "intrusion attempt", "chat_id": chat_id}
 			response = client.post("/api/v1/messages/", json=intruder_payload, headers=other_auth_headers)
 
 			assert response.status_code == 403
@@ -223,7 +211,6 @@ class TestMessagesAPI:
 		payload = {
 			"message": "Test Message for Details",
 			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
-			"role": "user",
 		}
 		create_response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
 
@@ -258,7 +245,6 @@ class TestMessagesAPI:
 		payload = {
 			"message": "Original message content",
 			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
-			"role": "user",
 		}
 		create_response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
 
@@ -306,7 +292,6 @@ class TestMessagesAPI:
 		payload = {
 			"message": "Message to be deleted",
 			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
-			"role": "user",
 		}
 		create_response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
 
@@ -354,7 +339,6 @@ class TestMessagesAPI:
 		payload = {
 			"message": long_message,
 			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
-			"role": "user",
 		}
 
 		response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)

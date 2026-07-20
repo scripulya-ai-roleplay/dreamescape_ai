@@ -5,7 +5,7 @@ from asgi_correlation_id import correlation_id
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Body, Depends, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from src.application.ports import LLMModelType, UserMessageDTO
 from src.application.message.schemas import MessagesFilterDto
@@ -20,6 +20,11 @@ router = APIRouter(prefix="/api/v1/messages", tags=["messages"])
 
 
 class SendMessageRequest(BaseModel):
+	# role is intentionally omitted — a client message is always stored as
+	# ChatRoles.USER — and unknown fields are rejected (extra="forbid") so a
+	# forged role fails with 422 instead of being silently dropped.
+	model_config = ConfigDict(extra="forbid")
+
 	chat_id: UUID
 	message: str
 	llm_model: LLMModelType | None = LLMModelType.testing_mock
