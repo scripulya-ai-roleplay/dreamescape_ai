@@ -54,11 +54,13 @@ class LLMChatsService(IChatsService):
 		user_character = await self.character_gateway.get_one(chat.user_character_id)
 		system_prompt = self.prompt_service.build_system_prompt(scene, characters, user_character)
 
+		# A client-authored message is always role=USER; never persist a role
+		# supplied by the caller, which would let it forge assistant messages.
 		user_message = await self.message_service.send_message(
 			Message(
 				message=chat_dto.message,
 				chat_id=chat_dto.chat_id,
-				role=chat_dto.role,
+				role=ChatRoles.USER,
 				status=MessageStatus.COMPLETED,
 			)
 		)
@@ -70,7 +72,7 @@ class LLMChatsService(IChatsService):
 				f"LLM prompt for chat {chat_dto.chat_id} | model={chat_dto.llm_model}\n"
 				f"===== SYSTEM PROMPT =====\n{system_prompt}\n"
 				f"===== HISTORY ({len(history)} turns) =====\n{history_preview}\n"
-				f"===== NEW MESSAGE [{chat_dto.role}] =====\n{chat_dto.message}\n"
+				f"===== NEW MESSAGE [{ChatRoles.USER}] =====\n{chat_dto.message}\n"
 				f"===== END PROMPT ====="
 			)
 

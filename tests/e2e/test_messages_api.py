@@ -31,8 +31,9 @@ class TestMessagesAPI:
 		assert "chat_id" in data["result"]
 		assert "role" in data["result"]
 
-	def test_create_message_with_model_role(self, client, auth_headers, cleanup_test_messages):
-		"""Test creating a message with model role."""
+	def test_create_message_rejects_forged_model_role(self, client, auth_headers, cleanup_test_messages):
+		"""A client must not forge an assistant/model message: even when
+		``role: model`` is sent, the message is stored as ``user``."""
 		payload = {
 			"message": "AI response message",
 			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
@@ -45,7 +46,8 @@ class TestMessagesAPI:
 		data = response.json()
 		assert "result" in data
 		assert "correlation_id" in data
-		assert data["result"]["role"] == "model"
+		# forged role is neutralized — persisted as a user message
+		assert data["result"]["role"] == "user"
 
 	def test_create_message_with_empty_content(self, client, auth_headers, cleanup_test_messages):
 		"""Test creating a message with empty content."""
@@ -85,8 +87,9 @@ class TestMessagesAPI:
 
 		assert response.status_code == 422
 
-	def test_create_message_invalid_role(self, client, auth_headers):
-		"""Test creating a message with invalid role."""
+	def test_create_message_ignores_unknown_role(self, client, auth_headers, cleanup_test_messages):
+		"""An unrecognized ``role`` is ignored (role is not a client-set field)
+		and the message is created as a normal user message."""
 		payload = {
 			"message": "Message with invalid role",
 			"chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a",
@@ -95,7 +98,9 @@ class TestMessagesAPI:
 
 		response = client.post("/api/v1/messages/", json=payload, headers=auth_headers)
 
-		assert response.status_code == 422
+		assert response.status_code == 202
+		data = response.json()
+		assert data["result"]["role"] == "user"
 
 	def test_create_message_without_authentication(self, client):
 		"""Test creating a message without authentication should return 401."""
