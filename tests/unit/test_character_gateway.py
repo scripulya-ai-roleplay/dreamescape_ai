@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
 
 from src.infrastructure.gateways.character_gateway import CharacterGateway
+from src.infrastructure.gateways.visibility import VisibilityGateway
 from src.domain.models import Character
 from src.application.ports import Page
 from src.application.character.schemas import CharacterFilterDTO
@@ -23,7 +24,7 @@ class TestCharacterGateway:
 
 	@pytest.fixture
 	def character_gateway(self, mock_session):
-		return CharacterGateway(session=mock_session)
+		return CharacterGateway(session=mock_session, visibility=VisibilityGateway())
 
 	@pytest.fixture
 	def sample_character_model(self):

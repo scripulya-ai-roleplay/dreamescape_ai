@@ -2,8 +2,10 @@ import pytest
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+from fastapi import HTTPException
 from sqlalchemy.exc import NoResultFound
 
+from src.application.authz import AuthorizationService
 from src.application.character.service import CharacterService
 from src.domain.models import Character
 from src.application.ports import Page, LikeState, BookmarkState
@@ -12,6 +14,10 @@ from src.application.character.schemas import CharacterFilterDTO
 
 @pytest.mark.unit
 class TestCharacterService:
+	@pytest.fixture
+	def authz(self):
+		return AuthorizationService()
+
 	@pytest.fixture
 	def mock_character_gateway(self):
 		mock = AsyncMock()
@@ -25,8 +31,8 @@ class TestCharacterService:
 		return mock
 
 	@pytest.fixture
-	def character_service(self, mock_character_gateway, mock_uow):
-		return CharacterService(gateway=mock_character_gateway, uow=mock_uow)
+	def character_service(self, mock_character_gateway, mock_uow, authz):
+		return CharacterService(gateway=mock_character_gateway, uow=mock_uow, authz=authz)
 
 	@pytest.fixture
 	def sample_character(self):
@@ -68,15 +74,13 @@ class TestCharacterService:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_get_one_success(self, character_service, mock_character_gateway, sample_character):
-		# Arrange
+	async def test_get_one_public_anonymous_ok(self, character_service, mock_character_gateway, sample_character):
+		# A public character is readable without authentication (actor_id=None).
 		character_uuid = uuid4()
 		mock_character_gateway.get_one.return_value = sample_character
 
-		# Act
-		result = await character_service.get_one(character_uuid)
+		result = await character_service.get_one(character_uuid, None)
 
-		# Assert
 		assert result == sample_character
 		mock_character_gateway.get_one.assert_called_once_with(character_uuid)
 
@@ -89,7 +93,42 @@ class TestCharacterService:
 
 		# Act & Assert
 		with pytest.raises(Exception, match="Character not found"):
-			await character_service.get_one(character_uuid)
+			await character_service.get_one(character_uuid, None)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_get_one_private_anonymous_raises_401(self, character_service, mock_character_gateway):
+		# A private character must not be readable anonymously.
+		mock_character_gateway.get_one.return_value = Character(
+			id=uuid4(), name="Secret", system_prompt="p", is_public=False, owner_id=uuid4()
+		)
+
+		with pytest.raises(HTTPException) as exc:
+			await character_service.get_one(uuid4(), None)
+		assert exc.value.status_code == 401
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_get_one_private_other_user_raises_403(self, character_service, mock_character_gateway):
+		owner_id = uuid4()
+		mock_character_gateway.get_one.return_value = Character(
+			id=uuid4(), name="Secret", system_prompt="p", is_public=False, owner_id=owner_id
+		)
+
+		with pytest.raises(HTTPException) as exc:
+			await character_service.get_one(uuid4(), uuid4())  # a different user
+		assert exc.value.status_code == 403
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_get_one_private_owner_ok(self, character_service, mock_character_gateway):
+		owner_id = uuid4()
+		character = Character(id=uuid4(), name="Secret", system_prompt="p", is_public=False, owner_id=owner_id)
+		mock_character_gateway.get_one.return_value = character
+
+		result = await character_service.get_one(character.id, owner_id)
+
+		assert result == character
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -97,15 +136,16 @@ class TestCharacterService:
 		self, character_service, mock_character_gateway, sample_character, sample_character_filter_dto
 	):
 		# Arrange
+		actor_id = uuid4()
 		page_result = Page[Character](items=[sample_character], count=1, offset=0, limit=1)
 		mock_character_gateway.search.return_value = page_result
 
 		# Act
-		result = await character_service.search(sample_character_filter_dto)
+		result = await character_service.search(sample_character_filter_dto, actor_id)
 
 		# Assert
 		assert result == page_result
-		mock_character_gateway.search.assert_called_once_with(sample_character_filter_dto)
+		mock_character_gateway.search.assert_called_once_with(sample_character_filter_dto, actor_id=actor_id)
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -115,7 +155,7 @@ class TestCharacterService:
 
 		# Act & Assert
 		with pytest.raises(Exception, match="Search error"):
-			await character_service.search(sample_character_filter_dto)
+			await character_service.search(sample_character_filter_dto, uuid4())
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -144,7 +184,7 @@ class TestCharacterService:
 		mock_character_gateway.get_one.return_value = sample_character
 
 		# Act
-		await character_service.delete(character_uuid)
+		await character_service.delete(character_uuid, sample_character.owner_id)
 
 		# Assert
 		mock_character_gateway.get_one.assert_called_once_with(character_uuid)
@@ -159,7 +199,20 @@ class TestCharacterService:
 
 		# Act & Assert
 		with pytest.raises(ValueError, match="Character not found"):
-			await character_service.delete(character_uuid)
+			await character_service.delete(character_uuid, uuid4())
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_delete_not_owner_raises_403_without_deleting(
+		self, character_service, mock_character_gateway, sample_character
+	):
+		mock_character_gateway.get_one.return_value = sample_character
+
+		with pytest.raises(HTTPException) as exc:
+			await character_service.delete(uuid4(), uuid4())  # not the owner
+		assert exc.value.status_code == 403
+
+		mock_character_gateway.delete.assert_not_called()
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -171,7 +224,7 @@ class TestCharacterService:
 
 		# Act & Assert
 		with pytest.raises(Exception, match="Delete error"):
-			await character_service.delete(character_uuid)
+			await character_service.delete(character_uuid, sample_character.owner_id)
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -181,7 +234,7 @@ class TestCharacterService:
 		mock_character_gateway.get_one.return_value = sample_character
 
 		# Act
-		await character_service.update(character_uuid, sample_character)
+		await character_service.update(character_uuid, sample_character, sample_character.owner_id)
 
 		# Assert
 		mock_character_gateway.get_one.assert_called_once_with(character_uuid)
@@ -196,7 +249,20 @@ class TestCharacterService:
 
 		# Act & Assert
 		with pytest.raises(ValueError, match="Character not found"):
-			await character_service.update(character_uuid, sample_character)
+			await character_service.update(character_uuid, sample_character, uuid4())
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_update_not_owner_raises_403_without_updating(
+		self, character_service, mock_character_gateway, sample_character
+	):
+		mock_character_gateway.get_one.return_value = sample_character
+
+		with pytest.raises(HTTPException) as exc:
+			await character_service.update(uuid4(), sample_character, uuid4())  # not the owner
+		assert exc.value.status_code == 403
+
+		mock_character_gateway.update.assert_not_called()
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -208,7 +274,7 @@ class TestCharacterService:
 
 		# Act & Assert
 		with pytest.raises(Exception, match="Update error"):
-			await character_service.update(character_uuid, sample_character)
+			await character_service.update(character_uuid, sample_character, sample_character.owner_id)
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -300,6 +366,37 @@ class TestCharacterService:
 		# Assert
 		assert result == BookmarkState(bookmarked=True)
 		mock_character_gateway.is_bookmarked.assert_called_once_with(character_uuid, user_id)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_like_private_not_owner_raises_403_without_mutating(self, character_service, mock_character_gateway):
+		# A private character owned by someone else is not likable: the visibility
+		# gate (routed through get_one) 403s before any like row is written.
+		mock_character_gateway.get_one.return_value = Character(
+			id=uuid4(), name="Secret", system_prompt="p", is_public=False, owner_id=uuid4()
+		)
+
+		with pytest.raises(HTTPException) as exc:
+			await character_service.like(uuid4(), uuid4())  # not the owner
+		assert exc.value.status_code == 403
+
+		mock_character_gateway.set_like.assert_not_called()
+		mock_character_gateway.count_likes.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_bookmark_private_not_owner_raises_403_without_mutating(
+		self, character_service, mock_character_gateway
+	):
+		mock_character_gateway.get_one.return_value = Character(
+			id=uuid4(), name="Secret", system_prompt="p", is_public=False, owner_id=uuid4()
+		)
+
+		with pytest.raises(HTTPException) as exc:
+			await character_service.bookmark(uuid4(), uuid4())  # not the owner
+		assert exc.value.status_code == 403
+
+		mock_character_gateway.set_bookmark.assert_not_called()
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio

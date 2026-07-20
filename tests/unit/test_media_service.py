@@ -7,6 +7,7 @@ from fastapi import HTTPException, UploadFile
 from pydantic import ValidationError
 from starlette.datastructures import Headers
 
+from src.application.authz import AuthorizationService
 from src.application.media.schemas import MediaFilterDTO, MediaUploadDTO
 from src.application.media.service import MediaService
 from src.application.ports import UploadedImage
@@ -30,6 +31,7 @@ def _service(*, storage=None, gateway=None, reader=None, uow=None):
 		gateway=gateway or AsyncMock(),
 		reader=reader or AsyncMock(),
 		uow=uow or AsyncMock(),
+		authz=AuthorizationService(),
 	)
 
 

@@ -2,8 +2,10 @@ import pytest
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+from fastapi import HTTPException
 from sqlalchemy.exc import NoResultFound
 
+from src.application.authz import AuthorizationService
 from src.application.scene.service import SceneService
 from src.domain.models import Scene
 from src.application.ports import Page, LikeState, BookmarkState
@@ -13,6 +15,10 @@ from src.application.scene.schemas import SceneFilterDTO
 @pytest.mark.unit
 class TestSceneService:
 	"""Unit tests for SceneService"""
+
+	@pytest.fixture
+	def authz(self):
+		return AuthorizationService()
 
 	@pytest.fixture
 	def mock_scene_gateway(self):
@@ -29,9 +35,9 @@ class TestSceneService:
 		return mock
 
 	@pytest.fixture
-	def scene_service(self, mock_scene_gateway, mock_uow):
+	def scene_service(self, mock_scene_gateway, mock_uow, authz):
 		"""SceneService instance with mocked dependencies"""
-		return SceneService(mock_uow, mock_scene_gateway)
+		return SceneService(mock_uow, mock_scene_gateway, authz)
 
 	@pytest.fixture
 	def sample_scene(self):
@@ -77,18 +83,52 @@ class TestSceneService:
 		mock_scene_gateway.create.assert_called_once_with(sample_scene)
 
 	@pytest.mark.asyncio
-	async def test_get_one_success(self, scene_service, mock_scene_gateway, sample_scene):
-		"""Test successful scene retrieval"""
+	async def test_get_one_owner_ok(self, scene_service, mock_scene_gateway, sample_scene):
+		"""The owner can read their own (private) scene."""
 		# Arrange
 		scene_id = uuid4()
 		mock_scene_gateway.get_one.return_value = sample_scene
 
 		# Act
-		result = await scene_service.get_one(scene_id)
+		result = await scene_service.get_one(scene_id, sample_scene.owner_id)
 
 		# Assert
 		assert result == sample_scene
 		mock_scene_gateway.get_one.assert_called_once_with(scene_id)
+
+	@pytest.mark.asyncio
+	async def test_get_one_public_anonymous_ok(self, scene_service, mock_scene_gateway):
+		"""A public scene is readable without authentication."""
+		scene = Scene(
+			id=uuid4(),
+			title="Public",
+			description="d",
+			background_prompt="b",
+			owner_id=uuid4(),
+			initial_message_text="i",
+			is_public=True,
+		)
+		mock_scene_gateway.get_one.return_value = scene
+
+		result = await scene_service.get_one(scene.id, None)
+
+		assert result == scene
+
+	@pytest.mark.asyncio
+	async def test_get_one_private_anonymous_raises_401(self, scene_service, mock_scene_gateway, sample_scene):
+		mock_scene_gateway.get_one.return_value = sample_scene  # is_public=False
+
+		with pytest.raises(HTTPException) as exc:
+			await scene_service.get_one(uuid4(), None)
+		assert exc.value.status_code == 401
+
+	@pytest.mark.asyncio
+	async def test_get_one_private_other_user_raises_403(self, scene_service, mock_scene_gateway, sample_scene):
+		mock_scene_gateway.get_one.return_value = sample_scene
+
+		with pytest.raises(HTTPException) as exc:
+			await scene_service.get_one(uuid4(), uuid4())  # not the owner
+		assert exc.value.status_code == 403
 
 	@pytest.mark.asyncio
 	async def test_get_one_gateway_error(self, scene_service, mock_scene_gateway):
@@ -99,7 +139,7 @@ class TestSceneService:
 
 		# Act & Assert
 		with pytest.raises(Exception, match="Database error"):
-			await scene_service.get_one(scene_id)
+			await scene_service.get_one(scene_id, uuid4())
 
 		mock_scene_gateway.get_one.assert_called_once_with(scene_id)
 
@@ -107,27 +147,29 @@ class TestSceneService:
 	async def test_search_success(self, scene_service, mock_scene_gateway, sample_scene, sample_scene_filter_dto):
 		"""Test successful scene search"""
 		# Arrange
+		actor_id = uuid4()
 		expected_page = Page(items=[sample_scene], count=1, offset=0, limit=1)
 		mock_scene_gateway.search.return_value = expected_page
 
 		# Act
-		result = await scene_service.search(sample_scene_filter_dto)
+		result = await scene_service.search(sample_scene_filter_dto, actor_id)
 
 		# Assert
 		assert result == expected_page
-		mock_scene_gateway.search.assert_called_once_with(sample_scene_filter_dto)
+		mock_scene_gateway.search.assert_called_once_with(sample_scene_filter_dto, actor_id=actor_id)
 
 	@pytest.mark.asyncio
 	async def test_search_gateway_error(self, scene_service, mock_scene_gateway, sample_scene_filter_dto):
 		"""Test scene search when gateway raises error"""
 		# Arrange
+		actor_id = uuid4()
 		mock_scene_gateway.search.side_effect = Exception("Database error")
 
 		# Act & Assert
 		with pytest.raises(Exception, match="Database error"):
-			await scene_service.search(sample_scene_filter_dto)
+			await scene_service.search(sample_scene_filter_dto, actor_id)
 
-		mock_scene_gateway.search.assert_called_once_with(sample_scene_filter_dto)
+		mock_scene_gateway.search.assert_called_once_with(sample_scene_filter_dto, actor_id=actor_id)
 
 	@pytest.mark.asyncio
 	async def test_delete_success(self, scene_service, mock_scene_gateway, sample_scene):
@@ -138,7 +180,7 @@ class TestSceneService:
 		mock_scene_gateway.delete.return_value = None
 
 		# Act
-		await scene_service.delete(scene_id)
+		await scene_service.delete(scene_id, sample_scene.owner_id)
 
 		# Assert
 		mock_scene_gateway.get_one.assert_called_once_with(scene_id)
@@ -153,9 +195,19 @@ class TestSceneService:
 
 		# Act & Assert
 		with pytest.raises(ValueError, match=f"Scene with ID {scene_id} not found"):
-			await scene_service.delete(scene_id)
+			await scene_service.delete(scene_id, uuid4())
 
 		mock_scene_gateway.get_one.assert_called_once_with(scene_id)
+		mock_scene_gateway.delete.assert_not_called()
+
+	@pytest.mark.asyncio
+	async def test_delete_not_owner_raises_403_without_deleting(self, scene_service, mock_scene_gateway, sample_scene):
+		mock_scene_gateway.get_one.return_value = sample_scene
+
+		with pytest.raises(HTTPException) as exc:
+			await scene_service.delete(uuid4(), uuid4())  # not the owner
+		assert exc.value.status_code == 403
+
 		mock_scene_gateway.delete.assert_not_called()
 
 	@pytest.mark.asyncio
@@ -168,7 +220,7 @@ class TestSceneService:
 
 		# Act & Assert
 		with pytest.raises(Exception, match="Database error"):
-			await scene_service.delete(scene_id)
+			await scene_service.delete(scene_id, sample_scene.owner_id)
 
 		mock_scene_gateway.delete.assert_called_once_with(scene_id)
 
@@ -181,7 +233,7 @@ class TestSceneService:
 		mock_scene_gateway.update.return_value = None
 
 		# Act
-		await scene_service.update(scene_id, sample_scene)
+		await scene_service.update(scene_id, sample_scene, sample_scene.owner_id)
 
 		# Assert
 		mock_scene_gateway.get_one.assert_called_once_with(scene_id)
@@ -196,9 +248,19 @@ class TestSceneService:
 
 		# Act & Assert
 		with pytest.raises(ValueError, match=f"Scene with ID {scene_id} not found"):
-			await scene_service.update(scene_id, sample_scene)
+			await scene_service.update(scene_id, sample_scene, uuid4())
 
 		mock_scene_gateway.get_one.assert_called_once_with(scene_id)
+		mock_scene_gateway.update.assert_not_called()
+
+	@pytest.mark.asyncio
+	async def test_update_not_owner_raises_403_without_updating(self, scene_service, mock_scene_gateway, sample_scene):
+		mock_scene_gateway.get_one.return_value = sample_scene
+
+		with pytest.raises(HTTPException) as exc:
+			await scene_service.update(uuid4(), sample_scene, uuid4())  # not the owner
+		assert exc.value.status_code == 403
+
 		mock_scene_gateway.update.assert_not_called()
 
 	@pytest.mark.asyncio
@@ -211,7 +273,7 @@ class TestSceneService:
 
 		# Act & Assert
 		with pytest.raises(Exception, match="Database error"):
-			await scene_service.update(scene_id, sample_scene)
+			await scene_service.update(scene_id, sample_scene, sample_scene.owner_id)
 
 		mock_scene_gateway.update.assert_called_once_with(scene_id, sample_scene)
 
@@ -299,6 +361,45 @@ class TestSceneService:
 		# Assert
 		assert result == BookmarkState(bookmarked=True)
 		mock_scene_gateway.is_bookmarked.assert_called_once_with(scene_uuid, user_id)
+
+	@pytest.mark.asyncio
+	async def test_like_private_not_owner_raises_403_without_mutating(self, scene_service, mock_scene_gateway):
+		# A private scene owned by someone else is not likable: the visibility gate
+		# (routed through get_one) 403s before any like row is written.
+		mock_scene_gateway.get_one.return_value = Scene(
+			id=uuid4(),
+			title="Secret",
+			description="d",
+			background_prompt="b",
+			owner_id=uuid4(),
+			initial_message_text="i",
+			is_public=False,
+		)
+
+		with pytest.raises(HTTPException) as exc:
+			await scene_service.like(uuid4(), uuid4())  # not the owner
+		assert exc.value.status_code == 403
+
+		mock_scene_gateway.set_like.assert_not_called()
+		mock_scene_gateway.count_likes.assert_not_called()
+
+	@pytest.mark.asyncio
+	async def test_bookmark_private_not_owner_raises_403_without_mutating(self, scene_service, mock_scene_gateway):
+		mock_scene_gateway.get_one.return_value = Scene(
+			id=uuid4(),
+			title="Secret",
+			description="d",
+			background_prompt="b",
+			owner_id=uuid4(),
+			initial_message_text="i",
+			is_public=False,
+		)
+
+		with pytest.raises(HTTPException) as exc:
+			await scene_service.bookmark(uuid4(), uuid4())  # not the owner
+		assert exc.value.status_code == 403
+
+		mock_scene_gateway.set_bookmark.assert_not_called()
 
 	@pytest.mark.asyncio
 	async def test_like_missing_scene_raises_without_mutating(self, scene_service, mock_scene_gateway):

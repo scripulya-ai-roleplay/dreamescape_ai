@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from src.infrastructure.logging.logger import Logger
 from src.application.character.schemas import CharacterFilterDTO
-from src.application.ports import ICharacterGateway, Page
+from src.application.ports import ICharacterGateway, IVisibilityGateway, Page
 from src.domain.models import Character
 from src.infrastructure.database.models import (
 	Character as CharacterModel,
@@ -22,6 +22,7 @@ from src.infrastructure.database.models import (
 @dataclass
 class CharacterGateway(ICharacterGateway):
 	session: AsyncSession
+	visibility: IVisibilityGateway
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def get_one(self, character_uuid: UUID) -> Character:
@@ -70,8 +71,8 @@ class CharacterGateway(ICharacterGateway):
 		await self.session.execute(query)
 		self.logger.info(f"Successfully updated character: {target_character_uuid}")
 
-	async def search(self, dto: CharacterFilterDTO) -> Page[Character]:
-		self.logger.info(f"Searching characters with filters: {dto}")
+	async def search(self, dto: CharacterFilterDTO, actor_id: UUID | None = None) -> Page[Character]:
+		self.logger.info(f"Searching characters with filters: {dto} (actor={actor_id})")
 
 		# Build query with joins for scene filtering
 		query = select(CharacterModel).options(selectinload(CharacterModel.scenes))
@@ -99,8 +100,9 @@ class CharacterGateway(ICharacterGateway):
 				)
 			)
 
-		if conditions:
-			query = query.where(and_(*conditions))
+		conditions.append(self.visibility.public_or_owned(CharacterModel.is_public, CharacterModel.owner_id, actor_id))
+
+		query = query.where(and_(*conditions))
 
 		if dto.limit > 0:
 			query = query.limit(dto.limit)
@@ -108,10 +110,7 @@ class CharacterGateway(ICharacterGateway):
 		if dto.offset >= 0:
 			query = query.offset(dto.offset)
 
-		count_query = select(func.count(CharacterModel.id.distinct()))
-
-		if conditions:
-			count_query = count_query.where(and_(*conditions))
+		count_query = select(func.count(CharacterModel.id.distinct())).where(and_(*conditions))
 
 		count_result = await self.session.execute(count_query)
 		total_count = count_result.scalar() or 0

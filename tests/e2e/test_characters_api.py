@@ -168,7 +168,7 @@ class TestCharactersAPI:
 
 		# Use a known UUID for testing (this might need adjustment based on actual data)
 		test_uuid = "43341001-4ea1-4f03-b315-811d3264b6a3"
-		response = client.get(f"/api/v1/characters/{test_uuid}")
+		response = client.get(f"/api/v1/characters/{test_uuid}", headers=auth_headers)
 
 		# Should return 200 if character exists, 404 if not
 		assert response.status_code in [200, 404]
@@ -183,12 +183,12 @@ class TestCharactersAPI:
 
 		assert response.status_code == 422
 
-	def test_delete_character_with_valid_uuid(self, client):
+	def test_delete_character_with_valid_uuid(self, client, auth_headers):
 		test_uuid = "048a7fe5-f4c2-40ef-9745-7d85d7c4c5fb"
-		response = client.delete(f"/api/v1/characters/{test_uuid}")
+		response = client.delete(f"/api/v1/characters/{test_uuid}", headers=auth_headers)
 
-		# Should return 200 if character exists and deleted, 404 if not found
-		assert response.status_code in [200, 404]
+		# 200 if deleted, 404 if absent, 403 if it exists but belongs to another user.
+		assert response.status_code in [200, 403, 404]
 
 		if response.status_code == 200:
 			data = response.json()
@@ -196,13 +196,13 @@ class TestCharactersAPI:
 			assert "correlation_id" in data
 			assert isinstance(data["result"], list)
 
-	def test_delete_character_with_invalid_uuid(self, client):
+	def test_delete_character_with_invalid_uuid(self, client, auth_headers):
 		"""Test deleting a character with invalid UUID format."""
-		response = client.delete("/api/v1/characters/invalid-uuid")
+		response = client.delete("/api/v1/characters/invalid-uuid", headers=auth_headers)
 
 		assert response.status_code == 422
 
-	def test_update_character_with_valid_data(self, client):
+	def test_update_character_with_valid_data(self, client, auth_headers):
 		"""Test updating a character with valid data."""
 		test_uuid = "90d27426-7b7a-4a4d-ba17-6f98b7c29c5e"
 		payload = {
@@ -212,10 +212,10 @@ class TestCharactersAPI:
 			"is_public": True,
 		}
 
-		response = client.post(f"/api/v1/characters/update/{test_uuid}", json=payload)
+		response = client.post(f"/api/v1/characters/update/{test_uuid}", json=payload, headers=auth_headers)
 
-		# Should return 200 if character exists and updated, 404 if not found
-		assert response.status_code in [200, 404]
+		# 200 if updated, 404 if absent, 403 if it belongs to another user.
+		assert response.status_code in [200, 403, 404]
 
 		if response.status_code == 200:
 			data = response.json()
@@ -223,7 +223,7 @@ class TestCharactersAPI:
 			assert "correlation_id" in data
 			assert isinstance(data["result"], list)
 
-	def test_update_character_with_invalid_uuid(self, client):
+	def test_update_character_with_invalid_uuid(self, client, auth_headers):
 		"""Test updating a character with invalid UUID format."""
 		payload = {
 			"name": "Updated Name",
@@ -231,11 +231,11 @@ class TestCharactersAPI:
 			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 		}
 
-		response = client.post("/api/v1/characters/update/invalid-uuid", json=payload)
+		response = client.post("/api/v1/characters/update/invalid-uuid", json=payload, headers=auth_headers)
 
 		assert response.status_code == 422
 
-	def test_update_character_missing_required_fields(self, client):
+	def test_update_character_missing_required_fields(self, client, auth_headers):
 		"""Test updating a character with missing required fields."""
 		test_uuid = "d99678f7-bb8c-41f4-9726-4722b44a5649"
 		payload = {
@@ -243,15 +243,15 @@ class TestCharactersAPI:
 			# Missing system_prompt and owner_id
 		}
 
-		response = client.post(f"/api/v1/characters/update/{test_uuid}", json=payload)
+		response = client.post(f"/api/v1/characters/update/{test_uuid}", json=payload, headers=auth_headers)
 
 		assert response.status_code == 422
 
-	def test_update_character_with_empty_body(self, client):
+	def test_update_character_with_empty_body(self, client, auth_headers):
 		"""Test updating a character with empty request body."""
 		test_uuid = "ad8b09b7-1723-4459-ba61-5bf3a2699c11"
 
-		response = client.post(f"/api/v1/characters/update/{test_uuid}", json={})
+		response = client.post(f"/api/v1/characters/update/{test_uuid}", json={}, headers=auth_headers)
 
 		assert response.status_code == 422
 

@@ -2,6 +2,9 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
+from fastapi import HTTPException
+
+from src.application.authz import AuthorizationService
 from src.application.chats.llm_service import LLMChatsService
 from src.application.chats.prompt_service import PromptService
 from src.application.ports import (
@@ -79,9 +82,15 @@ class TestChatsService:
 		return gateway
 
 	@pytest.fixture
-	def mock_chat_gateway(self):
+	def sample_user_id(self):
+		return uuid4()
+
+	@pytest.fixture
+	def mock_chat_gateway(self, sample_user_id):
 		gateway = AsyncMock(spec=IChatGateway)
-		gateway.get_one.return_value = Chat(title="chat", user_id=uuid4(), scene_id=uuid4(), user_character_id=uuid4())
+		gateway.get_one.return_value = Chat(
+			title="chat", user_id=sample_user_id, scene_id=uuid4(), user_character_id=uuid4()
+		)
 		return gateway
 
 	@pytest.fixture
@@ -118,6 +127,7 @@ class TestChatsService:
 			scene_gateway=mock_scene_gateway,
 			character_gateway=mock_character_gateway,
 			prompt_service=PromptService(),
+			authz=AuthorizationService(),
 			_events=mock_events,
 		)
 
@@ -137,11 +147,11 @@ class TestChatsService:
 	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_async_path_returns_user_message_only(
-		self, chats_service, mock_gateway, mock_message_service, mock_events, sample_user_message_dto
+		self, chats_service, mock_gateway, mock_message_service, mock_events, sample_user_message_dto, sample_user_id
 	):
 		"""Fire-and-forget gateway: persists only the user message, returns it, and
 		does not append a model reply inline or notify SSE."""
-		result = await chats_service.send_message(sample_user_message_dto)
+		result = await chats_service.send_message(sample_user_message_dto, sample_user_id)
 
 		assert isinstance(result, Message)
 		assert result.message == "Hello, how are you?"
@@ -158,14 +168,16 @@ class TestChatsService:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_async_path_routes_by_model_value(self, chats_service, mock_gateway_factory, sample_user_message_dto):
-		await chats_service.send_message(sample_user_message_dto)
+	async def test_async_path_routes_by_model_value(
+		self, chats_service, mock_gateway_factory, sample_user_message_dto, sample_user_id
+	):
+		await chats_service.send_message(sample_user_message_dto, sample_user_id)
 		mock_gateway_factory.create_gateway.assert_called_once_with("gemini-3-flash-preview")
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_mock_path_appends_reply_inline_and_notifies_sse(
-		self, chats_service, mock_gateway, mock_message_service, mock_events, sample_user_message_dto
+		self, chats_service, mock_gateway, mock_message_service, mock_events, sample_user_message_dto, sample_user_id
 	):
 		"""Offline gateway returns a response: a COMPLETED model reply is appended
 		inline (INSERT) and the SSE broker is notified within the same request."""
@@ -176,7 +188,7 @@ class TestChatsService:
 			provider="mock",
 		)
 
-		await chats_service.send_message(sample_user_message_dto)
+		await chats_service.send_message(sample_user_message_dto, sample_user_id)
 
 		# user message + appended model reply
 		assert mock_message_service.send_message.await_count == 2
@@ -206,6 +218,7 @@ class TestChatsService:
 		mock_character_gateway,
 		mock_events,
 		sample_user_message_dto,
+		sample_user_id,
 	):
 		"""Prior history is forwarded to the gateway as UserMessageDTOs."""
 		prior_done = Message(message="previous turn", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.MODEL)
@@ -218,10 +231,11 @@ class TestChatsService:
 			scene_gateway=mock_scene_gateway,
 			character_gateway=mock_character_gateway,
 			prompt_service=PromptService(),
+			authz=AuthorizationService(),
 			_events=mock_events,
 		)
 
-		await chats_service.send_message(sample_user_message_dto)
+		await chats_service.send_message(sample_user_message_dto, sample_user_id)
 
 		_, history = mock_gateway.submit.await_args.args
 		assert len(history) == 1
@@ -229,6 +243,35 @@ class TestChatsService:
 		assert history[0].role == ChatRoles.MODEL
 		assert history[0].chat_id == sample_user_message_dto.chat_id
 		assert history[0].llm_model == sample_user_message_dto.llm_model
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_send_message_rejects_chat_owned_by_another_user(
+		self, mock_chat_gateway, mock_message_service, mock_gateway, sample_user_message_dto
+	):
+		"""The chat must belong to the actor: a foreign-owned chat 403s before any
+		persistence or LLM call (authorization lives in the service, not the caller)."""
+		mock_chat_gateway.get_one.return_value = Chat(
+			title="not yours", user_id=uuid4(), scene_id=uuid4(), user_character_id=uuid4()
+		)
+		service = LLMChatsService(
+			gateway_factory=MagicMock(spec=IGatewayFactory, create_gateway=Mock(return_value=mock_gateway)),
+			message_service=mock_message_service,
+			chat_settings_gateway=AsyncMock(spec=IChatSettingsGateway),
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=AsyncMock(spec=ISceneGateway),
+			character_gateway=AsyncMock(spec=ICharacterGateway),
+			prompt_service=PromptService(),
+			authz=AuthorizationService(),
+			_events=Mock(spec=IChatEventGateway),
+		)
+
+		with pytest.raises(HTTPException) as exc:
+			await service.send_message(sample_user_message_dto, uuid4())
+		assert exc.value.status_code == 403
+
+		mock_message_service.send_message.assert_not_called()
+		mock_gateway.submit.assert_not_called()
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -242,6 +285,7 @@ class TestChatsService:
 		mock_character_gateway,
 		mock_events,
 		sample_user_message_dto,
+		sample_user_id,
 	):
 		mock_gateway_factory.create_gateway.side_effect = Exception("Gateway creation failed")
 		chats_service = LLMChatsService(
@@ -252,11 +296,12 @@ class TestChatsService:
 			scene_gateway=mock_scene_gateway,
 			character_gateway=mock_character_gateway,
 			prompt_service=PromptService(),
+			authz=AuthorizationService(),
 			_events=mock_events,
 		)
 
 		with pytest.raises(Exception, match="Gateway creation failed"):
-			await chats_service.send_message(sample_user_message_dto)
+			await chats_service.send_message(sample_user_message_dto, sample_user_id)
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -271,6 +316,7 @@ class TestChatsService:
 		mock_character_gateway,
 		mock_events,
 		sample_user_message_dto,
+		sample_user_id,
 	):
 		"""Per-chat settings are fetched and forwarded to the gateway as chat_settings."""
 		settings_obj = ChatSettings(
@@ -294,28 +340,35 @@ class TestChatsService:
 			scene_gateway=mock_scene_gateway,
 			character_gateway=mock_character_gateway,
 			prompt_service=PromptService(),
+			authz=AuthorizationService(),
 			_events=mock_events,
 		)
 
-		await chats_service.send_message(sample_user_message_dto)
+		await chats_service.send_message(sample_user_message_dto, sample_user_id)
 
 		mock_chat_settings_gateway.get_for_chat.assert_awaited_once_with(sample_user_message_dto.chat_id)
 		assert mock_gateway.submit.await_args.kwargs["chat_settings"] is settings_obj
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_submit_error_propagates(self, chats_service, mock_gateway, sample_user_message_dto):
+	async def test_submit_error_propagates(self, chats_service, mock_gateway, sample_user_message_dto, sample_user_id):
 		"""If publishing fails, the error surfaces to the HTTP client (the user message
 		is already committed)."""
 		mock_gateway.submit.side_effect = Exception("Response generation failed")
 
 		with pytest.raises(Exception, match="Response generation failed"):
-			await chats_service.send_message(sample_user_message_dto)
+			await chats_service.send_message(sample_user_message_dto, sample_user_id)
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_system_prompt_assembled_from_scene_and_characters(
-		self, chats_service, mock_character_gateway, mock_scene_gateway, mock_gateway, sample_user_message_dto
+		self,
+		chats_service,
+		mock_character_gateway,
+		mock_scene_gateway,
+		mock_gateway,
+		sample_user_message_dto,
+		sample_user_id,
 	):
 		mock_character_gateway.get_for_scene.return_value = [
 			Character(name="Aria", system_prompt="A brave and cautious knight."),
@@ -327,7 +380,7 @@ class TestChatsService:
 			initial_message_text="init",
 		)
 
-		await chats_service.send_message(sample_user_message_dto)
+		await chats_service.send_message(sample_user_message_dto, sample_user_id)
 
 		system_prompt = mock_gateway.submit.await_args.kwargs["system_prompt"]
 		assert settings.SYSTEM_PROMPT.strip() in system_prompt
@@ -339,18 +392,24 @@ class TestChatsService:
 	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_user_persona_included_when_chat_has_one(
-		self, chats_service, mock_chat_gateway, mock_character_gateway, mock_gateway, sample_user_message_dto
+		self,
+		chats_service,
+		mock_chat_gateway,
+		mock_character_gateway,
+		mock_gateway,
+		sample_user_message_dto,
+		sample_user_id,
 	):
 		"""When the chat carries a user_character_id, that persona is resolved and rendered
 		as a # User section in the assembled system prompt."""
 		persona_id = uuid4()
 		persona = Character(name="Kael", system_prompt="A wandering bard with a silver tongue.")
 		mock_chat_gateway.get_one.return_value = Chat(
-			title="chat", user_id=uuid4(), scene_id=uuid4(), user_character_id=persona_id
+			title="chat", user_id=sample_user_id, scene_id=uuid4(), user_character_id=persona_id
 		)
 		mock_character_gateway.get_one.return_value = persona
 
-		await chats_service.send_message(sample_user_message_dto)
+		await chats_service.send_message(sample_user_message_dto, sample_user_id)
 
 		mock_character_gateway.get_one.assert_awaited_once_with(persona_id)
 		system_prompt = mock_gateway.submit.await_args.kwargs["system_prompt"]
@@ -361,16 +420,16 @@ class TestChatsService:
 	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_requires_play_as_character(
-		self, mock_chat_gateway, mock_message_service, chats_service, sample_user_message_dto
+		self, mock_chat_gateway, mock_message_service, chats_service, sample_user_message_dto, sample_user_id
 	):
 		"""A chat without a chosen play-as character is rejected with a graceful error
 		before the user message is persisted or the LLM is called."""
 		mock_chat_gateway.get_one.return_value = Chat(
-			title="chat", user_id=uuid4(), scene_id=uuid4(), user_character_id=None
+			title="chat", user_id=sample_user_id, scene_id=uuid4(), user_character_id=None
 		)
 
 		with pytest.raises(PersonaRequiredException):
-			await chats_service.send_message(sample_user_message_dto)
+			await chats_service.send_message(sample_user_message_dto, sample_user_id)
 
 		# Nothing is written when the request is rejected.
 		mock_message_service.send_message.assert_not_called()
@@ -378,13 +437,13 @@ class TestChatsService:
 	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_history_forwarded_in_chronological_order(
-		self, chats_service, mock_message_service, mock_gateway, sample_user_message_dto
+		self, chats_service, mock_message_service, mock_gateway, sample_user_message_dto, sample_user_id
 	):
 		newest = Message(message="newest", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.USER)
 		oldest = Message(message="oldest", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.MODEL)
 		mock_message_service.search.return_value = Page[Message](items=[newest, oldest], count=2, offset=0, limit=10)
 
-		await chats_service.send_message(sample_user_message_dto)
+		await chats_service.send_message(sample_user_message_dto, sample_user_id)
 
 		_, history = mock_gateway.submit.await_args.args
 		assert [m.message for m in history] == ["oldest", "newest"]

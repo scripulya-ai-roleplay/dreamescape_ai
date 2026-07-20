@@ -55,7 +55,7 @@ def auth_headers():
 
 
 @pytest.fixture(scope="function")
-def cleanup_test_characters(client):
+def cleanup_test_characters(client, auth_headers):
 	"""Fixture that cleans up test characters after each test."""
 	# This runs after the test
 	yield
@@ -74,8 +74,8 @@ def cleanup_test_characters(client):
 	]
 
 	try:
-		# Get all characters
-		response = client.get("/api/v1/characters/?limit=100&offset=0")
+		# Get all characters (authenticated so the actor's private test chars are visible)
+		response = client.get("/api/v1/characters/?limit=100&offset=0", headers=auth_headers)
 		if response.status_code == 200:
 			data = response.json()
 			characters = data.get("result", {}).get("items", [])
@@ -87,7 +87,7 @@ def cleanup_test_characters(client):
 					if pattern in character_name:
 						character_id = character.get("id")
 						if character_id:
-							client.delete(f"/api/v1/characters/{character_id}")
+							client.delete(f"/api/v1/characters/{character_id}", headers=auth_headers)
 							print(f"Cleaned up test character: {character_name} (ID: {character_id})")
 						break
 	except Exception as e:

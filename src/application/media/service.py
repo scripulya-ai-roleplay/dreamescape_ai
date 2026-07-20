@@ -9,6 +9,7 @@ from starlette import status
 from src.infrastructure.logging.logger import Logger
 from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadDTO
 from src.application.ports import (
+	IAuthorizationService,
 	IImageReader,
 	IObjectStorageGateway,
 	IMediaGateway,
@@ -25,6 +26,7 @@ class MediaService(IMediaService):
 	gateway: IMediaGateway
 	reader: IImageReader
 	uow: IUnitOfWork
+	authz: IAuthorizationService
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def upload(self, dto: MediaUploadDTO) -> MediaAssetDTO:
@@ -84,13 +86,7 @@ class MediaService(IMediaService):
 
 	async def get_one(self, media_id: UUID, actor_id: UUID | None) -> MediaAssetDTO:
 		asset = await self.gateway.get_one(media_id)  # NoResultFound -> 404 (global handler)
-
-		if not asset.is_public:
-			if actor_id is None:
-				raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
-			if asset.owner_id is None or actor_id != asset.owner_id:
-				raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to view this media")
-
+		self.authz.require_visible(is_public=asset.is_public, owner_id=asset.owner_id, actor_id=actor_id, noun="media")
 		return await self._to_dto(asset)
 
 	async def search(self, dto: MediaFilterDTO, actor_id: UUID | None) -> Page[MediaAssetDTO]:
@@ -104,9 +100,7 @@ class MediaService(IMediaService):
 
 	async def delete(self, media_id: UUID, actor_id: UUID) -> None:
 		asset = await self.gateway.get_one(media_id)  # NoResultFound -> 404
-
-		if asset.owner_id is None or actor_id != asset.owner_id:
-			raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to delete this media")
+		self.authz.require_owned(owner_id=asset.owner_id, actor_id=actor_id, noun="media")
 
 		async with self.uow:
 			# Best-effort object removal: a failure here must not keep the row alive.

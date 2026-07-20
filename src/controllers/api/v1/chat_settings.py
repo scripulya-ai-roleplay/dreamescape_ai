@@ -17,11 +17,8 @@ router = APIRouter(prefix="/api/v1/chats", tags=["chat-settings"])
 
 
 async def _assert_chat_owner(chat_service: IChatService, chat_id: UUID, user_id: UUID) -> None:
-	"""Load the chat and confirm it belongs to user_id; 403 otherwise (404 if missing)."""
-	chat = await chat_service.get_one(chat_id)  # raises ValueError -> 404 via global handler if absent
-	if chat.user_id != user_id:
-		logger.warning(f"Settings access denied: chat.user_id={chat.user_id}, user_id={user_id}")
-		raise HTTPException(status_code=403, detail="Cannot access settings of another user's chat")
+	"""Confirm the chat belongs to user_id (403 otherwise, 404 if missing)."""
+	await chat_service.get_one(chat_id, user_id)
 
 
 @router.put("/{chat_id}/settings")

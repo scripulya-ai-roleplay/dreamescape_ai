@@ -320,14 +320,14 @@ class TestScenesAPI:
 		# Should return validation error for invalid UUID
 		assert response.status_code == 422
 
-	def test_delete_scene_with_valid_uuid(self, client):
+	def test_delete_scene_with_valid_uuid(self, client, auth_headers):
 		"""Test deleting a scene with valid UUID."""
 		test_uuid = str(uuid.uuid4())
 
-		response = client.delete(f"/api/v1/scenes/{test_uuid}")
+		response = client.delete(f"/api/v1/scenes/{test_uuid}", headers=auth_headers)
 
-		# Could be 200 (success), 404 (not found), or 400 (deletion failed)
-		assert response.status_code in [200, 404, 400]
+		# 200 (deleted), 404 (absent), or 403 (belongs to another user).
+		assert response.status_code in [200, 403, 404]
 
 		if response.status_code == 200:
 			data = response.json()
@@ -335,16 +335,16 @@ class TestScenesAPI:
 			assert "correlation_id" in data
 			assert isinstance(data["result"], list)
 
-	def test_delete_scene_with_invalid_uuid(self, client):
+	def test_delete_scene_with_invalid_uuid(self, client, auth_headers):
 		"""Test deleting a scene with invalid UUID format."""
 		invalid_uuid = "not-a-uuid"
 
-		response = client.delete(f"/api/v1/scenes/{invalid_uuid}")
+		response = client.delete(f"/api/v1/scenes/{invalid_uuid}", headers=auth_headers)
 
 		# Should return validation error for invalid UUID
 		assert response.status_code == 422
 
-	def test_update_scene_with_valid_data(self, client):
+	def test_update_scene_with_valid_data(self, client, auth_headers):
 		"""Test updating a scene with valid data."""
 		test_uuid = str(uuid.uuid4())
 		payload = {
@@ -355,10 +355,10 @@ class TestScenesAPI:
 			"initial_message_text": "Welcome to the updated scene! How can I help you today?",
 		}
 
-		response = client.post(f"/api/v1/scenes/update/{test_uuid}", json=payload)
+		response = client.post(f"/api/v1/scenes/update/{test_uuid}", json=payload, headers=auth_headers)
 
-		# Could be 200 (success), 404 (not found), or 400 (update failed)
-		assert response.status_code in [200, 404, 400]
+		# 200 (updated), 404 (absent), or 403 (belongs to another user).
+		assert response.status_code in [200, 403, 404]
 
 		if response.status_code == 200:
 			data = response.json()
@@ -366,7 +366,7 @@ class TestScenesAPI:
 			assert "correlation_id" in data
 			assert isinstance(data["result"], list)
 
-	def test_update_scene_with_invalid_uuid(self, client):
+	def test_update_scene_with_invalid_uuid(self, client, auth_headers):
 		"""Test updating a scene with invalid UUID format."""
 		invalid_uuid = "not-a-uuid"
 		payload = {
@@ -375,26 +375,26 @@ class TestScenesAPI:
 			"initial_message_text": "Welcome to the updated scene!",
 		}
 
-		response = client.post(f"/api/v1/scenes/update/{invalid_uuid}", json=payload)
+		response = client.post(f"/api/v1/scenes/update/{invalid_uuid}", json=payload, headers=auth_headers)
 
 		# Should return validation error for invalid UUID
 		assert response.status_code == 422
 
-	def test_update_scene_missing_required_fields(self, client):
+	def test_update_scene_missing_required_fields(self, client, auth_headers):
 		"""Test updating a scene with missing required fields."""
 		test_uuid = str(uuid.uuid4())
 		payload = {"description": "Only description provided"}
 
-		response = client.post(f"/api/v1/scenes/update/{test_uuid}", json=payload)
+		response = client.post(f"/api/v1/scenes/update/{test_uuid}", json=payload, headers=auth_headers)
 
 		# Should return validation error for missing required fields
 		assert response.status_code == 422
 
-	def test_update_scene_with_empty_body(self, client):
+	def test_update_scene_with_empty_body(self, client, auth_headers):
 		"""Test updating a scene with empty request body."""
 		test_uuid = str(uuid.uuid4())
 
-		response = client.post(f"/api/v1/scenes/update/{test_uuid}", json={})
+		response = client.post(f"/api/v1/scenes/update/{test_uuid}", json={}, headers=auth_headers)
 
 		# Should return validation error for empty body
 		assert response.status_code == 422

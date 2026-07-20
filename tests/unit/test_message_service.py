@@ -2,6 +2,9 @@ import pytest
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+from fastapi import HTTPException
+
+from src.application.authz import AuthorizationService
 from src.application.message.service import MessageService
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import (
@@ -17,6 +20,10 @@ from src.domain.models import Message, ChatRoles, MessageStatus
 
 class TestMessageService:
 	@pytest.fixture
+	def authz(self):
+		return AuthorizationService()
+
+	@pytest.fixture
 	def mock_message_gateway(self):
 		return AsyncMock(spec=IMessageGateway)
 
@@ -28,8 +35,8 @@ class TestMessageService:
 		return uow
 
 	@pytest.fixture
-	def message_service(self, mock_message_gateway, mock_uow):
-		return MessageService(message_gateway=mock_message_gateway, _uow=mock_uow)
+	def message_service(self, mock_message_gateway, mock_uow, authz):
+		return MessageService(message_gateway=mock_message_gateway, _uow=mock_uow, authz=authz)
 
 	@pytest.fixture
 	def sample_message(self):
@@ -43,6 +50,11 @@ class TestMessageService:
 	@pytest.fixture
 	def sample_message_filter_dto(self):
 		return MessagesFilterDto(chats_ids=[uuid4()], roles=[ChatRoles.USER], limit=10, offset=0)
+
+	def _stub_owned(self, mock_message_gateway, sample_message, actor_id):
+		"""Wire the gateway so the message resolves to an actor-owned chat."""
+		mock_message_gateway.get_one.return_value = sample_message
+		mock_message_gateway.get_chat_owner_for_message.return_value = actor_id
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -64,40 +76,56 @@ class TestMessageService:
 		self, message_service, mock_message_gateway, sample_message, sample_message_filter_dto
 	):
 		# Arrange
+		actor_id = uuid4()
 		expected_page = Page[Message](items=[sample_message], count=1, offset=0, limit=10)
 		mock_message_gateway.search.return_value = expected_page
 
 		# Act
-		result = await message_service.search(sample_message_filter_dto)
+		result = await message_service.search(sample_message_filter_dto, actor_id)
 
 		# Assert
 		assert result == expected_page
-		mock_message_gateway.search.assert_called_once_with(sample_message_filter_dto)
+		mock_message_gateway.search.assert_called_once_with(sample_message_filter_dto, actor_id=actor_id)
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_get_one_success(self, message_service, mock_message_gateway, sample_message):
+	async def test_get_one_owner_ok(self, message_service, mock_message_gateway, sample_message):
 		# Arrange
+		actor_id = uuid4()
 		message_id = sample_message.id
-		mock_message_gateway.get_one.return_value = sample_message
+		self._stub_owned(mock_message_gateway, sample_message, actor_id)
 
 		# Act
-		result = await message_service.get_one(message_id)
+		result = await message_service.get_one(message_id, actor_id)
 
 		# Assert
 		assert result == sample_message
 		mock_message_gateway.get_one.assert_called_once_with(message_id)
+		mock_message_gateway.get_chat_owner_for_message.assert_called_once_with(message_id)
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_update_success(self, message_service, mock_message_gateway):
+	async def test_get_one_not_owner_raises_403(self, message_service, mock_message_gateway, sample_message):
+		# The message's chat belongs to someone else.
+		mock_message_gateway.get_one.return_value = sample_message
+		mock_message_gateway.get_chat_owner_for_message.return_value = uuid4()
+
+		with pytest.raises(HTTPException) as exc:
+			await message_service.get_one(sample_message.id, uuid4())
+		assert exc.value.status_code == 403
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_update_success(self, message_service, mock_message_gateway, sample_message):
 		# Arrange
-		message_id = uuid4()
+		actor_id = uuid4()
+		message_id = sample_message.id
 		updated_text = "Updated message text"
+		self._stub_owned(mock_message_gateway, sample_message, actor_id)
 		mock_message_gateway.update.return_value = message_id
 
 		# Act
-		result = await message_service.update(message_id, updated_text)
+		result = await message_service.update(message_id, updated_text, actor_id)
 
 		# Assert
 		assert result == message_id
@@ -105,17 +133,47 @@ class TestMessageService:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_delete_success(self, message_service, mock_message_gateway):
+	async def test_update_not_owner_raises_403_without_updating(
+		self, message_service, mock_message_gateway, sample_message
+	):
+		mock_message_gateway.get_one.return_value = sample_message
+		mock_message_gateway.get_chat_owner_for_message.return_value = uuid4()
+
+		with pytest.raises(HTTPException) as exc:
+			await message_service.update(sample_message.id, "x", uuid4())
+		assert exc.value.status_code == 403
+
+		mock_message_gateway.update.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_delete_success(self, message_service, mock_message_gateway, sample_message):
 		# Arrange
-		message_id = uuid4()
+		actor_id = uuid4()
+		message_id = sample_message.id
+		self._stub_owned(mock_message_gateway, sample_message, actor_id)
 		mock_message_gateway.delete.return_value = message_id
 
 		# Act
-		result = await message_service.delete(message_id)
+		result = await message_service.delete(message_id, actor_id)
 
 		# Assert
 		assert result == message_id
 		mock_message_gateway.delete.assert_called_once_with(message_id)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_delete_not_owner_raises_403_without_deleting(
+		self, message_service, mock_message_gateway, sample_message
+	):
+		mock_message_gateway.get_one.return_value = sample_message
+		mock_message_gateway.get_chat_owner_for_message.return_value = uuid4()
+
+		with pytest.raises(HTTPException) as exc:
+			await message_service.delete(sample_message.id, uuid4())
+		assert exc.value.status_code == 403
+
+		mock_message_gateway.delete.assert_not_called()
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -136,45 +194,47 @@ class TestMessageService:
 
 		# Act & Assert
 		with pytest.raises(ValueError, match="Message not found"):
-			await message_service.get_one(message_id)
+			await message_service.get_one(message_id, uuid4())
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_search_empty_results(self, message_service, mock_message_gateway, sample_message_filter_dto):
 		# Arrange
+		actor_id = uuid4()
 		empty_page = Page[Message](items=[], count=0, offset=0, limit=10)
 		mock_message_gateway.search.return_value = empty_page
 
 		# Act
-		result = await message_service.search(sample_message_filter_dto)
+		result = await message_service.search(sample_message_filter_dto, actor_id)
 
 		# Assert
 		assert result.items == []
 		assert result.count == 0
-		mock_message_gateway.search.assert_called_once_with(sample_message_filter_dto)
+		mock_message_gateway.search.assert_called_once_with(sample_message_filter_dto, actor_id=actor_id)
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_update_not_found(self, message_service, mock_message_gateway):
-		# Arrange
-		message_id = uuid4()
-		updated_text = "Updated text"
+	async def test_update_not_found(self, message_service, mock_message_gateway, sample_message):
+		# Arrange: owned check passes, but the row is gone at update time.
+		actor_id = uuid4()
+		self._stub_owned(mock_message_gateway, sample_message, actor_id)
 		mock_message_gateway.update.side_effect = ValueError("Message not found")
 
 		# Act & Assert
 		with pytest.raises(ValueError, match="Message not found"):
-			await message_service.update(message_id, updated_text)
+			await message_service.update(sample_message.id, "Updated text", actor_id)
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_delete_not_found(self, message_service, mock_message_gateway):
+	async def test_delete_not_found(self, message_service, mock_message_gateway, sample_message):
 		# Arrange
-		message_id = uuid4()
+		actor_id = uuid4()
+		self._stub_owned(mock_message_gateway, sample_message, actor_id)
 		mock_message_gateway.delete.side_effect = ValueError("Message not found")
 
 		# Act & Assert
 		with pytest.raises(ValueError, match="Message not found"):
-			await message_service.delete(message_id)
+			await message_service.delete(sample_message.id, actor_id)
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -189,16 +249,17 @@ class TestMessageService:
 
 		filter_dto = MessagesFilterDto(roles=[ChatRoles.MODEL], limit=5, offset=0)
 
-		expected_page = Page[Message](items=[model_message], count=1, offset=0, limit=5)
+		expected_page = Page[Message](items=[model_message], count=1, offset=5, limit=5)
 		mock_message_gateway.search.return_value = expected_page
 
 		# Act
-		result = await message_service.search(filter_dto)
+		actor_id = uuid4()
+		result = await message_service.search(filter_dto, actor_id)
 
 		# Assert
 		assert result == expected_page
 		assert result.items[0].role == ChatRoles.MODEL
-		mock_message_gateway.search.assert_called_once_with(filter_dto)
+		mock_message_gateway.search.assert_called_once_with(filter_dto, actor_id=actor_id)
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio

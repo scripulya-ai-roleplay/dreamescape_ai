@@ -1,10 +1,12 @@
 import logging
 from dataclasses import dataclass
+from uuid import UUID
 
 from src.conf import settings
 from src.infrastructure.logging.logger import Logger
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import (
+	IAuthorizationService,
 	ICharacterGateway,
 	IChatsService,
 	IChatEventGateway,
@@ -29,20 +31,22 @@ class LLMChatsService(IChatsService):
 	scene_gateway: ISceneGateway
 	character_gateway: ICharacterGateway
 	prompt_service: IPromptService
+	authz: IAuthorizationService
 	_events: IChatEventGateway
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
-	async def send_message(self, chat_dto: UserMessageDTO) -> Message:
+	async def send_message(self, chat_dto: UserMessageDTO, actor_id: UUID) -> Message:
 		self.logger.info(f"Processing LLM chat message with model: {chat_dto.llm_model}")
 		gateway = self.gateway_factory.create_gateway(chat_dto.llm_model.value)
 
-		history_page = await self.message_service.search(MessagesFilterDto(chats_ids=[chat_dto.chat_id]))
+		chat = await self.chat_gateway.get_one(chat_dto.chat_id)
+		self.authz.require_owned(owner_id=chat.user_id, actor_id=actor_id, noun="chat")
+		history_page = await self.message_service.search(MessagesFilterDto(chats_ids=[chat_dto.chat_id]), chat.user_id)
 		history = [
 			UserMessageDTO(message=m.message, chat_id=chat_dto.chat_id, llm_model=chat_dto.llm_model, role=m.role)
 			for m in reversed(history_page.items)
 		]
 
-		chat = await self.chat_gateway.get_one(chat_dto.chat_id)
 		scene = await self.scene_gateway.get_one(chat.scene_id)
 		characters = await self.character_gateway.get_for_scene(chat.scene_id)
 		if chat.user_character_id is None:

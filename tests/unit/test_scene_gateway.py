@@ -4,6 +4,7 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.infrastructure.gateways.scenes_gateway import SceneGateway
+from src.infrastructure.gateways.visibility import VisibilityGateway
 from src.domain.models import Scene
 from src.application.ports import Page
 from src.application.scene.schemas import SceneFilterDTO, SceneSortBy, SortOrder
@@ -27,7 +28,7 @@ class TestSceneGateway:
 	@pytest.fixture
 	def scene_gateway(self, mock_session):
 		"""SceneGateway instance with mocked session"""
-		return SceneGateway(mock_session)
+		return SceneGateway(mock_session, visibility=VisibilityGateway())
 
 	@pytest.fixture
 	def sample_scene_model(self):

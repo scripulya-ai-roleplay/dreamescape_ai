@@ -3,14 +3,14 @@ from dataclasses import dataclass
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select, delete, func, and_, update
+from sqlalchemy import select, delete, func, and_, update, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.infrastructure.logging.logger import Logger
 from src.application.ports import IMessageGateway, Page
 from src.application.message.schemas import MessagesFilterDto
 from src.domain.models import Message, ChatRoles, MessageStatus
-from src.infrastructure.database.models import Message as MessageModel
+from src.infrastructure.database.models import Message as MessageModel, Chat as ChatModel
 
 
 @dataclass
@@ -37,13 +37,17 @@ class MessageGateway(IMessageGateway):
 
 		return created_message
 
-	async def search(self, dto: MessagesFilterDto) -> Page[Message]:
-		self.logger.info(f"Searching messages with filters: {dto}")
+	async def search(self, dto: MessagesFilterDto, actor_id: UUID | None = None) -> Page[Message]:
+		self.logger.info(f"Searching messages with filters: {dto} (actor={actor_id})")
 
 		# Build query with filters
 		query = select(MessageModel)
 
 		conditions = []
+
+		# EXISTS keeps the SELECT a plain MessageModel; a None actor matches nothing
+		# (chat.user_id is non-nullable).
+		conditions.append(exists().where(and_(ChatModel.id == MessageModel.chat_id, ChatModel.user_id == actor_id)))
 
 		if dto.ids:
 			conditions.append(MessageModel.id.in_([str(id_) for id_ in dto.ids]))
@@ -55,13 +59,10 @@ class MessageGateway(IMessageGateway):
 			role_values = [role.value for role in dto.roles]
 			conditions.append(MessageModel.role.in_(role_values))
 
-		if conditions:
-			query = query.where(and_(*conditions))
+		query = query.where(and_(*conditions))
 
 		# Get total count
-		count_query = select(func.count(MessageModel.id))
-		if conditions:
-			count_query = count_query.where(and_(*conditions))
+		count_query = select(func.count(MessageModel.id)).where(and_(*conditions))
 
 		count_result = await self._session.execute(count_query)
 		total_count = count_result.scalar() or 0
@@ -91,6 +92,16 @@ class MessageGateway(IMessageGateway):
 			raise ValueError(f"Message with ID {message_uuid} not found")
 
 		return self._to_domain_message(message_model)
+
+	async def get_chat_owner_for_message(self, message_uuid: UUID) -> UUID | None:
+		self.logger.info(f"Resolving chat owner for message: {message_uuid}")
+
+		stmt = (
+			select(ChatModel.user_id)
+			.join(MessageModel, MessageModel.chat_id == ChatModel.id)
+			.where(MessageModel.id == message_uuid)
+		)
+		return await self._session.scalar(stmt)
 
 	async def update(self, message_uuid: UUID, updated_text: str) -> UUID:
 		self.logger.info(f"Updating message {message_uuid} with new text")

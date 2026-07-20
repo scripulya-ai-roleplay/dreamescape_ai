@@ -25,34 +25,32 @@ async def create_message(
 	message: UserMessageDTO = Body(),
 	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[Message]:
-	logger.info(f"Current user payload: {current_user}")
-	user_id = current_user.id
-	logger.info(f"Extracted user ID: {user_id}")
-
-	# The service persists the user message, then publishes the request to
-	# scripulya_agent (or appends the reply inline for testing_mock) and returns
-	# immediately. The finished reply is delivered to the client via the chat SSE
-	# stream (GET /api/v1/chats/{chat_id}/events).
+	# Persists the user message and publishes to scripulya_agent (inline for
+	# testing_mock); the model reply arrives later via the chat SSE stream.
 	logger.info(f"Creating message for chat: {message.chat_id}")
-	result = await llm_service.send_message(message)
+	result = await llm_service.send_message(message, current_user.id)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 
 @router.get("/{message_id}")
 @inject
 async def get_message_details(
-	message_service: FromDishka[IMessageService], message_id: UUID = Path()
+	message_service: FromDishka[IMessageService],
+	message_id: UUID = Path(),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[Message]:
-	result = await message_service.get_one(message_id)
+	result = await message_service.get_one(message_id, current_user.id)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 
 @router.get("/")
 @inject
 async def search_messages(
-	message_service: FromDishka[IMessageService], dto: MessagesFilterDto = Query(MessagesFilterDto())
+	message_service: FromDishka[IMessageService],
+	dto: MessagesFilterDto = Query(MessagesFilterDto()),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[Page[Message]]:
-	result = await message_service.search(dto)
+	result = await message_service.search(dto, current_user.id)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 
@@ -62,13 +60,18 @@ async def update_message(
 	message_service: FromDishka[IMessageService],
 	message_id: UUID = Path(),
 	updated_text: str = Body(embed=True),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse:
-	await message_service.update(message_id, updated_text)
+	await message_service.update(message_id, updated_text, current_user.id)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())
 
 
 @router.delete("/{message_id}")
 @inject
-async def delete_message(message_service: FromDishka[IMessageService], message_id: UUID = Path()) -> ApiResponse:
-	await message_service.delete(message_id)
+async def delete_message(
+	message_service: FromDishka[IMessageService],
+	message_id: UUID = Path(),
+	current_user: User = Depends(get_current_user),
+) -> ApiResponse:
+	await message_service.delete(message_id, current_user.id)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())
