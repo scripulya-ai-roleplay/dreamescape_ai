@@ -147,7 +147,7 @@ class SceneGateway(ISceneGateway):
 
 		self.logger.info(f"Found {len(domain_scenes)} scenes out of {total_count} total")
 
-		return Page[Scene](items=domain_scenes, count=total_count, offset=dto.offset, limit=len(domain_scenes))
+		return Page[Scene](items=domain_scenes, count=total_count, offset=dto.offset, limit=dto.limit)
 
 	async def create(self, scene: Scene) -> UUID:
 		self.logger.info(f"Creating scene: {scene.title}")
