@@ -46,12 +46,14 @@ scene_bookmarks = Table(
 
 class User(Base):
 	__tablename__ = "users"
+	__table_args__ = (CheckConstraint("role IN ('admin', 'api', 'developer')", name="check_user_role_valid"),)
 
 	id: Mapped[uuid.UUID] = mapped_column(
 		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
 	)
 	test_username: Mapped[Optional[str]] = mapped_column(String(255))
 	google_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
+	role: Mapped[str] = mapped_column(String(20), nullable=False, server_default="api", default="api")
 	crystal_balance: Mapped[int] = mapped_column(Integer, server_default="1000", default=1000)
 
 	characters: Mapped[List["Character"]] = relationship(back_populates="owner")

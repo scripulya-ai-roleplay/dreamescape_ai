@@ -23,6 +23,7 @@ CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     test_username VARCHAR(255),
     google_id VARCHAR(255) UNIQUE,
+    role VARCHAR(20) NOT NULL DEFAULT 'api' CHECK (role IN ('admin', 'api', 'developer')),
     crystal_balance INTEGER DEFAULT 1000
 );
 
@@ -141,18 +142,20 @@ CREATE TABLE media_assets (
 -- Create index on entity_type and entity_id for media_assets
 CREATE INDEX idx_media_entity ON media_assets(entity_type, entity_id);
 
--- Insert test users
-INSERT INTO users (id, test_username, google_id, crystal_balance) VALUES
-    ('00000000-0000-0000-0000-000000000001', 'mobile_test', 'mobile@mobile.net', 1000),
-    ('5dbdc924-968a-4c50-94a8-44cdd165e460', 'admin_test', 'admin@google.com', 5000),
-    ('f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'api_test', 'api@google.com', 3000),
-    ('4954ef15-b75b-4f92-b32c-ded5e80ce802', 'dev_test', 'dev@google.com', 1000),
-    ('4e50271e-2b64-46e4-b312-580782ea6549', 'user_test', 'user@google.com', 2000),
-    ('e5fd1874-a299-4c22-b6b5-af4e00b796a7', 'premium_user', 'premium@google.com', 10000),
-    ('c23dc540-a0ba-4d83-ac7b-d0f8eab9d463', 'broke_user', 'broke@google.com', 0),
-    ('f3ba11a5-4026-4c16-9aed-061f0d490ade', 'new_user', 'new@google.com', 1000),
-    ('7edb0c2c-8dcd-402a-a979-cc7853d9b627', 'test_user_long_name_for_testing', 'longname@google.com', 500),
-    ('53c41979-a116-4bb7-8281-57fadfd89a13', 'inactive_user', 'inactive@google.com', 2500);
+-- Insert test users. Roles follow the seeded usernames so the /users/search
+-- roles filter has real data to match: admin_test -> admin, dev_test -> developer,
+-- everyone else defaults to api.
+INSERT INTO users (id, test_username, google_id, role, crystal_balance) VALUES
+    ('00000000-0000-0000-0000-000000000001', 'mobile_test', 'mobile@mobile.net', 'api', 1000),
+    ('5dbdc924-968a-4c50-94a8-44cdd165e460', 'admin_test', 'admin@google.com', 'admin', 5000),
+    ('f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'api_test', 'api@google.com', 'api', 3000),
+    ('4954ef15-b75b-4f92-b32c-ded5e80ce802', 'dev_test', 'dev@google.com', 'developer', 1000),
+    ('4e50271e-2b64-46e4-b312-580782ea6549', 'user_test', 'user@google.com', 'api', 2000),
+    ('e5fd1874-a299-4c22-b6b5-af4e00b796a7', 'premium_user', 'premium@google.com', 'api', 10000),
+    ('c23dc540-a0ba-4d83-ac7b-d0f8eab9d463', 'broke_user', 'broke@google.com', 'api', 0),
+    ('f3ba11a5-4026-4c16-9aed-061f0d490ade', 'new_user', 'new@google.com', 'api', 1000),
+    ('7edb0c2c-8dcd-402a-a979-cc7853d9b627', 'test_user_long_name_for_testing', 'longname@google.com', 'api', 500),
+    ('53c41979-a116-4bb7-8281-57fadfd89a13', 'inactive_user', 'inactive@google.com', 'api', 2500);
 
 -- Insert test characters. system_prompts are written as roleplay personas so the
 -- narrator (see SYSTEM_PROMPT in src/conf.py) has real characters to voice. Names and
