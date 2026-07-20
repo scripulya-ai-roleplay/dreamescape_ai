@@ -146,13 +146,14 @@ class TestUsersAPI:
 		assert response.status_code == 403
 		assert "Not allowed to access this user" in response.json().get("detail", "")
 
-	def test_delete_user_with_invalid_uuid(self, client):
+	def test_delete_user_with_invalid_uuid(self, client, auth_headers):
 		"""Test deleting a user with invalid UUID format."""
 		invalid_uuid = "not-a-uuid"
 
-		response = client.delete(f"/users/{invalid_uuid}")
+		response = client.delete(f"/users/{invalid_uuid}", headers=auth_headers)
 
-		# Path validation runs before auth -> 422.
+		# Auth resolves before path-param coercion, so authenticate first; the
+		# UUID parse then rejects "not-a-uuid" with 422.
 		assert response.status_code == 422
 
 	def test_delete_user_with_empty_uuid(self, client):
