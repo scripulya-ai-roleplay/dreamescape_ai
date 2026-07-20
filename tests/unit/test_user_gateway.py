@@ -31,6 +31,7 @@ class TestUserGateway:
 		user_model.id = uuid4()
 		user_model.test_username = "test_user"
 		user_model.google_id = "google123"
+		user_model.role = UserRole.API
 		user_model.crystal_balance = 1000
 		user_model.characters = []
 		user_model.scenes = []
@@ -116,6 +117,26 @@ class TestUserGateway:
 		# Assert
 		assert result.count == 1
 		assert len(result.items) == 1
+
+	@pytest.mark.asyncio
+	async def test_find_users_by_filters_with_role_filter(self, user_gateway, mock_session, sample_user_model):
+		"""The roles filter builds a real SQL predicate (it used to be a no-op `pass`)."""
+		# Arrange
+		filters = UserDTO(roles=[UserRole.ADMIN, UserRole.API])
+
+		mock_result = Mock()
+		mock_result.scalars.return_value.all.return_value = [sample_user_model]
+		mock_count_result = Mock()
+		mock_count_result.scalar.return_value = 1
+		mock_session.execute.side_effect = [mock_count_result, mock_result]
+
+		# Act
+		await user_gateway.find_users_by_filters(filters)
+
+		# Assert: the data query (2nd execute call) carries a role IN (...) predicate
+		data_query = mock_session.execute.call_args_list[1].args[0]
+		compiled = str(data_query.compile(compile_kwargs={"literal_binds": True}))
+		assert "role" in compiled
 
 	@pytest.mark.asyncio
 	async def test_find_users_by_filters_no_results(self, user_gateway, mock_session, sample_user_dto):
@@ -289,6 +310,7 @@ class TestUserGateway:
 		assert result.id == sample_user_model.id
 		assert result.test_username == "test_user"
 		assert result.google_id == "google123"
+		assert result.role == UserRole.API
 		assert result.crystal_balance == 1000
 		assert len(result.characters) == 1
 		assert len(result.scenes) == 1
@@ -296,39 +318,37 @@ class TestUserGateway:
 		assert result.characters[0].name == "Test Character"
 		assert result.scenes[0].title == "Test Scene"
 
-	def test_to_domain_user_with_default_role(self, user_gateway):
-		"""Test conversion with default role when role attribute is missing"""
+	def test_to_domain_user_reads_role_from_model(self, user_gateway):
+		"""The persisted role is read straight off the model row, not fabricated."""
 		# Arrange
-		user_model_without_role = Mock()
-		user_model_without_role.id = uuid4()
-		user_model_without_role.test_username = "test_user"
-		user_model_without_role.google_id = None
-		user_model_without_role.crystal_balance = 1000
-		user_model_without_role.characters = []
-		user_model_without_role.scenes = []
-		user_model_without_role.chats = []
-		# Simulate missing role attribute
-		del user_model_without_role.role
-
-		# Act
-		result = user_gateway._to_domain_user(user_model_without_role)
-
-		# Assert
-		assert result.role == UserRole.API  # Default role
-
-	def test_to_domain_user_empty_collections(self, user_gateway):
-		"""Test conversion with empty character, scene, and chat collections"""
-		# Arrange
-		user_model = Mock()
+		user_model = Mock(spec=UserModel)
 		user_model.id = uuid4()
 		user_model.test_username = "test_user"
 		user_model.google_id = None
+		user_model.role = UserRole.ADMIN
 		user_model.crystal_balance = 1000
 		user_model.characters = []
 		user_model.scenes = []
 		user_model.chats = []
-		# Simulate missing role attribute to trigger default role
-		del user_model.role
+
+		# Act
+		result = user_gateway._to_domain_user(user_model)
+
+		# Assert
+		assert result.role == UserRole.ADMIN
+
+	def test_to_domain_user_empty_collections(self, user_gateway):
+		"""Test conversion with empty character, scene, and chat collections"""
+		# Arrange
+		user_model = Mock(spec=UserModel)
+		user_model.id = uuid4()
+		user_model.test_username = "test_user"
+		user_model.google_id = None
+		user_model.role = UserRole.API
+		user_model.crystal_balance = 1000
+		user_model.characters = []
+		user_model.scenes = []
+		user_model.chats = []
 
 		# Act
 		result = user_gateway._to_domain_user(user_model)
@@ -337,7 +357,7 @@ class TestUserGateway:
 		assert len(result.characters) == 0
 		assert len(result.scenes) == 0
 		assert len(result.chats) == 0
-		assert result.role == UserRole.API  # Default role
+		assert result.role == UserRole.API
 
 	@pytest.mark.asyncio
 	async def test_find_users_empty_filters(self, user_gateway, mock_session, sample_user_model):

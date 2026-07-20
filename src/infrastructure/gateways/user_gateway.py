@@ -40,8 +40,7 @@ class UserGateway(IUserGateway):
 			conditions.append(UserModel.google_id.in_(filters.google_ids))
 
 		if filters.roles:
-			# Note: UserModel doesn't have role field, but keeping for interface compatibility
-			pass
+			conditions.append(UserModel.role.in_([role.value for role in filters.roles]))
 
 		if conditions:
 			query = query.where(and_(*conditions))
@@ -71,7 +70,10 @@ class UserGateway(IUserGateway):
 		self.logger.info(f"Creating user in database: {user.username or user.test_username}")
 
 		user_model = UserModel(
-			test_username=user.test_username, google_id=user.google_id, crystal_balance=user.crystal_balance
+			test_username=user.test_username,
+			google_id=user.google_id,
+			role=user.role.value,
+			crystal_balance=user.crystal_balance,
 		)
 
 		self._session.add(user_model)
@@ -157,7 +159,7 @@ class UserGateway(IUserGateway):
 			id=user_model.id,
 			test_username=user_model.test_username,
 			google_id=user_model.google_id,
-			role=user_model.role if hasattr(user_model, "role") else UserRole.API,  # Default role
+			role=UserRole(user_model.role),
 			crystal_balance=user_model.crystal_balance,
 			characters=characters,
 			scenes=scenes,
