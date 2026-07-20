@@ -37,11 +37,8 @@ def client():
 	return ClientWrapper(session, os.getenv("BACKEND_HOST", "http://localhost:8000"))
 
 
-@pytest.fixture
-def auth_headers():
-	test_user_id = UUID("5dbdc924-968a-4c50-94a8-44cdd165e460")
-	user = User(id=test_user_id, username="test_user", role=UserRole.API)
-
+def _auth_headers_for(user_id: UUID, username: str) -> dict[str, str]:
+	user = User(id=user_id, username=username, role=UserRole.API)
 	jwt_service = JWTService(
 		logger=logging.getLogger("test"),
 		private_key=settings.JWT_SECRET_KEY,
@@ -50,8 +47,17 @@ def auth_headers():
 		access_token_expire_minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES,
 	)
 	token = jwt_service.create_token(user)
-
 	return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def auth_headers():
+	return _auth_headers_for(UUID("5dbdc924-968a-4c50-94a8-44cdd165e460"), "test_user")
+
+
+@pytest.fixture
+def other_auth_headers():
+	return _auth_headers_for(UUID("11111111-2222-3333-4444-555555555555"), "other_user")
 
 
 @pytest.fixture(scope="function")
