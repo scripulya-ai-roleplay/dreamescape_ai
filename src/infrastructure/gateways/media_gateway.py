@@ -2,12 +2,12 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select, delete, func, and_, or_
+from sqlalchemy import select, delete, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.infrastructure.logging.logger import Logger
 from src.application.media.schemas import MediaFilterDTO
-from src.application.ports import IMediaGateway, Page
+from src.application.ports import IMediaGateway, IVisibilityGateway, Page
 from src.domain.models import MediaAsset, MediaEntityType
 from src.infrastructure.database.models import (
 	MediaAsset as MediaAssetModel,
@@ -28,6 +28,7 @@ _ENTITY_OWNER_COLUMN: dict[MediaEntityType, tuple[type, object]] = {
 @dataclass
 class MediaGateway(IMediaGateway):
 	session: AsyncSession
+	visibility: IVisibilityGateway
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def create(self, asset: MediaAsset) -> MediaAsset:
@@ -90,11 +91,9 @@ class MediaGateway(IMediaGateway):
 		if dto.is_public is not None:
 			conditions.append(MediaAssetModel.is_public == dto.is_public)
 
-		# Visibility: anonymous -> public only; authenticated -> public OR own private.
-		if actor_id is None:
-			conditions.append(MediaAssetModel.is_public.is_(True))
-		else:
-			conditions.append(or_(MediaAssetModel.is_public.is_(True), MediaAssetModel.owner_id == actor_id))
+		conditions.append(
+			self.visibility.public_or_owned(MediaAssetModel.is_public, MediaAssetModel.owner_id, actor_id)
+		)
 
 		where_clause = and_(*conditions)
 

@@ -48,12 +48,15 @@ class ChatGateway(IChatGateway):
 
 		return self._to_domain_chat(chat_model)
 
-	async def search(self, dto: ChatFilterDTO) -> Page[Chat]:
-		self.logger.info(f"Searching chats with filters: {dto}")
+	async def search(self, dto: ChatFilterDTO, actor_id: UUID | None = None) -> Page[Chat]:
+		self.logger.info(f"Searching chats with filters: {dto} (actor={actor_id})")
 
 		query = select(ChatModel).options(selectinload(ChatModel.messages))
 
 		conditions = []
+
+		# Fail-closed: a None actor matches no rows (chat.user_id is non-nullable).
+		conditions.append(ChatModel.user_id == actor_id)
 
 		if dto.ids:
 			conditions.append(ChatModel.id.in_([str(id_) for id_ in dto.ids]))
@@ -67,12 +70,9 @@ class ChatGateway(IChatGateway):
 		if dto.scene_ids:
 			conditions.append(ChatModel.scene_id.in_([str(id_) for id_ in dto.scene_ids]))
 
-		if conditions:
-			query = query.where(and_(*conditions))
+		query = query.where(and_(*conditions))
 
-		count_query = select(func.count(ChatModel.id))
-		if conditions:
-			count_query = count_query.where(and_(*conditions))
+		count_query = select(func.count(ChatModel.id)).where(and_(*conditions))
 
 		count_result = await self._session.execute(count_query)
 		total_count = count_result.scalar() or 0

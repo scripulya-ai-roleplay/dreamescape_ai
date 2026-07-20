@@ -56,7 +56,7 @@ class TestChatsAPI:
 		assert create_response.status_code == 200
 		chat_id = create_response.json()["result"]["id"]
 
-		detail_response = client.get(f"/api/v1/chats/{chat_id}")
+		detail_response = client.get(f"/api/v1/chats/{chat_id}", headers=auth_headers)
 		assert detail_response.status_code == 200
 		assert detail_response.json()["result"]["user_character_id"] == character_id
 
@@ -77,7 +77,7 @@ class TestChatsAPI:
 		chat_id = self._create_persona_less_chat(client, auth_headers, "Persona-Less Chat")
 
 		# Sanity: created without a persona.
-		before = client.get(f"/api/v1/chats/{chat_id}")
+		before = client.get(f"/api/v1/chats/{chat_id}", headers=auth_headers)
 		assert before.status_code == 200
 		assert before.json()["result"]["user_character_id"] is None
 
@@ -89,7 +89,7 @@ class TestChatsAPI:
 		)
 		assert set_response.status_code == 200
 
-		after = client.get(f"/api/v1/chats/{chat_id}")
+		after = client.get(f"/api/v1/chats/{chat_id}", headers=auth_headers)
 		assert after.status_code == 200
 		assert after.json()["result"]["user_character_id"] == self.HELPFUL_ASSISTANT_ID
 
@@ -162,9 +162,9 @@ class TestChatsAPI:
 
 		assert response.status_code == 401
 
-	def test_search_chats_without_filters(self, client):
+	def test_search_chats_without_filters(self, client, auth_headers):
 		"""Test searching chats without any filters."""
-		response = client.get("/api/v1/chats/")
+		response = client.get("/api/v1/chats/", headers=auth_headers)
 
 		assert response.status_code == 200
 		data = response.json()
@@ -183,9 +183,9 @@ class TestChatsAPI:
 		assert isinstance(result["items"], list)
 		assert isinstance(result["count"], int)
 
-	def test_search_chats_with_pagination(self, client):
+	def test_search_chats_with_pagination(self, client, auth_headers):
 		"""Test searching chats with pagination parameters."""
-		response = client.get("/api/v1/chats/?limit=5&offset=0")
+		response = client.get("/api/v1/chats/?limit=5&offset=0", headers=auth_headers)
 
 		assert response.status_code == 200
 		data = response.json()
@@ -208,8 +208,8 @@ class TestChatsAPI:
 		assert result["limit"] > 0
 		assert len(result["items"]) <= result["count"] if result["count"] > 0 else len(result["items"]) == 0
 
-	def test_search_chats_with_invalid_pagination(self, client):
-		response = client.get("/api/v1/chats/?limit=-1&offset=-5")
+	def test_search_chats_with_invalid_pagination(self, client, auth_headers):
+		response = client.get("/api/v1/chats/?limit=-1&offset=-5", headers=auth_headers)
 
 		# Should handle gracefully, likely with 422 or defaults
 		assert response.status_code in [200, 422]
@@ -225,18 +225,18 @@ class TestChatsAPI:
 
 		# Use a known UUID for testing (this might need adjustment based on actual data)
 		test_uuid = "048a7fe5-f4c2-40ef-9745-7d85d7c4c5fb"
-		response = client.get(f"/api/v1/chats/{test_uuid}")
+		response = client.get(f"/api/v1/chats/{test_uuid}", headers=auth_headers)
 
-		# Should return 200 if chat exists, 404 if not
-		assert response.status_code in [200, 404]
+		# 200 if the chat exists and is the caller's, 403 if it is another user's, 404 if absent.
+		assert response.status_code in [200, 403, 404]
 
 		if response.status_code == 200:
 			data = response.json()
 			assert "result" in data
 			assert "correlation_id" in data
 
-	def test_get_chat_details_with_invalid_uuid(self, client):
-		response = client.get("/api/v1/chats/invalid-uuid")
+	def test_get_chat_details_with_invalid_uuid(self, client, auth_headers):
+		response = client.get("/api/v1/chats/invalid-uuid", headers=auth_headers)
 
 		assert response.status_code == 422
 
@@ -263,7 +263,7 @@ class TestChatsAPI:
 		assert test_uuid is not None, f"Failed to extract chat ID from creation response. Response: {create_data}"
 
 		# Now proceed with deletion using the extracted chat ID
-		response = client.delete(f"/api/v1/chats/{test_uuid}")
+		response = client.delete(f"/api/v1/chats/{test_uuid}", headers=auth_headers)
 		# Should return 200 if chat exists and deleted
 		assert response.status_code == 200
 		data = response.json()
@@ -323,21 +323,21 @@ class TestChatsAPI:
 			assert "result" in model_msg_data
 			assert "correlation_id" in model_msg_data
 
-	def test_delete_chat_with_invalid_uuid(self, client):
+	def test_delete_chat_with_invalid_uuid(self, client, auth_headers):
 		"""Test deleting a chat with invalid UUID format."""
-		response = client.delete("/api/v1/chats/invalid-uuid")
+		response = client.delete("/api/v1/chats/invalid-uuid", headers=auth_headers)
 
 		assert response.status_code == 422
 
-	def test_update_chat_with_valid_data(self, client):
+	def test_update_chat_with_valid_data(self, client, auth_headers):
 		"""Test updating a chat with valid data."""
 		test_uuid = "d99678f7-bb8c-41f4-9726-4722b44a5649"
 		payload = {"chat_name": "Updated Chat Name"}
 
-		response = client.post(f"/api/v1/chats/update/{test_uuid}", json=payload)
+		response = client.post(f"/api/v1/chats/update/{test_uuid}", json=payload, headers=auth_headers)
 
-		# Should return 200 if chat exists and updated, 404 if not found
-		assert response.status_code in [200, 404]
+		# 200 if updated, 404 if absent, 403 if it belongs to another user.
+		assert response.status_code in [200, 403, 404]
 
 		if response.status_code == 200:
 			data = response.json()
@@ -345,26 +345,26 @@ class TestChatsAPI:
 			assert "correlation_id" in data
 			assert isinstance(data["result"], list)
 
-	def test_update_chat_with_invalid_uuid(self, client):
+	def test_update_chat_with_invalid_uuid(self, client, auth_headers):
 		"""Test updating a chat with invalid UUID format."""
 		payload = "Updated Name"
 
-		response = client.post("/api/v1/chats/update/invalid-uuid", json=payload)
+		response = client.post("/api/v1/chats/update/invalid-uuid", json=payload, headers=auth_headers)
 
 		assert response.status_code == 422
 
-	def test_update_chat_with_empty_body(self, client):
+	def test_update_chat_with_empty_body(self, client, auth_headers):
 		"""Test updating a chat with empty request body."""
 		test_uuid = "ad8b09b7-1723-4459-ba61-5bf3a2699c11"
 
-		response = client.post(f"/api/v1/chats/update/{test_uuid}", json={})
+		response = client.post(f"/api/v1/chats/update/{test_uuid}", json={}, headers=auth_headers)
 
 		assert response.status_code == 422
 
-	def test_chats_api_response_structure(self, client):
+	def test_chats_api_response_structure(self, client, auth_headers):
 		"""Test that all chat endpoints return consistent response structure."""
 		# Test search endpoint response structure
-		response = client.get("/api/v1/chats/")
+		response = client.get("/api/v1/chats/", headers=auth_headers)
 		assert response.status_code == 200
 		data = response.json()
 
@@ -375,7 +375,7 @@ class TestChatsAPI:
 
 
 @pytest.fixture(scope="function")
-def cleanup_test_chats(client):
+def cleanup_test_chats(client, auth_headers):
 	"""Fixture that cleans up test chats after each test."""
 	# This runs after the test
 	yield
@@ -394,8 +394,8 @@ def cleanup_test_chats(client):
 	]
 
 	try:
-		# Get all chats
-		response = client.get("/api/v1/chats/?limit=100&offset=0")
+		# Get all chats (authenticated: only the caller's own chats are visible now)
+		response = client.get("/api/v1/chats/?limit=100&offset=0", headers=auth_headers)
 		if response.status_code == 200:
 			data = response.json()
 			chats = data.get("result", {}).get("items", [])
@@ -407,7 +407,7 @@ def cleanup_test_chats(client):
 					if pattern in chat_title:
 						chat_id = chat.get("id")
 						if chat_id:
-							client.delete(f"/api/v1/chats/{chat_id}")
+							client.delete(f"/api/v1/chats/{chat_id}", headers=auth_headers)
 							print(f"Cleaned up test chat: {chat_title} (ID: {chat_id})")
 						break
 	except Exception as e:

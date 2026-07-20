@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 from src.application.character.schemas import CharacterFilterDTO
 from src.application.ports import ApiResponse, Page, ICharacterService, LikeState, BookmarkState
 from src.domain.models import Character, User
-from src.controllers.api.v1.auth import get_current_user
+from src.controllers.api.v1.auth import get_current_user, get_optional_user
 
 logger = logging.getLogger(__name__)
 
@@ -42,27 +42,36 @@ async def create_character(
 @router.get("/{character_id}")
 @inject
 async def get_character_details(
-	characters_service: FromDishka[ICharacterService], character_id: UUID = Path()
+	characters_service: FromDishka[ICharacterService],
+	character_id: UUID = Path(),
+	current_user: User | None = Depends(get_optional_user),
 ) -> ApiResponse[Character]:
-	result = await characters_service.get_one(character_id)
+	actor_id = current_user.id if current_user else None
+	result = await characters_service.get_one(character_id, actor_id)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 
 @router.get("/")
 @inject
 async def search_character(
-	character_service: FromDishka[ICharacterService], dto: CharacterFilterDTO = Query(CharacterFilterDTO())
+	character_service: FromDishka[ICharacterService],
+	dto: CharacterFilterDTO = Query(CharacterFilterDTO()),
+	current_user: User | None = Depends(get_optional_user),
 ) -> ApiResponse[Page[Character]]:
-	result = await character_service.search(dto)
+	actor_id = current_user.id if current_user else None
+	result = await character_service.search(dto, actor_id)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 
 @router.delete("/{character_id}")
 @inject
 async def delete_character(
-	character_service: FromDishka[ICharacterService], character_id: UUID = Path()
+	character_service: FromDishka[ICharacterService],
+	character_id: UUID = Path(),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse:
-	await character_service.delete(character_id)
+	actor_id = current_user.id
+	await character_service.delete(character_id, actor_id)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())
 
 
@@ -72,8 +81,10 @@ async def update_character(
 	character_service: FromDishka[ICharacterService],
 	character_id: UUID = Path(),
 	update_data: Character = Body(),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse:
-	await character_service.update(character_id, update_data)
+	actor_id = current_user.id
+	await character_service.update(character_id, update_data, actor_id)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())
 
 

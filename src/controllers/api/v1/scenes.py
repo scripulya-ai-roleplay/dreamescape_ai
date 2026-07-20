@@ -10,7 +10,7 @@ from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 from src.application.ports import ISceneService, ICharacterService, ApiResponse, Page, LikeState, BookmarkState
 from src.application.scene.schemas import SceneFilterDTO, AttachCharactersDTO
 from src.domain.models import Scene, Character, User
-from src.controllers.api.v1.auth import get_current_user
+from src.controllers.api.v1.auth import get_current_user, get_optional_user
 
 logger = logging.getLogger(__name__)
 
@@ -49,24 +49,37 @@ async def create_scene(
 
 @router.get("/{scene_id}")
 @inject
-async def get_scene_details(scenes_service: FromDishka[ISceneService], scene_id: UUID = Path()) -> ApiResponse[Scene]:
-	result = await scenes_service.get_one(scene_id)
+async def get_scene_details(
+	scenes_service: FromDishka[ISceneService],
+	scene_id: UUID = Path(),
+	current_user: User | None = Depends(get_optional_user),
+) -> ApiResponse[Scene]:
+	actor_id = current_user.id if current_user else None
+	result = await scenes_service.get_one(scene_id, actor_id)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 
 @router.get("/")
 @inject
 async def search_scene(
-	scene_service: FromDishka[ISceneService], dto: SceneFilterDTO = Query(SceneFilterDTO())
+	scene_service: FromDishka[ISceneService],
+	dto: SceneFilterDTO = Query(SceneFilterDTO()),
+	current_user: User | None = Depends(get_optional_user),
 ) -> ApiResponse[Page[Scene]]:
-	result = await scene_service.search(dto)
+	actor_id = current_user.id if current_user else None
+	result = await scene_service.search(dto, actor_id)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 
 @router.delete("/{scene_id}")
 @inject
-async def delete_scene(scene_service: FromDishka[ISceneService], scene_id: UUID = Path()) -> ApiResponse:
-	await scene_service.delete(scene_id)
+async def delete_scene(
+	scene_service: FromDishka[ISceneService],
+	scene_id: UUID = Path(),
+	current_user: User = Depends(get_current_user),
+) -> ApiResponse:
+	actor_id = current_user.id
+	await scene_service.delete(scene_id, actor_id)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())
 
 
@@ -76,8 +89,10 @@ async def update_scene(
 	scene_service: FromDishka[ISceneService],
 	scene_id: UUID = Path(),
 	update_data: Scene = Body(),
+	current_user: User = Depends(get_current_user),
 ) -> ApiResponse:
-	await scene_service.update(scene_id, update_data)
+	actor_id = current_user.id
+	await scene_service.update(scene_id, update_data, actor_id)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())
 
 
@@ -163,13 +178,12 @@ async def attach_characters_to_scene(
 	current_user: User = Depends(get_current_user),
 ) -> ApiResponse:
 	user_id = current_user.id
-	scene = await scene_service.get_one(scene_id)
+	# Attach mutates the scene: get_one permits public reads, but only the owner may edit.
+	scene = await scene_service.get_one(scene_id, user_id)
 	if scene.owner_id != user_id:
 		raise HTTPException(status_code=403, detail="Only the scene owner can attach characters")
 	for character_id in dto.character_ids:
-		character = await character_service.get_one(character_id)
-		if not character.is_public and character.owner_id != user_id:
-			raise HTTPException(status_code=403, detail="Not allowed to attach this character")
+		await character_service.get_one(character_id, user_id)
 
 	await scene_service.attach_characters(scene_id, dto.character_ids)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())
@@ -184,6 +198,6 @@ async def get_scene_characters(
 	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[List[Character]]:
 	user_id = current_user.id
-	await scene_service.get_one(scene_id)
+	await scene_service.get_one(scene_id, user_id)
 	characters = await character_service.get_for_scene(scene_id, actor_id=user_id)
 	return ApiResponse(result=characters, correlation_id=correlation_id.get())

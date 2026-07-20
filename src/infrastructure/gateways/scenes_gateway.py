@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.infrastructure.logging.logger import Logger
-from src.application.ports import ISceneGateway, Page
+from src.application.ports import ISceneGateway, IVisibilityGateway, Page
 from src.application.scene.schemas import SceneFilterDTO, SceneSortBy, SortOrder
 from src.domain.models import Scene
 from src.infrastructure.database.models import (
@@ -25,6 +25,7 @@ from src.infrastructure.database.models import (
 @dataclass
 class SceneGateway(ISceneGateway):
 	session: AsyncSession
+	visibility: IVisibilityGateway
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def get_one(self, uuid: UUID) -> Scene:
@@ -62,8 +63,8 @@ class SceneGateway(ISceneGateway):
 		await self.session.execute(query)
 		self.logger.info(f"Successfully updated scene: {target_scene_uuid}")
 
-	async def search(self, dto: SceneFilterDTO) -> Page[Scene]:
-		self.logger.info(f"Searching scenes with filters: {dto}")
+	async def search(self, dto: SceneFilterDTO, actor_id: UUID | None = None) -> Page[Scene]:
+		self.logger.info(f"Searching scenes with filters: {dto} (actor={actor_id})")
 
 		# Correlated scalar subqueries counting a scene's chats / messages. They
 		# are only referenced when ordering by the matching count, and because
@@ -107,8 +108,9 @@ class SceneGateway(ISceneGateway):
 			)
 			conditions.append(SceneModel.id.in_(character_subquery))
 
-		if conditions:
-			query = query.where(and_(*conditions))
+		conditions.append(self.visibility.public_or_owned(SceneModel.is_public, SceneModel.owner_id, actor_id))
+
+		query = query.where(and_(*conditions))
 
 		# Optional ordering by title or by per-scene chat / message counts.
 		if dto.sort_by is not None:
@@ -125,9 +127,7 @@ class SceneGateway(ISceneGateway):
 		count_query = select(func.count(SceneModel.id.distinct()))
 		if dto.characters:
 			count_query = count_query.select_from(SceneModel).join(SceneModel.characters, isouter=True)
-
-		if conditions:
-			count_query = count_query.where(and_(*conditions))
+		count_query = count_query.where(and_(*conditions))
 
 		if dto.limit:
 			query = query.limit(dto.limit)

@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 from fastapi import UploadFile
 from fastapi.responses import StreamingResponse
+from sqlalchemy import ColumnElement
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.models import ChatRoles
@@ -88,6 +89,45 @@ class IUnitOfWork(ABC):
 	async def __aexit__(self, exc_type, exc_val, exc_tb) -> None: ...
 
 
+class IAuthorizationService(abc.ABC):
+	"""Decides access to owned resources. The single seam a future RBAC or
+	permissions service replaces — application code depends on this interface,
+	never on the rule itself."""
+
+	@abc.abstractmethod
+	def visible_to(self, *, is_public: bool, owner_id: UUID | None, actor_id: UUID | None) -> bool:
+		"""Whether a public/owner resource is readable by ``actor_id`` (None = anonymous)."""
+		...
+
+	@abc.abstractmethod
+	def require_visible(self, *, is_public: bool, owner_id: UUID | None, actor_id: UUID | None, noun: str) -> None:
+		"""Enforce read visibility. Raises 401 for an anonymous private request, 403 for any other non-owner."""
+		...
+
+	@abc.abstractmethod
+	def require_owned(self, *, owner_id: UUID | None, actor_id: UUID, noun: str) -> None:
+		"""Enforce ownership for a mutation or an always-private resource. Raises 403 unless owner."""
+		...
+
+
+class IVisibilityGateway(abc.ABC):
+	"""Builds the SQL row-visibility predicate for a public/owner table. Swapping
+	this (e.g. for a join against a permissions table) changes DB-level filtering
+	without touching the gateways that consume it."""
+
+	@abc.abstractmethod
+	def public_or_owned(
+		self,
+		is_public_col: ColumnElement[bool],
+		owner_col: ColumnElement[UUID],
+		actor_id: UUID | None,
+	) -> ColumnElement[bool]:
+		"""Predicate matching public rows plus the actor's own private rows.
+
+		``actor_id=None`` (anonymous) matches public rows only."""
+		...
+
+
 class IUserService(abc.ABC):
 	@abc.abstractmethod
 	async def find_users_by_dto(self, user_filters_dto: UserDTO) -> Page[User]: ...
@@ -160,7 +200,12 @@ class IScripulyaAgentClient(abc.ABC):
 
 class IChatsService(abc.ABC):
 	@abc.abstractmethod
-	async def send_message(self, chat_dto: UserMessageDTO) -> Message: ...
+	async def send_message(self, chat_dto: UserMessageDTO, actor_id: UUID) -> Message:
+		"""Generate a model reply in the chat named by ``chat_dto.chat_id``.
+
+		Authorization is enforced here, not by the caller: the chat must belong to
+		``actor_id`` (403 otherwise)."""
+		...
 
 
 class IPromptService(abc.ABC):
@@ -175,19 +220,26 @@ class ICharacterService(abc.ABC):
 	async def create_character(self, character: Character) -> UUID: ...
 
 	@abc.abstractmethod
-	async def get_one(self, character_uuid: UUID) -> Character: ...
+	async def get_one(self, character_uuid: UUID, actor_id: UUID | None) -> Character:
+		"""Fetch one character. Public characters are returned to anyone (``actor_id``
+		may be ``None`` for an anonymous request); a private character requires
+		``actor_id == owner_id`` (401 if anonymous, 403 otherwise)."""
+		...
 
 	@abc.abstractmethod
-	async def search(self, dto: CharacterFilterDTO) -> Page[Character]: ...
+	async def search(self, dto: CharacterFilterDTO, actor_id: UUID | None) -> Page[Character]:
+		"""Page characters. Anonymous (``actor_id=None``) sees public only; an
+		authenticated actor sees public plus their own private characters."""
+		...
 
 	@abc.abstractmethod
 	async def get_for_scene(self, scene_id: UUID, actor_id: UUID) -> list[Character]: ...
 
 	@abc.abstractmethod
-	async def delete(self, scene_uuid: UUID): ...
+	async def delete(self, scene_uuid: UUID, actor_id: UUID): ...
 
 	@abc.abstractmethod
-	async def update(self, target_scene_uuid: UUID, new_scene_data: Character): ...
+	async def update(self, target_scene_uuid: UUID, new_scene_data: Character, actor_id: UUID): ...
 
 	@abc.abstractmethod
 	async def like(self, character_uuid: UUID, user_id: UUID) -> LikeState: ...
@@ -213,16 +265,23 @@ class ISceneService(abc.ABC):
 	async def create_scene(self, scene: Scene) -> UUID: ...
 
 	@abc.abstractmethod
-	async def get_one(self, scene_uuid: UUID) -> Scene: ...
+	async def get_one(self, scene_uuid: UUID, actor_id: UUID | None) -> Scene:
+		"""Fetch one scene. Public scenes are returned to anyone (``actor_id`` may
+		be ``None`` for an anonymous request); a private scene requires
+		``actor_id == owner_id`` (401 if anonymous, 403 otherwise)."""
+		...
 
 	@abc.abstractmethod
-	async def search(self, dto: SceneFilterDTO) -> Page[Scene]: ...
+	async def search(self, dto: SceneFilterDTO, actor_id: UUID | None) -> Page[Scene]:
+		"""Page scenes. Anonymous (``actor_id=None``) sees public only; an
+		authenticated actor sees public plus their own private scenes."""
+		...
 
 	@abc.abstractmethod
-	async def delete(self, scene_uuid: UUID): ...
+	async def delete(self, scene_uuid: UUID, actor_id: UUID): ...
 
 	@abc.abstractmethod
-	async def update(self, target_scene_uuid: UUID, new_scene_data: Scene): ...
+	async def update(self, target_scene_uuid: UUID, new_scene_data: Scene, actor_id: UUID): ...
 
 	@abc.abstractmethod
 	async def like(self, scene_uuid: UUID, user_id: UUID) -> LikeState: ...
@@ -254,7 +313,10 @@ class ISceneGateway(abc.ABC):
 	async def get_one(self, uuid: UUID) -> Scene: ...
 
 	@abc.abstractmethod
-	async def search(self, dto: SceneFilterDTO) -> Page[Scene]: ...
+	async def search(self, dto: SceneFilterDTO, actor_id: UUID | None = None) -> Page[Scene]:
+		"""Page scenes. ``actor_id=None`` returns public scenes only; an
+		authenticated actor also sees their own private ones (applied in SQL)."""
+		...
 
 	@abc.abstractmethod
 	async def delete(self, uuid: UUID): ...
@@ -298,13 +360,16 @@ class ICharacterGateway(abc.ABC):
 	async def get_for_scene(self, scene_id: UUID) -> list[Character]: ...
 
 	@abc.abstractmethod
-	async def search(self, dto: CharacterFilterDTO) -> Page[Character]: ...
+	async def search(self, dto: CharacterFilterDTO, actor_id: UUID | None = None) -> Page[Character]:
+		"""Page characters. ``actor_id=None`` returns public characters only; an
+		authenticated actor also sees their own private ones (applied in SQL)."""
+		...
 
 	@abc.abstractmethod
 	async def delete(self, scene_uuid: UUID): ...
 
 	@abc.abstractmethod
-	async def update(self, target_scene_uuid: UUID, new_scene_data: Character): ...
+	async def update(self, target_scene_uuid: UUID, new_character_data: Character): ...
 
 	@abc.abstractmethod
 	async def set_like(self, character_id: UUID, user_id: UUID) -> None: ...
@@ -336,7 +401,10 @@ class IChatGateway(abc.ABC):
 	async def get_one(self, chat_uuid: UUID) -> Chat: ...
 
 	@abc.abstractmethod
-	async def search(self, dto: ChatFilterDTO) -> Page[Chat]: ...
+	async def search(self, dto: ChatFilterDTO, actor_id: UUID | None = None) -> Page[Chat]:
+		"""Page chats. Chats have no public visibility, so only the actor's own
+		chats are returned; ``actor_id=None`` matches nothing (fail-closed)."""
+		...
 
 	@abc.abstractmethod
 	async def delete(self, chat_uuid: UUID) -> UUID: ...
@@ -353,19 +421,22 @@ class IChatService(abc.ABC):
 	async def start_chat(self, chat: Chat) -> UUID: ...
 
 	@abc.abstractmethod
-	async def get_one(self, chat_uuid: UUID) -> Chat: ...
+	async def get_one(self, chat_uuid: UUID, actor_id: UUID) -> Chat:
+		"""Fetch one chat. Chats are always private: requires
+		``actor_id == chat.user_id`` (403 otherwise; 404 if missing)."""
+		...
 
 	@abc.abstractmethod
-	async def search(self, dto: ChatFilterDTO) -> Page[Chat]: ...
+	async def search(self, dto: ChatFilterDTO, actor_id: UUID) -> Page[Chat]: ...
 
 	@abc.abstractmethod
-	async def delete(self, chat_uuid: UUID) -> UUID: ...
+	async def delete(self, chat_uuid: UUID, actor_id: UUID) -> UUID: ...
 
 	@abc.abstractmethod
-	async def update(self, target_chat_uuid: UUID, chat_name: str) -> UUID: ...
+	async def update(self, target_chat_uuid: UUID, chat_name: str, actor_id: UUID) -> UUID: ...
 
 	@abc.abstractmethod
-	async def set_persona(self, chat_uuid: UUID, user_character_id: UUID) -> UUID: ...
+	async def set_persona(self, chat_uuid: UUID, user_character_id: UUID, actor_id: UUID) -> UUID: ...
 
 
 class IChatSettingsGateway(abc.ABC):
@@ -393,10 +464,21 @@ class IMessageGateway(abc.ABC):
 	async def create(self, message: Message) -> Message: ...
 
 	@abc.abstractmethod
-	async def search(self, dto: MessagesFilterDto) -> Page[Message]: ...
+	async def search(self, dto: MessagesFilterDto, actor_id: UUID | None = None) -> Page[Message]:
+		"""Page messages. Messages inherit visibility from their chat, so only
+		messages whose chat belongs to ``actor_id`` are returned; ``actor_id=None``
+		matches nothing (fail-closed). Applied in SQL so pagination counts match."""
+		...
 
 	@abc.abstractmethod
 	async def get_one(self, message_uuid: UUID) -> Message: ...
+
+	@abc.abstractmethod
+	async def get_chat_owner_for_message(self, message_uuid: UUID) -> UUID | None:
+		"""Return the ``user_id`` of the chat a message belongs to, or ``None`` if
+		the message does not exist. Used to authorize message access (a user may
+		only touch messages in their own chats)."""
+		...
 
 	@abc.abstractmethod
 	async def update(self, message_uuid: UUID, updated_text: str) -> UUID: ...
@@ -437,16 +519,21 @@ class IMessageService(abc.ABC):
 	async def send_message(self, message: Message) -> Message: ...
 
 	@abc.abstractmethod
-	async def search(self, dto: MessagesFilterDto) -> Page[Message]: ...
+	async def search(self, dto: MessagesFilterDto, actor_id: UUID) -> Page[Message]:
+		"""Page messages. Only messages in chats owned by ``actor_id`` are returned."""
+		...
 
 	@abc.abstractmethod
-	async def get_one(self, message_uuid: UUID) -> Message: ...
+	async def get_one(self, message_uuid: UUID, actor_id: UUID) -> Message:
+		"""Fetch one message. Requires the message's chat to belong to ``actor_id``
+		(403 otherwise; 404 if missing)."""
+		...
 
 	@abc.abstractmethod
-	async def update(self, message_uuid: UUID, updated_text: str) -> UUID: ...
+	async def update(self, message_uuid: UUID, updated_text: str, actor_id: UUID) -> UUID: ...
 
 	@abc.abstractmethod
-	async def delete(self, message_uuid: UUID) -> UUID: ...
+	async def delete(self, message_uuid: UUID, actor_id: UUID) -> UUID: ...
 
 	@abc.abstractmethod
 	async def append_model_message(self, result: LLMResult) -> Message:

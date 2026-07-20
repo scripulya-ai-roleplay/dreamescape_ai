@@ -159,9 +159,12 @@ class TestServerEventsServiceOpenStream:
 	async def test_raises_403_and_closes_scope_when_chat_not_owned(self):
 		chat_id = uuid4()
 		user_id = uuid4()
-		chat = MagicMock(user_id=uuid4())  # owned by a different user
 		chat_service = AsyncMock(spec=IChatService)
-		chat_service.get_one.return_value = chat
+		# Ownership now lives in ChatService.get_one: an unowned chat surfaces as a
+		# 403 there, and open_stream must propagate it (and still exit its scope).
+		chat_service.get_one.side_effect = HTTPException(
+			status_code=status.HTTP_403_FORBIDDEN, detail="Chat does not belong to the authenticated user"
+		)
 		message_service = AsyncMock(spec=IMessageService)
 
 		container = _fake_container(chat_service, message_service)

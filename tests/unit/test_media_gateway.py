@@ -4,6 +4,7 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.infrastructure.gateways.media_gateway import MediaGateway
+from src.infrastructure.gateways.visibility import VisibilityGateway
 from src.domain.models import MediaAsset, MediaEntityType
 from src.application.media.schemas import MediaFilterDTO
 from src.application.ports import Page
@@ -22,7 +23,7 @@ class TestMediaGateway:
 
 	@pytest.fixture
 	def media_gateway(self, mock_session):
-		return MediaGateway(session=mock_session)
+		return MediaGateway(session=mock_session, visibility=VisibilityGateway())
 
 	@pytest.fixture
 	def sample_model(self):

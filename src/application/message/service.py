@@ -6,13 +6,14 @@ from uuid import UUID
 from src.infrastructure.logging.logger import Logger
 from src.application.ports import IUnitOfWork
 from src.application.message.schemas import MessagesFilterDto
-from src.application.ports import IMessageService, IMessageGateway, Page, LLMResult
+from src.application.ports import IAuthorizationService, IMessageService, IMessageGateway, Page, LLMResult
 from src.domain.models import ChatRoles, Message, MessageStatus
 
 
 @dataclass
 class MessageService(IMessageService):
 	message_gateway: IMessageGateway
+	authz: IAuthorizationService
 	_uow: IUnitOfWork
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
@@ -24,33 +25,29 @@ class MessageService(IMessageService):
 			self.logger.info(f"Successfully sent message with ID: {result.id}")
 			return result
 
-	async def search(self, dto: MessagesFilterDto) -> Page[Message]:
+	async def search(self, dto: MessagesFilterDto, actor_id: UUID) -> Page[Message]:
 		self.logger.info(f"Searching messages with filters: {dto}")
+		return await self.message_gateway.search(dto, actor_id=actor_id)
 
-		result = await self.message_gateway.search(dto)
-		self.logger.info(f"Found {result.count} messages")
-		return result
-
-	async def get_one(self, message_uuid: UUID) -> Message:
-		self.logger.info(f"Getting message: {message_uuid}")
-
+	async def _require_owned(self, message_uuid: UUID, actor_id: UUID) -> Message:
 		message = await self.message_gateway.get_one(message_uuid)
-		self.logger.info(f"Successfully retrieved message: {message_uuid}")
+		owner = await self.message_gateway.get_chat_owner_for_message(message_uuid)
+		self.authz.require_owned(owner_id=owner, actor_id=actor_id, noun="message")
 		return message
 
-	async def update(self, message_uuid: UUID, updated_text: str) -> UUID:
+	async def get_one(self, message_uuid: UUID, actor_id: UUID) -> Message:
+		self.logger.info(f"Getting message: {message_uuid}")
+		return await self._require_owned(message_uuid, actor_id)
+
+	async def update(self, message_uuid: UUID, updated_text: str, actor_id: UUID) -> UUID:
 		self.logger.info(f"Updating message: {message_uuid}")
+		await self._require_owned(message_uuid, actor_id)
+		return await self.message_gateway.update(message_uuid, updated_text)
 
-		result = await self.message_gateway.update(message_uuid, updated_text)
-		self.logger.info(f"Successfully updated message: {message_uuid}")
-		return result
-
-	async def delete(self, message_uuid: UUID) -> UUID:
+	async def delete(self, message_uuid: UUID, actor_id: UUID) -> UUID:
 		self.logger.info(f"Deleting message: {message_uuid}")
-
-		result = await self.message_gateway.delete(message_uuid)
-		self.logger.info(f"Successfully deleted message: {message_uuid}")
-		return result
+		await self._require_owned(message_uuid, actor_id)
+		return await self.message_gateway.delete(message_uuid)
 
 	async def append_model_message(self, result: LLMResult) -> Message:
 		if result.error is not None:

@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional
 from uuid import UUID
 
 from dishka import AsyncContainer, Scope
-from fastapi import HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from src.application.ports import (
@@ -43,12 +42,8 @@ class ServerEventsService(IServerEventsService):
 			chat_service = await request_container.get(IChatService)
 			message_service = await request_container.get(IMessageService)
 
-			chat = await chat_service.get_one(chat_id)
-			if chat.user_id != user_id:
-				raise HTTPException(
-					status_code=status.HTTP_403_FORBIDDEN,
-					detail="Chat does not belong to the authenticated user",
-				)
+			# get_one 404s if the chat is missing and 403s unless it belongs to user_id.
+			await chat_service.get_one(chat_id, user_id)
 			latest = await message_service.latest_model_message(chat_id)
 
 		return StreamingResponse(
