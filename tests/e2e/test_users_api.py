@@ -126,29 +126,34 @@ class TestUsersAPI:
 		assert "items" in result
 		assert isinstance(result["items"], list)
 
-	def test_delete_user_with_valid_uuid(self, client):
-		"""Test deleting a user with valid UUID."""
+	def test_delete_user_without_authentication_returns_401(self, client):
+		"""An anonymous caller must not be able to delete a user (auth required)."""
 		test_uuid = str(uuid.uuid4())
 
 		response = client.delete(f"/users/{test_uuid}")
 
-		# Could be 200 (success), 404 (not found), or 400 (deletion failed)
-		# depending on whether user exists and business logic
-		assert response.status_code in [200, 404, 400]
+		# No Authorization header -> 401 before any deletion can happen.
+		assert response.status_code == 401
 
-		if response.status_code == 200:
-			data = response.json()
-			assert "result" in data
-			assert "correlation_id" in data
-			assert "message" in data["result"]
+	def test_delete_user_authenticated_deleting_other_user_returns_403(self, client, auth_headers):
+		"""An authenticated user may not delete an account they do not own."""
+		# Seeded user that is NOT the account auth_headers authenticates as.
+		other_user_id = "f5ac5447-d562-4d7b-91fb-dc4d5bcc4395"
 
-	def test_delete_user_with_invalid_uuid(self, client):
+		response = client.delete(f"/users/{other_user_id}", headers=auth_headers)
+
+		# Self-deletion only: deleting another user is forbidden.
+		assert response.status_code == 403
+		assert "Not allowed to access this user" in response.json().get("detail", "")
+
+	def test_delete_user_with_invalid_uuid(self, client, auth_headers):
 		"""Test deleting a user with invalid UUID format."""
 		invalid_uuid = "not-a-uuid"
 
-		response = client.delete(f"/users/{invalid_uuid}")
+		response = client.delete(f"/users/{invalid_uuid}", headers=auth_headers)
 
-		# Should return validation error for invalid UUID
+		# Auth resolves before path-param coercion, so authenticate first; the
+		# UUID parse then rejects "not-a-uuid" with 422.
 		assert response.status_code == 422
 
 	def test_delete_user_with_empty_uuid(self, client):
