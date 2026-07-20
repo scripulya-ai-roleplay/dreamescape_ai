@@ -297,11 +297,11 @@ class TestChatsAPI:
 
 		# If we have a chat ID, create messages for it
 		if chat_id:
-			# Create first message (user message)
+			# Clients can only author user messages (role is server-set), so a
+			# single user message exercises the recreated chat.
 			user_message_payload = {
 				"message": "Hello, this is a test user message",
 				"chat_id": chat_id,
-				"role": "user",
 			}
 
 			user_msg_response = client.post("/api/v1/messages/", json=user_message_payload, headers=auth_headers)
@@ -309,19 +309,6 @@ class TestChatsAPI:
 			user_msg_data = user_msg_response.json()
 			assert "result" in user_msg_data
 			assert "correlation_id" in user_msg_data
-
-			# Create second message (model response)
-			model_message_payload = {
-				"message": "Hello! This is a test AI response message",
-				"chat_id": chat_id,
-				"role": "model",
-			}
-
-			model_msg_response = client.post("/api/v1/messages/", json=model_message_payload, headers=auth_headers)
-			assert model_msg_response.status_code == 202
-			model_msg_data = model_msg_response.json()
-			assert "result" in model_msg_data
-			assert "correlation_id" in model_msg_data
 
 	def test_delete_chat_with_invalid_uuid(self, client, auth_headers):
 		"""Test deleting a chat with invalid UUID format."""
