@@ -109,6 +109,25 @@ class TestMessagesAPI:
 
 		assert response.status_code == 401
 
+	def test_create_message_in_other_users_chat_forbidden(self, client, auth_headers, other_auth_headers):
+		chat_payload = {
+			"title": "IDOR Target Chat",
+			"user_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
+			"scene_id": "5c194d75-401f-4fa2-808c-7092153135b7",
+			"user_character_id": "43341001-4ea1-4f03-b315-811d3264b6a3",
+		}
+		create_response = client.post("/api/v1/chats/", json=chat_payload, headers=auth_headers)
+		assert create_response.status_code == 200
+		chat_id = create_response.json()["result"]["id"]
+
+		try:
+			intruder_payload = {"message": "intrusion attempt", "chat_id": chat_id, "role": "user"}
+			response = client.post("/api/v1/messages/", json=intruder_payload, headers=other_auth_headers)
+
+			assert response.status_code == 403
+		finally:
+			client.delete(f"/api/v1/chats/{chat_id}", headers=auth_headers)
+
 	def test_search_messages_without_filters(self, client, auth_headers):
 		"""Test searching messages without any filters."""
 		response = client.get("/api/v1/messages/", headers=auth_headers)
