@@ -2,7 +2,10 @@ import pytest
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+from fastapi import HTTPException
+
 from src.application.user.user_service import UserService
+from src.application.authz import AuthorizationService
 from src.domain.models import User, UserRole
 from src.application.ports import Page
 from src.application.user.schemas import UserDTO
@@ -29,7 +32,7 @@ class TestUserService:
 	@pytest.fixture
 	def user_service(self, mock_user_gateway, mock_uow):
 		"""UserService instance with mocked dependencies"""
-		return UserService(mock_user_gateway, mock_uow)
+		return UserService(mock_user_gateway, mock_uow, authz=AuthorizationService())
 
 	@pytest.fixture
 	def sample_user(self):
@@ -138,14 +141,14 @@ class TestUserService:
 
 	@pytest.mark.asyncio
 	async def test_delete_user_success(self, user_service, mock_user_gateway, sample_user):
-		"""Test successful user deletion"""
+		"""Test successful user deletion by the account owner"""
 		# Arrange
-		user_id = uuid4()
+		user_id = sample_user.id
 		mock_user_gateway.get_user_by_id.return_value = sample_user
 		mock_user_gateway.delete_user.return_value = None
 
 		# Act
-		await user_service.delete_user(user_id)
+		await user_service.delete_user(user_id, sample_user.id)
 
 		# Assert
 		mock_user_gateway.get_user_by_id.assert_called_once_with(user_id)
@@ -160,21 +163,34 @@ class TestUserService:
 
 		# Act & Assert
 		with pytest.raises(ValueError, match=f"User with ID {user_id} not found"):
-			await user_service.delete_user(user_id)
+			await user_service.delete_user(user_id, uuid4())
 
 		mock_user_gateway.get_user_by_id.assert_called_once_with(user_id)
+		mock_user_gateway.delete_user.assert_not_called()
+
+	@pytest.mark.asyncio
+	async def test_delete_user_forbidden_not_owner(self, user_service, mock_user_gateway, sample_user):
+		"""A caller may not delete an account they do not own (403, no deletion)."""
+		# Arrange
+		mock_user_gateway.get_user_by_id.return_value = sample_user
+
+		# Act & Assert
+		with pytest.raises(HTTPException) as exc_info:
+			await user_service.delete_user(sample_user.id, uuid4())
+
+		assert exc_info.value.status_code == 403
 		mock_user_gateway.delete_user.assert_not_called()
 
 	@pytest.mark.asyncio
 	async def test_delete_user_gateway_error(self, user_service, mock_user_gateway, sample_user):
 		"""Test user deletion when gateway raises error"""
 		# Arrange
-		user_id = uuid4()
+		user_id = sample_user.id
 		mock_user_gateway.get_user_by_id.return_value = sample_user
 		mock_user_gateway.delete_user.side_effect = Exception("Database error")
 
 		# Act & Assert
 		with pytest.raises(Exception, match="Database error"):
-			await user_service.delete_user(user_id)
+			await user_service.delete_user(user_id, sample_user.id)
 
 		mock_user_gateway.delete_user.assert_called_once_with(user_id)

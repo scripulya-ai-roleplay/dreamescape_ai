@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from src.infrastructure.logging.logger import Logger
-from src.application.ports import IUserService, IUserGateway, Page, IUnitOfWork
+from src.application.ports import IUserService, IUserGateway, Page, IUnitOfWork, IAuthorizationService
 from src.domain.models import User
 from src.application.user.schemas import UserDTO
 
@@ -12,6 +12,7 @@ from src.application.user.schemas import UserDTO
 class UserService(IUserService):
 	_user_gateway: IUserGateway
 	uow: IUnitOfWork
+	authz: IAuthorizationService
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def find_users_by_dto(self, user_filters_dto: UserDTO) -> Page[User]:
@@ -45,13 +46,15 @@ class UserService(IUserService):
 			self.logger.info(f"Successfully created user with ID: {created_user.id}")
 			return created_user
 
-	async def delete_user(self, user_id: UUID) -> None:
+	async def delete_user(self, user_id: UUID, actor_id: UUID) -> None:
 		self.logger.info(f"Deleting user: {user_id}")
 
-		async with self.uow:
-			existing_user = await self._user_gateway.get_user_by_id(user_id)
-			if not existing_user:
-				raise ValueError(f"User with ID {user_id} not found")
+		existing_user = await self._user_gateway.get_user_by_id(user_id)
+		if not existing_user:
+			raise ValueError(f"User with ID {user_id} not found")
 
+		self.authz.require_owned(owner_id=existing_user.id, actor_id=actor_id, noun="user")
+
+		async with self.uow:
 			await self._user_gateway.delete_user(user_id)
-			self.logger.info(f"Successfully deleted user: {user_id}")
+		self.logger.info(f"Successfully deleted user: {user_id}")

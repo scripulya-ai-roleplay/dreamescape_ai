@@ -162,9 +162,13 @@ class GatewayProvider(Provider):
 class ServiceProvider(Provider):
 	@provide(scope=Scope.REQUEST)
 	def provide_user_service(
-		self, user_gateway: IUserGateway, uow: PostgresqlUOW, logger: logging.Logger
+		self,
+		user_gateway: IUserGateway,
+		uow: PostgresqlUOW,
+		authorization_service: IAuthorizationService,
+		logger: logging.Logger,
 	) -> IUserService:
-		return UserService(user_gateway, uow, logger=logger)
+		return UserService(user_gateway, uow, authz=authorization_service, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_jwt_service(self, logger: logging.Logger) -> IJWTService:

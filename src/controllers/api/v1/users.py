@@ -3,12 +3,13 @@ from uuid import UUID
 
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends
 from fastapi.params import Query
 from pydantic import BaseModel
 from asgi_correlation_id.context import correlation_id
 
 from src.application.ports import IUserService, ApiResponse, Page
+from src.controllers.api.v1.auth import get_current_user
 from src.domain.models import User
 from src.application.user.schemas import UserDTO
 
@@ -36,12 +37,12 @@ async def search_users(
 
 @router.delete("/{user_id}", response_model=ApiResponse[dict])
 @inject
-async def delete_user(user_id: UUID, user_service: FromDishka[IUserService]) -> ApiResponse[dict]:
-	try:
-		await user_service.delete_user(user_id)
-		logger.info(f"User deleted successfully: {user_id}")
+async def delete_user(
+	user_id: UUID,
+	user_service: FromDishka[IUserService],
+	current_user: User = Depends(get_current_user),
+) -> ApiResponse[dict]:
+	await user_service.delete_user(user_id, current_user.id)
+	logger.info(f"User deleted successfully: {user_id}")
 
-		return ApiResponse(result={"message": "User deleted successfully"}, correlation_id=correlation_id.get())
-	except Exception as e:
-		logger.error(f"User deletion failed: {e}")
-		raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Deletion failed")
+	return ApiResponse(result={"message": "User deleted successfully"}, correlation_id=correlation_id.get())
