@@ -29,6 +29,7 @@ class TestUserGateway:
 		"""Sample UserModel for testing"""
 		user_model = Mock(spec=UserModel)
 		user_model.id = uuid4()
+		user_model.username = "test_user"
 		user_model.test_username = "test_user"
 		user_model.google_id = "google123"
 		user_model.role = UserRole.API
@@ -310,6 +311,7 @@ class TestUserGateway:
 		assert isinstance(result, User)
 		assert result.id == sample_user_model.id
 		assert result.test_username == "test_user"
+		assert result.username == "test_user"
 		assert result.google_id == "google123"
 		assert result.role == UserRole.API
 		assert result.crystal_balance == 1000
@@ -324,6 +326,7 @@ class TestUserGateway:
 		# Arrange
 		user_model = Mock(spec=UserModel)
 		user_model.id = uuid4()
+		user_model.username = None
 		user_model.test_username = "test_user"
 		user_model.google_id = None
 		user_model.role = UserRole.ADMIN
@@ -343,6 +346,7 @@ class TestUserGateway:
 		# Arrange
 		user_model = Mock(spec=UserModel)
 		user_model.id = uuid4()
+		user_model.username = None
 		user_model.test_username = "test_user"
 		user_model.google_id = None
 		user_model.role = UserRole.API

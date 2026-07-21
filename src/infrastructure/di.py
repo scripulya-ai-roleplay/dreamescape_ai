@@ -15,6 +15,8 @@ from src.application.ports import (
 	IUserService,
 	IUserGateway,
 	IJWTService,
+	IAuthService,
+	IPasswordHasher,
 	IGatewayFactory,
 	IChatsService,
 	IChatService,
@@ -64,6 +66,8 @@ from src.application.message.service import MessageService
 from src.application.media.service import MediaService
 from src.application.authz import AuthorizationService
 from src.application.auth.jwt_service import JWTService
+from src.application.auth.password_hasher import Argon2PasswordHasher
+from src.application.auth.service import AuthService
 
 
 class GatewayProvider(Provider):
@@ -96,7 +100,6 @@ class GatewayProvider(Provider):
 	def provide_gateway_factory(
 		self, agent_gateway: ScripulyaAgentGateway, mock_gateway: MockGateway
 	) -> IGatewayFactory:
-		# Real models are delegated to scripulya_agent; testing_mock stays local (offline).
 		gateways = {"testing_mock": mock_gateway}
 		gateways.update({m.value: agent_gateway for m in LLMModelType if m != LLMModelType.testing_mock})
 		return GatewayFactory(gateways)
@@ -107,8 +110,6 @@ class GatewayProvider(Provider):
 
 	@provide(scope=Scope.APP)
 	def provide_visibility_gateway(self) -> IVisibilityGateway:
-		# Stateless policy; the single place to swap for an RBAC/permissions-backed
-		# row filter without touching the gateways that consume it.
 		return VisibilityGateway()
 
 	@provide(scope=Scope.REQUEST)
@@ -137,13 +138,10 @@ class GatewayProvider(Provider):
 
 	@provide(scope=Scope.APP)
 	def provide_object_storage_gateway(self, logger: logging.Logger) -> IObjectStorageGateway:
-		# Holds two long-lived minio clients (data + public-endpoint). Lazily
-		# provisioned on first upload / best-effort at startup (see app lifespan).
 		return MinioObjectStorageGateway.from_settings(settings, logger=logger)
 
 	@provide(scope=Scope.APP)
 	def provide_image_reader(self, logger: logging.Logger) -> IImageReader:
-		# Stateless: just carries the upload size cap from settings.
 		return ImageReader(max_bytes=settings.MEDIA_MAX_UPLOAD_BYTES, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
@@ -154,8 +152,6 @@ class GatewayProvider(Provider):
 
 	@provide(scope=Scope.APP)
 	def provide_chat_event_gateway(self, logger: logging.Logger) -> IChatEventGateway:
-		# In-process SSE fan-out; shared by the chats service, the result subscriber,
-		# and the SSE service. Single-process only (see ChatEventGateway docstring).
 		return ChatEventGateway(logger=logger)
 
 
@@ -181,12 +177,24 @@ class ServiceProvider(Provider):
 		)
 
 	@provide(scope=Scope.APP)
+	def provide_password_hasher(self, logger: logging.Logger) -> IPasswordHasher:
+		return Argon2PasswordHasher(logger=logger)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_auth_service(
+		self,
+		user_gateway: IUserGateway,
+		password_hasher: IPasswordHasher,
+		logger: logging.Logger,
+	) -> IAuthService:
+		return AuthService(_user_gateway=user_gateway, _password_hasher=password_hasher, logger=logger)
+
+	@provide(scope=Scope.APP)
 	def provide_prompt_service(self) -> IPromptService:
 		return PromptService()
 
 	@provide(scope=Scope.APP)
 	def provide_authorization_service(self) -> IAuthorizationService:
-		# Stateless; the single seam for swapping in an RBAC/permissions service.
 		return AuthorizationService()
 
 	@provide(scope=Scope.REQUEST)

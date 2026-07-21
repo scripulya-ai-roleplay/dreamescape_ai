@@ -1,18 +1,9 @@
-"""
-API exception types raised by infrastructure gateways.
-Covers LLM-provider errors (quota, JSON parsing, content safety) and media-upload
-validation errors (unsupported type, oversize). All subclass BaseAPIException so
-the global exception handler maps them to the right HTTP status automatically.
-"""
-
 from fastapi import status
 
 from src.infrastructure.web.global_exceptions_handler import BaseAPIException
 
 
 class QuotaExceededException(BaseAPIException):
-	"""Raised when API quota is exceeded"""
-
 	def __init__(self, message: str = "API quota exceeded", **kwargs):
 		super().__init__(
 			message=message, status_code=status.HTTP_429_TOO_MANY_REQUESTS, error_code="QUOTA_EXCEEDED", **kwargs
@@ -20,8 +11,6 @@ class QuotaExceededException(BaseAPIException):
 
 
 class JSONParsingException(BaseAPIException):
-	"""Raised when JSON parsing fails"""
-
 	def __init__(self, message: str = "Failed to parse JSON response", **kwargs):
 		super().__init__(
 			message=message, status_code=status.HTTP_502_BAD_GATEWAY, error_code="JSON_PARSING_ERROR", **kwargs
@@ -29,8 +18,6 @@ class JSONParsingException(BaseAPIException):
 
 
 class ContentSafetyException(BaseAPIException):
-	"""Raised when content is blocked by safety filters"""
-
 	def __init__(self, message: str = "Content blocked by safety filters", **kwargs):
 		super().__init__(
 			message=message, status_code=status.HTTP_400_BAD_REQUEST, error_code="CONTENT_SAFETY_VIOLATION", **kwargs
@@ -38,8 +25,6 @@ class ContentSafetyException(BaseAPIException):
 
 
 class LLMGatewayException(BaseAPIException):
-	"""Raised when LLM gateway encounters an error"""
-
 	def __init__(self, message: str = "LLM gateway error", **kwargs):
 		super().__init__(
 			message=message, status_code=status.HTTP_502_BAD_GATEWAY, error_code="LLM_GATEWAY_ERROR", **kwargs
@@ -47,8 +32,6 @@ class LLMGatewayException(BaseAPIException):
 
 
 class RateLimitException(BaseAPIException):
-	"""Raised when rate limit is exceeded"""
-
 	def __init__(self, message: str = "Rate limit exceeded", **kwargs):
 		super().__init__(
 			message=message, status_code=status.HTTP_429_TOO_MANY_REQUESTS, error_code="RATE_LIMIT_EXCEEDED", **kwargs
@@ -56,9 +39,6 @@ class RateLimitException(BaseAPIException):
 
 
 class UnsupportedImageTypeException(BaseAPIException):
-	"""Raised when an uploaded image's declared content type is not accepted, or
-	when the real bytes (magic-number sniff) do not match the declared type."""
-
 	def __init__(self, message: str = "Unsupported image content type", **kwargs):
 		super().__init__(
 			message=message,
@@ -69,8 +49,6 @@ class UnsupportedImageTypeException(BaseAPIException):
 
 
 class ImageTooLargeException(BaseAPIException):
-	"""Raised when an uploaded image exceeds the configured size cap."""
-
 	def __init__(self, message: str = "Image exceeds the size limit", **kwargs):
 		super().__init__(
 			message=message,
@@ -81,12 +59,20 @@ class ImageTooLargeException(BaseAPIException):
 
 
 class PersonaRequiredException(BaseAPIException):
-	"""Raised when a user tries to play a story without choosing a character to play as."""
-
 	def __init__(self, message: str = "To play a story choose who to play as", **kwargs):
 		super().__init__(
 			message=message,
 			status_code=status.HTTP_400_BAD_REQUEST,
 			error_code="PERSONA_REQUIRED",
+			**kwargs,
+		)
+
+
+class InvalidCredentialsError(BaseAPIException):
+	def __init__(self, message: str = "Invalid username or password", **kwargs):
+		super().__init__(
+			message=message,
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			error_code="INVALID_CREDENTIALS",
 			**kwargs,
 		)

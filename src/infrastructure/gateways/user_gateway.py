@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from src.infrastructure.logging.logger import Logger
 from src.application.ports import IUserGateway, Page
 from src.domain.models import User, UserRole
-from src.application.user.schemas import UserDTO
+from src.application.user.schemas import UserDTO, UserAuthRecord
 from src.infrastructure.database.models import User as UserModel
 from src.domain.models import Character, Scene, Chat
 
@@ -23,7 +23,6 @@ class UserGateway(IUserGateway):
 	async def find_users_by_filters(self, filters: UserDTO, offset: int = 10, limit: int = 0) -> Page[User]:
 		self.logger.info(f"Finding users with filters: {filters}")
 
-		# Build query with filters
 		query = select(UserModel).options(
 			selectinload(UserModel.characters), selectinload(UserModel.scenes), selectinload(UserModel.chats)
 		)
@@ -45,7 +44,6 @@ class UserGateway(IUserGateway):
 		if conditions:
 			query = query.where(and_(*conditions))
 
-		# Get total count
 		count_query = select(func.count(UserModel.id))
 		if conditions:
 			count_query = count_query.where(and_(*conditions))
@@ -53,13 +51,11 @@ class UserGateway(IUserGateway):
 		count_result = await self._session.execute(count_query)
 		total_count = count_result.scalar() or 0
 
-		# Apply pagination
 		query = query.offset(offset).limit(limit)
 
 		result = await self._session.execute(query)
 		user_models = result.scalars().all()
 
-		# Convert to domain models
 		domain_users = [self._to_domain_user(user_model) for user_model in user_models]
 
 		self.logger.info(f"Found {len(domain_users)} users out of {total_count} total")
@@ -70,6 +66,7 @@ class UserGateway(IUserGateway):
 		self.logger.info(f"Creating user in database: {user.username or user.test_username}")
 
 		user_model = UserModel(
+			username=user.username,
 			test_username=user.test_username,
 			google_id=user.google_id,
 			role=user.role.value,
@@ -88,7 +85,6 @@ class UserGateway(IUserGateway):
 	async def delete_user(self, user_id: UUID) -> None:
 		self.logger.info(f"Deleting user from database: {user_id}")
 
-		# The cascade delete in the database model will handle related records
 		query = delete(UserModel).where(UserModel.id == user_id)
 		result = await self._session.execute(query)
 
@@ -114,9 +110,24 @@ class UserGateway(IUserGateway):
 
 		return self._to_domain_user(user_model)
 
+	async def get_user_auth(self, username: str) -> Optional[UserAuthRecord]:
+		self.logger.info("Fetching auth record for username login")
+
+		query = select(UserModel.id, UserModel.username, UserModel.role, UserModel.password_hash).where(
+			UserModel.username == username
+		)
+		result = await self._session.execute(query)
+		row = result.one_or_none()
+
+		if row is None:
+			return None
+
+		return UserAuthRecord(
+			id=row.id, username=row.username, role=UserRole(row.role), password_hash=row.password_hash
+		)
+
 	def _to_domain_user(self, user_model: UserModel) -> User:
 
-		# Convert characters
 		characters = []
 		for char_model in user_model.characters:
 			characters.append(
@@ -129,7 +140,6 @@ class UserGateway(IUserGateway):
 				)
 			)
 
-		# Convert scenes
 		scenes = []
 		for scene_model in user_model.scenes:
 			scenes.append(
@@ -142,7 +152,6 @@ class UserGateway(IUserGateway):
 				)
 			)
 
-		# Convert chats
 		chats = []
 		for chat_model in user_model.chats:
 			chats.append(
@@ -156,6 +165,7 @@ class UserGateway(IUserGateway):
 
 		return User(
 			id=user_model.id,
+			username=user_model.username,
 			test_username=user_model.test_username,
 			google_id=user_model.google_id,
 			role=UserRole(user_model.role),

@@ -1,10 +1,5 @@
--- Database initialization script for scripulya_ai
--- Creates tables and inserts test data
-
--- Enable UUID generation extension
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- Drop tables if they exist (for clean initialization)
 DROP TABLE IF EXISTS media_assets CASCADE;
 DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS chat_settings CASCADE;
@@ -18,16 +13,16 @@ DROP TABLE IF EXISTS scenes CASCADE;
 DROP TABLE IF EXISTS characters CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
--- Create users table
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    test_username VARCHAR(255),
+    username VARCHAR(100) UNIQUE,                       -- login identity for password auth (nullable: Google-only/legacy users)
+    password_hash TEXT,                                 -- argon2id hash; NULL for users who can't log in by password
+    test_username VARCHAR(255),                         -- legacy display/search name (kept for /users/search)
     google_id VARCHAR(255) UNIQUE,
     role VARCHAR(20) NOT NULL DEFAULT 'api' CHECK (role IN ('admin', 'api', 'developer')),
     crystal_balance INTEGER DEFAULT 1000
 );
 
--- Create characters table
 CREATE TABLE characters (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -36,7 +31,6 @@ CREATE TABLE characters (
     is_public BOOLEAN DEFAULT false
 );
 
--- Create scenes table
 CREATE TABLE scenes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -47,15 +41,12 @@ CREATE TABLE scenes (
     is_public BOOLEAN NOT NULL DEFAULT false
 );
 
--- Create character_scene junction table for many-to-many relationship
 CREATE TABLE character_scene (
     character_id UUID NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
     scene_id UUID NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
     PRIMARY KEY (character_id, scene_id)
 );
 
--- Like / bookmark junction tables (user <-> character/scene). A row's existence
--- is the signal; the composite PK also makes (re)liking idempotent at insert time.
 CREATE TABLE character_likes (
     character_id UUID NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -77,7 +68,6 @@ CREATE TABLE scene_bookmarks (
     PRIMARY KEY (scene_id, user_id)
 );
 
--- Create chats table
 CREATE TABLE chats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
@@ -87,16 +77,12 @@ CREATE TABLE chats (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create index on user_id for chats
 CREATE INDEX idx_chats_user_id ON chats(user_id);
 
--- Create index on scene_id for chats
 CREATE INDEX idx_chats_scene_id ON chats(scene_id);
 
--- Create index on user_character_id for chats
 CREATE INDEX idx_chats_user_character_id ON chats(user_character_id);
 
--- Create chat_settings table (1:1 with chats; settings stored as a JSONB blob)
 CREATE TABLE chat_settings (
     chat_id UUID PRIMARY KEY REFERENCES chats(id) ON DELETE CASCADE,
     settings JSONB NOT NULL,
@@ -104,7 +90,6 @@ CREATE TABLE chat_settings (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create messages table
 CREATE TABLE messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
@@ -116,14 +101,8 @@ CREATE TABLE messages (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create index on chat_id for messages
 CREATE INDEX idx_messages_chat_id ON messages(chat_id);
 
--- Create media_assets table
--- Images live in MinIO/S3 (object storage). A row either points at a managed
--- object (object_key + bucket, uploaded via the media API) OR at a legacy
--- external URL (file_url). content_type/size_bytes/is_public/owner_id describe
--- the asset; is_public picks the bucket at upload time and gates anonymous read.
 CREATE TABLE media_assets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     object_key TEXT,                                    -- MinIO/S3 object key (NULL for legacy external URLs)
@@ -139,27 +118,25 @@ CREATE TABLE media_assets (
     CHECK (object_key IS NOT NULL OR file_url IS NOT NULL)
 );
 
--- Create index on entity_type and entity_id for media_assets
 CREATE INDEX idx_media_entity ON media_assets(entity_type, entity_id);
 
--- Insert test users. Roles follow the seeded usernames so the /users/search
--- roles filter has real data to match: admin_test -> admin, dev_test -> developer,
--- everyone else defaults to api.
-INSERT INTO users (id, test_username, google_id, role, crystal_balance) VALUES
-    ('00000000-0000-0000-0000-000000000001', 'mobile_test', 'mobile@mobile.net', 'api', 1000),
-    ('5dbdc924-968a-4c50-94a8-44cdd165e460', 'admin_test', 'admin@google.com', 'admin', 5000),
-    ('f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'api_test', 'api@google.com', 'api', 3000),
-    ('4954ef15-b75b-4f92-b32c-ded5e80ce802', 'dev_test', 'dev@google.com', 'developer', 1000),
-    ('4e50271e-2b64-46e4-b312-580782ea6549', 'user_test', 'user@google.com', 'api', 2000),
-    ('e5fd1874-a299-4c22-b6b5-af4e00b796a7', 'premium_user', 'premium@google.com', 'api', 10000),
-    ('c23dc540-a0ba-4d83-ac7b-d0f8eab9d463', 'broke_user', 'broke@google.com', 'api', 0),
-    ('f3ba11a5-4026-4c16-9aed-061f0d490ade', 'new_user', 'new@google.com', 'api', 1000),
-    ('7edb0c2c-8dcd-402a-a979-cc7853d9b627', 'test_user_long_name_for_testing', 'longname@google.com', 'api', 500),
-    ('53c41979-a116-4bb7-8281-57fadfd89a13', 'inactive_user', 'inactive@google.com', 'api', 2500);
 
--- Insert test characters. system_prompts are written as roleplay personas so the
--- narrator (see SYSTEM_PROMPT in src/conf.py) has real characters to voice. Names and
--- UUIDs are kept stable because chats / character_scene / e2e tests reference them by id.
+INSERT INTO users (id, username, test_username, google_id, role, crystal_balance) VALUES
+    ('00000000-0000-0000-0000-000000000001', 'mobile',    'mobile_test', 'mobile@mobile.net',   'api',       1000),
+    ('5dbdc924-968a-4c50-94a8-44cdd165e460', 'admin',     'admin_test',  'admin@google.com',    'admin',     5000),
+    ('f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'api',       'api_test',    'api@google.com',      'api',       3000),
+    ('4954ef15-b75b-4f92-b32c-ded5e80ce802', 'developer', 'dev_test',    'dev@google.com',      'developer', 1000),
+    ('4e50271e-2b64-46e4-b312-580782ea6549', 'user',      'user_test',   'user@google.com',     'api',       2000),
+    ('e5fd1874-a299-4c22-b6b5-af4e00b796a7', 'premium',   'premium_user','premium@google.com',  'api',       10000),
+    ('c23dc540-a0ba-4d83-ac7b-d0f8eab9d463', 'broke',     'broke_user',  'broke@google.com',    'api',       0),
+    ('f3ba11a5-4026-4c16-9aed-061f0d490ade', 'newbie',    'new_user',    'new@google.com',      'api',       1000),
+    ('7edb0c2c-8dcd-402a-a979-cc7853d9b627', 'longname',  'test_user_long_name_for_testing', 'longname@google.com', 'api', 500),
+    ('53c41979-a116-4bb7-8281-57fadfd89a13', 'inactive',  'inactive_user','inactive@google.com', 'api',       2500);
+
+
+UPDATE users SET password_hash = '$argon2id$v=19$m=65536,t=3,p=4$qXUelaeIrpiI270hrsHowQ$G5DMjlQlJYB354uQujZoptA6LKecJ9UBdznlm/1ZOiY'
+WHERE username IN ('mobile', 'admin', 'api', 'developer');
+
 INSERT INTO characters (id, owner_id, name, system_prompt, is_public) VALUES
     ('43341001-4ea1-4f03-b315-811d3264b6a3', '5dbdc924-968a-4c50-94a8-44cdd165e460', 'Helpful Assistant', 'A warm, endlessly patient companion who delights in helping others. Cheerful and encouraging, she explains things simply and never condescendingly, always leaving people feeling capable and cared for.', true),
     ('1a0fca84-996c-43b5-976a-0c676c61dde5', 'f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'Code Mentor', 'A seasoned software engineer with decades of war stories. Speaks with calm authority, sprinkles in dry humor, and guides others to the answer rather than handing it over. Never impatient, always curious.', true),
@@ -170,11 +147,9 @@ INSERT INTO characters (id, owner_id, name, system_prompt, is_public) VALUES
     ('8abecb4a-8d05-4d24-8fab-31ea776640f2', 'f3ba11a5-4026-4c16-9aed-061f0d490ade', 'Gaming Companion', 'An irrepressibly enthusiastic gamer who lives and breathes virtual worlds. Talks fast, gets hyped about builds and strategies, cracks jokes, and is the most loyal co-op partner anyone could ask for.', true),
     ('84d54c1c-6837-44bf-ad31-26c78729a42c', '7edb0c2c-8dcd-402a-a979-cc7853d9b627', 'Meditation Guide', 'A serene, softly spoken guide who radiates calm. Moves slowly, breathes audibly, and leads others into stillness with gentle, unhurried words, never rushing, never judging.', false),
     ('9a6cf9ec-11d7-471b-8678-c8651b8f331f', '53c41979-a116-4bb7-8281-57fadfd89a13', 'Travel Advisor', 'A well-traveled, worldly guide who has wandered every corner of the map. Speaks with warm authority, peppers stories with sensory detail, and tailors every recommendation to the dreams of each traveler.', true),
-    -- Extra roleplay personas originally created via manual testing, now persisted so they survive a reseed.
     ('83855bba-0735-4f4c-93c2-00c253b5d43c', '00000000-0000-0000-0000-000000000001', 'Alizee', 'Alizee is a professional witch. She is whimsical and unpredictable, weaving mischief and arcane wisdom in equal measure.', false),
     ('1590de4d-c0e1-4ca1-aa98-a15312aadf41', '00000000-0000-0000-0000-000000000001', 'Olegus', 'Olegus is a loud, good-natured but dim-witted tavern drunkard. He speaks in boisterous broken sentences, loves cheap ale above all else, and dispenses confident but nonsensical advice. Easily confused by big words, quick to laugh, and fiercely loyal to anyone who buys him a drink.', false);
 
--- Insert test scenes
 INSERT INTO scenes (id, owner_id, title, description, background_prompt, initial_message_text) VALUES
     ('5c194d75-401f-4fa2-808c-7092153135b7', '5dbdc924-968a-4c50-94a8-44cdd165e460', 'E2E Test Scene', 'A test scene specifically for e2e tests', 'This is a test scene for e2e testing purposes.', 'Welcome to the e2e test scene!'),
     ('e971d123-2f76-4022-87e6-79fc372cbbf3', '5dbdc924-968a-4c50-94a8-44cdd165e460', 'Office Environment', 'A professional workspace designed for productive conversations and collaborative work sessions.', 'You are in a modern office setting with computers, whiteboards, and a collaborative atmosphere. The conversation takes place during work hours.', 'Welcome to our professional workspace! I''m here to help you with any business-related questions or collaborative projects. What can I assist you with today?'),
@@ -187,53 +162,41 @@ INSERT INTO scenes (id, owner_id, title, description, background_prompt, initial
     ('5277db85-10c6-4f12-ab23-810f289ca6df', '7edb0c2c-8dcd-402a-a979-cc7853d9b627', 'Space Station Alpha', 'Advanced space station orbiting Earth with cutting-edge technology and stunning views.', 'You are aboard a sophisticated space station with panoramic views of Earth below, advanced control systems, and the vastness of space surrounding you.', 'Welcome aboard Space Station Alpha! From our orbital vantage point, Earth appears as a beautiful blue marble suspended in the cosmic void. Our advanced systems are at your disposal for any space-related inquiries or cosmic conversations. What aspects of space exploration interest you most?'),
     ('e1daa2c4-3c0b-4ac5-9937-c9540f80c85e', '53c41979-a116-4bb7-8281-57fadfd89a13', 'Underground Laboratory', 'Secret research facility beneath the city for conducting advanced experiments.', 'You are in a high-tech underground laboratory filled with mysterious equipment, glowing screens, and the hum of advanced machinery.', 'Welcome to Laboratory Complex Omega! You''ve gained access to our most advanced research facility. The equipment around us represents the cutting edge of scientific innovation. What experiments or research topics would you like to explore in our secure environment?');
 
--- Mark a few seeded scenes public (the rest stay private via the column default)
 UPDATE scenes SET is_public = true WHERE title IN ('Cozy Coffee Shop', 'Beach Resort Paradise', 'Space Station Alpha');
 
--- Insert test character_scene associations
 INSERT INTO character_scene (character_id, scene_id) VALUES
-    -- Helpful Assistant works well in office and coffee shop environments
     ('43341001-4ea1-4f03-b315-811d3264b6a3', 'e971d123-2f76-4022-87e6-79fc372cbbf3'), -- Helpful Assistant + Office Environment
     ('43341001-4ea1-4f03-b315-811d3264b6a3', '641e5f5d-73ea-4ef0-864c-2cb19f311b11'), -- Helpful Assistant + Cozy Coffee Shop
     ('43341001-4ea1-4f03-b315-811d3264b6a3', '2f263740-29f7-4622-b4ce-fd7ac29d04d5'), -- Helpful Assistant + Beach Resort
     
-    -- Code Mentor is perfect for office and virtual reality environments
     ('1a0fca84-996c-43b5-976a-0c676c61dde5', 'e971d123-2f76-4022-87e6-79fc372cbbf3'), -- Code Mentor + Office Environment
     ('1a0fca84-996c-43b5-976a-0c676c61dde5', '7a587ee5-d55f-4d09-9ced-927ecc059ff0'), -- Code Mentor + Virtual Reality Space
     ('1a0fca84-996c-43b5-976a-0c676c61dde5', 'e1daa2c4-3c0b-4ac5-9937-c9540f80c85e'), -- Code Mentor + Underground Lab
     
-    -- Creative Writer thrives in coffee shop and virtual reality spaces
     ('08f6aff7-e5c6-4e96-b4f7-971e03cb81f8', '641e5f5d-73ea-4ef0-864c-2cb19f311b11'), -- Creative Writer + Cozy Coffee Shop
     ('08f6aff7-e5c6-4e96-b4f7-971e03cb81f8', '7a587ee5-d55f-4d09-9ced-927ecc059ff0'), -- Creative Writer + Virtual Reality Space
     ('08f6aff7-e5c6-4e96-b4f7-971e03cb81f8', 'c7e7899e-ac69-4024-a79c-252531920cd2'), -- Creative Writer + Epic Fantasy
     
-    -- Math Tutor is ideal for library and office environments
     ('3a50caae-9f5d-4be3-882b-f17cdc10d0e3', '414e2a88-2376-46bd-bde7-06c7a514e0d4'), -- Math Tutor + Library Study Room
     ('3a50caae-9f5d-4be3-882b-f17cdc10d0e3', 'e971d123-2f76-4022-87e6-79fc372cbbf3'), -- Math Tutor + Office Environment
     
-    -- Dr. Sophisticated works in multiple environments
     ('117737b7-e183-4aac-9a09-47a45c3d6f58', '414e2a88-2376-46bd-bde7-06c7a514e0d4'), -- Dr. Sophisticated + Library
     ('117737b7-e183-4aac-9a09-47a45c3d6f58', '5277db85-10c6-4f12-ab23-810f289ca6df'), -- Dr. Sophisticated + Space Station
     ('117737b7-e183-4aac-9a09-47a45c3d6f58', 'e1daa2c4-3c0b-4ac5-9937-c9540f80c85e'), -- Dr. Sophisticated + Underground Lab
     
-    -- Simple Bot in minimal environments
     ('8ed61d7f-27db-4bef-a583-98a0d703ea66', 'f08f390a-1237-4bfa-9e53-6980dbb5aa0d'), -- Simple Bot + Minimalist Scene
     
-    -- Gaming Companion in virtual and fantasy environments
     ('8abecb4a-8d05-4d24-8fab-31ea776640f2', '7a587ee5-d55f-4d09-9ced-927ecc059ff0'), -- Gaming Companion + Virtual Reality
     ('8abecb4a-8d05-4d24-8fab-31ea776640f2', 'c7e7899e-ac69-4024-a79c-252531920cd2'), -- Gaming Companion + Epic Fantasy
     ('8abecb4a-8d05-4d24-8fab-31ea776640f2', '5277db85-10c6-4f12-ab23-810f289ca6df'), -- Gaming Companion + Space Station
     
-    -- Meditation Guide in peaceful environments
     ('84d54c1c-6837-44bf-ad31-26c78729a42c', '2f263740-29f7-4622-b4ce-fd7ac29d04d5'), -- Meditation Guide + Beach Resort
     ('84d54c1c-6837-44bf-ad31-26c78729a42c', 'f08f390a-1237-4bfa-9e53-6980dbb5aa0d'), -- Meditation Guide + Minimalist Scene
     
-    -- Travel Advisor in diverse locations
     ('9a6cf9ec-11d7-471b-8678-c8651b8f331f', '2f263740-29f7-4622-b4ce-fd7ac29d04d5'), -- Travel Advisor + Beach Resort
     ('9a6cf9ec-11d7-471b-8678-c8651b8f331f', '5277db85-10c6-4f12-ab23-810f289ca6df'), -- Travel Advisor + Space Station
     ('9a6cf9ec-11d7-471b-8678-c8651b8f331f', '641e5f5d-73ea-4ef0-864c-2cb19f311b11'); -- Travel Advisor + Coffee Shop
 
--- Insert test chats
 INSERT INTO chats (id, name, user_id, scene_id, created_at) VALUES
     ('82dc4309-0ab2-4a9d-86c9-a49f8931494a', 'E2E Test Chat', '5dbdc924-968a-4c50-94a8-44cdd165e460', '5c194d75-401f-4fa2-808c-7092153135b7', NOW()),
     ('048a7fe5-f4c2-40ef-9745-7d85d7c4c5fb', 'Project Help Chat', '5dbdc924-968a-4c50-94a8-44cdd165e460', 'e971d123-2f76-4022-87e6-79fc372cbbf3', NOW() - INTERVAL '2 days'),
@@ -248,16 +211,12 @@ INSERT INTO chats (id, name, user_id, scene_id, created_at) VALUES
     ('8a32d249-137b-4f8c-95c8-1665f7b0b9fb', 'Mars Mission Chat', '5dbdc924-968a-4c50-94a8-44cdd165e460', '5277db85-10c6-4f12-ab23-810f289ca6df', NOW() - INTERVAL '7 days'),
     ('3b0ea7ee-d883-49d9-aabd-5cf497c6db79', 'Quantum Computing Analysis', 'f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'e1daa2c4-3c0b-4ac5-9937-c9540f80c85e', NOW() - INTERVAL '10 days');
 
--- Seed a chat with a user persona (the character the user plays as in that chat)
 UPDATE chats SET user_character_id = '43341001-4ea1-4f03-b315-811d3264b6a3'  -- Helpful Assistant, owned by admin_test
 WHERE id = '048a7fe5-f4c2-40ef-9745-7d85d7c4c5fb';  -- Project Help Chat
 
--- The E2E test chat also needs a persona: message e2e tests send into it, and a
--- play-as character is required to play a story.
 UPDATE chats SET user_character_id = '43341001-4ea1-4f03-b315-811d3264b6a3'
 WHERE id = '82dc4309-0ab2-4a9d-86c9-a49f8931494a';  -- E2E Test Chat
 
--- Insert test messages
 INSERT INTO messages (id, chat_id, role, content, cost_crystals, created_at) VALUES
     -- Chat 1 messages
     ('f7023ee5-06e3-476a-bb12-1e43122578ad', '048a7fe5-f4c2-40ef-9745-7d85d7c4c5fb', 'user', 'Hello! Can you help me with a project?', 0, NOW() - INTERVAL '2 days'),
@@ -308,12 +267,8 @@ INSERT INTO messages (id, chat_id, role, content, cost_crystals, created_at) VAL
     ('d92f7708-57e3-409a-bad1-1fe883afe1f4', '3b0ea7ee-d883-49d9-aabd-5cf497c6db79', 'user', 'Write me a detailed analysis of quantum computing.', 0, NOW() - INTERVAL '10 days'),
     ('6aa69681-627e-440c-ab60-3667e2d36da9', '3b0ea7ee-d883-49d9-aabd-5cf497c6db79', 'model', 'Quantum computing represents a revolutionary paradigm in computational science, leveraging the principles of quantum mechanics to process information in fundamentally different ways than classical computers. This technology promises exponential speedups for certain types of problems...', 150, NOW() - INTERVAL '10 days' + INTERVAL '2 minutes');
 
--- Align edited timestamps with creation time for seeded messages (not edited yet)
 UPDATE messages SET updated_at = created_at;
 
--- Insert test media assets
--- Legacy / external assets for characters and users (object_key IS NULL). The bulk
--- UPDATE below marks these public so GET /api/v1/media/{id} returns file_url as-is.
 INSERT INTO media_assets (id, file_url, entity_type, entity_id) VALUES
     ('fc8a47d7-010a-48f1-8be4-a711760c547f', 'https://example.com/avatar1.png', 'character', '43341001-4ea1-4f03-b315-811d3264b6a3'),
     ('c9709cfb-f8bc-4744-99bf-f4273b01f0dc', 'https://example.com/avatar2.png', 'character', '1a0fca84-996c-43b5-976a-0c676c61dde5'),
@@ -329,15 +284,9 @@ INSERT INTO media_assets (id, file_url, entity_type, entity_id) VALUES
     ('bcfb901c-84c9-4236-8c9f-d7d6fee7805e', 'https://profile-images.example.net/new-user-welcome-banner.webp', 'user', 'f3ba11a5-4026-4c16-9aed-061f0d490ade'),
     ('8212d164-1600-4aea-936e-16ce861eb58b', 'https://very-long-domain-name-for-testing-purposes.example.organization/extremely/long/path/structure/for/testing/url/length/limits/user-profile-image-with-very-descriptive-filename.jpg', 'user', '7edb0c2c-8dcd-402a-a979-cc7853d9b627'),
     ('34e2a21b-d1cd-4cb9-9f30-f1cee4703868', 'https://inactive-user-assets.example.com/placeholder.png', 'user', '53c41979-a116-4bb7-8281-57fadfd89a13'),
-    -- Legacy avatars for the two extra roleplay personas (kept consistent with the other seeded characters).
     ('a11ee000-0000-4000-8000-000000000001', 'https://example.com/alizee-avatar.png', 'character', '83855bba-0735-4f4c-93c2-00c253b5d43c'),
     ('01e00000-0000-4000-8000-000000000002', 'https://example.com/olegus-avatar.jpg', 'character', '1590de4d-c0e1-4ca1-aa98-a15312aadf41');
 
--- Scene backgrounds: managed objects in MinIO (scripulya-public), generated and
--- uploaded by the minio-init seed sidecar in scripulya_deploy from each scene's
--- background_prompt via an image model. object_key is the single source of truth the
--- sidecar uploads to (see scripts/seed_minio_media.py). size_bytes is back-filled by
--- the sidecar after upload; the read path only needs object_key+bucket+is_public.
 INSERT INTO media_assets (id, object_key, bucket, content_type, entity_type, entity_id, is_public) VALUES
     ('1c93f02d-e19a-4304-9eaa-bcf9edc6d24f', 'scene/e2e-test.png',         'scripulya-public', 'image/png', 'scene', '5c194d75-401f-4fa2-808c-7092153135b7', true), -- E2E Test Scene
     ('726e284c-d65b-4817-bc73-d654db2854b0', 'scene/office.png',           'scripulya-public', 'image/png', 'scene', 'e971d123-2f76-4022-87e6-79fc372cbbf3', true), -- Office Environment
@@ -350,12 +299,8 @@ INSERT INTO media_assets (id, object_key, bucket, content_type, entity_type, ent
     ('bca058ca-e53d-47a4-9145-501510142c29', 'scene/space-station.png',    'scripulya-public', 'image/png', 'scene', '5277db85-10c6-4f12-ab23-810f289ca6df', true), -- Space Station Alpha
     ('febfb826-a578-43ab-858d-0c8060699e77', 'scene/underground-lab.png',  'scripulya-public', 'image/png', 'scene', 'e1daa2c4-3c0b-4ac5-9937-c9540f80c85e', true); -- Underground Laboratory
 
--- All legacy rows use an external file_url (object_key IS NULL): treat them as public
--- so the read path (GET /api/v1/media/{id}) returns the URL as-is. Managed scene rows
--- above carry their own object_key + is_public and are left untouched here.
 UPDATE media_assets SET is_public = true WHERE object_key IS NULL;
 
--- Display summary of inserted data
 SELECT 'Database initialization completed successfully!' as status;
 SELECT 
     'users' as table_name, 

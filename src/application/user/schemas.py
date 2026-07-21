@@ -15,3 +15,12 @@ class UserDTO(BaseModel):
 
 	limit: int | None = Field(default=10, ge=0)
 	offset: int | None = Field(default=0, ge=0)
+
+
+class UserAuthRecord(BaseModel):
+	model_config = ConfigDict(frozen=True)
+
+	id: UUID
+	username: str
+	role: UserRole
+	password_hash: str | None

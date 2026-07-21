@@ -10,7 +10,7 @@ from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 from src.application.ports import ISceneService, ICharacterService, ApiResponse, Page, LikeState, BookmarkState
 from src.application.scene.schemas import SceneFilterDTO, AttachCharactersDTO
 from src.domain.models import Scene, Character, User
-from src.controllers.api.v1.auth import get_current_user, get_optional_user
+from src.controllers.api.v1.auth_dependencies import get_current_user, get_optional_user
 
 logger = logging.getLogger(__name__)
 

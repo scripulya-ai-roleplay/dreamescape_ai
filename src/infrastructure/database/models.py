@@ -51,6 +51,8 @@ class User(Base):
 	id: Mapped[uuid.UUID] = mapped_column(
 		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
 	)
+	username: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
+	password_hash: Mapped[Optional[str]] = mapped_column(Text)
 	test_username: Mapped[Optional[str]] = mapped_column(String(255))
 	google_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
 	role: Mapped[str] = mapped_column(String(20), nullable=False, server_default="api", default="api")
@@ -103,7 +105,6 @@ class Chat(Base):
 	name: Mapped[str] = mapped_column(Text)
 	user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
 	scene_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("scenes.id", ondelete="SET NULL"), index=True)
-	# Persona the user plays as in this chat (nullable; resolved on demand, no relationship)
 	user_character_id: Mapped[Optional[uuid.UUID]] = mapped_column(
 		ForeignKey("characters.id", ondelete="SET NULL"), index=True
 	)

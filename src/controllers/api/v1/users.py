@@ -5,21 +5,15 @@ from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Depends
 from fastapi.params import Query
-from pydantic import BaseModel
 from asgi_correlation_id.context import correlation_id
 
 from src.application.ports import IUserService, ApiResponse, Page
-from src.controllers.api.v1.auth import get_current_user
+from src.controllers.api.v1.auth_dependencies import get_current_user
 from src.domain.models import User
 from src.application.user.schemas import UserDTO
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["users"])
-
-
-class Token(BaseModel):
-	access_token: str
-	token_type: str
 
 
 @router.get("/search", response_model=ApiResponse[Page[User]])
