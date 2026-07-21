@@ -140,6 +140,17 @@ jobs:
           docker build -t mock-api -f google_api_mock/Dockerfile .
           docker run -d --name mock-google-api -p 443:443 mock-api
 
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio --network host \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+
+      - name: Wait for MinIO
+        run: |
+          timeout 30 bash -c 'while ! curl -sf http://127.0.0.1:9000/minio/health/live > /dev/null; do sleep 2; done'
+
       # STAGE: Start Service for E2E
       - name: Start Main Application
         run: |
@@ -147,6 +158,8 @@ jobs:
             -e GEMINI_API_KEY=fake_api_key_for_testing \
             -e DATABASE_URL=postgresql+asyncpg://user:password@127.0.0.1:5432/dbname \
             -e RABBIT_URL=amqp://guest:guest@127.0.0.1:5672/ \
+            -e MINIO_INTERNAL_ENDPOINT=127.0.0.1:9000 \
+            -e MINIO_PUBLIC_ENDPOINT=127.0.0.1:9000 \
             main-app
 
       - name: Wait for application to be ready

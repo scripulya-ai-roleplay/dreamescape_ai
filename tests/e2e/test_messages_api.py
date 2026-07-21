@@ -121,6 +121,20 @@ class TestMessagesAPI:
 		finally:
 			client.delete(f"/api/v1/chats/{chat_id}", headers=auth_headers)
 
+	def test_other_user_cannot_delete_message(self, client, auth_headers, other_auth_headers, cleanup_test_messages):
+		"""A message in one user's chat cannot be deleted by a different user."""
+		created = client.post(
+			"/api/v1/messages/",
+			json={"message": "Message to be deleted", "chat_id": "82dc4309-0ab2-4a9d-86c9-a49f8931494a"},
+			headers=auth_headers,
+		)
+		assert created.status_code == 202
+		message_id = created.json()["result"]["id"]
+
+		response = client.delete(f"/api/v1/messages/{message_id}", headers=other_auth_headers)
+
+		assert response.status_code == 403
+
 	def test_search_messages_without_filters(self, client, auth_headers):
 		"""Test searching messages without any filters."""
 		response = client.get("/api/v1/messages/", headers=auth_headers)
