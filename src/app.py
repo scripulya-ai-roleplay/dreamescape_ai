@@ -5,7 +5,8 @@ from fastapi import FastAPI, Depends
 from asgi_correlation_id import CorrelationIdMiddleware
 
 from src.conf import settings
-from src.controllers.api.v1.auth import set_token_to_request_state
+from src.controllers.api.v1.auth import router as auth_router
+from src.controllers.api.v1.auth_dependencies import set_token_to_request_state
 from src.controllers.api.v1.health import router as health_router
 from src.controllers.rabbit.v1 import llm as rabbit_llm  # noqa: F401  registers the result subscriber
 from src.controllers.rabbit.v1.broker import broker
@@ -26,17 +27,6 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-	"""Start/stop the RabbitMQ broker alongside the HTTP app.
-
-	dishka is wired to the broker in main.run_http_server before the app starts,
-	so FromDishka[...] resolves inside the result subscriber once it is started here.
-
-	The broker (and thus the RabbitMQ/scripulya_agent dependency) is only started when
-	LLM_AGENT_ENABLED is true. When disabled, a MockScripulyaAgentClient is injected and
-	no broker connection is made, so the app runs without RabbitMQ (local docker).
-	"""
-	# Best-effort: provision the media buckets early (and surface a MinIO
-	# misconfig at boot). Non-fatal — upload retries lazily on first use.
 	try:
 		storage = await app.state.dishka_container.get(IObjectStorageGateway)
 		await storage.ensure_buckets()
@@ -81,6 +71,7 @@ def create_app() -> FastAPI:
 	logger.info("Global exception handlers registered")
 
 	app.include_router(health_router)
+	app.include_router(auth_router)
 	app.include_router(characters_router)
 	app.include_router(chat_router)
 	app.include_router(chat_settings_router)

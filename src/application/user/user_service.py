@@ -29,10 +29,10 @@ class UserService(IUserService):
 			raise
 
 	async def create_user(self, user: User) -> User:
-		self.logger.info(f"Creating user: {user.username or user.test_username}")
+		self.logger.info(f"Creating user: {user.username}")
 
 		async with self.uow:
-			if not user.google_id and not (user.username or user.test_username):
+			if not user.google_id and not user.username:
 				raise ValueError("User must have either google_id or username")
 
 			if user.google_id:

@@ -6,6 +6,8 @@ from fastapi import HTTPException
 from fastapi.exception_handlers import http_exception_handler
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound, IntegrityError
 
+from src.application.auth.errors import InvalidCredentialsError
+
 from starlette import status
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -42,6 +44,15 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 		return JSONResponse(
 			status_code=exc.status_code,
 			content={"error": {"code": exc.error_code, "message": exc.message, "details": exc.details}},
+		)
+
+	# Domain auth error — carries no HTTP status (unlike BaseAPIException), so it
+	# needs its own branch.
+	if isinstance(exc, InvalidCredentialsError):
+		logger.info("Authentication rejected: %s", exc.message)
+		return JSONResponse(
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			content={"error": {"code": "INVALID_CREDENTIALS", "message": exc.message, "details": {}}},
 		)
 
 	# Handle FastAPI HTTPException
@@ -234,6 +245,7 @@ def register_exception_handlers(app) -> None:
 	"""
 	for exc_type in (
 		BaseAPIException,
+		InvalidCredentialsError,
 		ValueError,
 		NoResultFound,
 		MultipleResultsFound,

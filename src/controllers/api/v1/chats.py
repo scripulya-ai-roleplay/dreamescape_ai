@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 from src.application.chats.schemas import ChatFilterDTO
 from src.application.ports import ApiResponse, Page, IChatService, ICharacterService
 from src.domain.models import Chat, User
-from src.controllers.api.v1.auth import get_current_user
+from src.controllers.api.v1.auth_dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 

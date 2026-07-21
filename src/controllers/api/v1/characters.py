@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 from src.application.character.schemas import CharacterFilterDTO
 from src.application.ports import ApiResponse, Page, ICharacterService, LikeState, BookmarkState
 from src.domain.models import Character, User
-from src.controllers.api.v1.auth import get_current_user, get_optional_user
+from src.controllers.api.v1.auth_dependencies import get_current_user, get_optional_user
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,6 @@ async def create_character(
 	user_id = current_user.id
 	logger.info(f"Extracted user ID: {user_id}")
 
-	# Validate that the Character's owner_id matches the authenticated user
 	if character.owner_id != user_id:
 		logger.warning(f"Owner ID mismatch: character.owner_id={character.owner_id}, user_id={user_id}")
 		raise HTTPException(status_code=403, detail="Character owner_id must match authenticated user")

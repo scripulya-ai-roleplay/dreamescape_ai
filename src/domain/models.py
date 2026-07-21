@@ -35,7 +35,6 @@ class User(BaseModel):
 
 	id: None | UUID = None
 	username: None | str = Field(default=None, min_length=1, max_length=100)
-	test_username: None | str = None
 	google_id: None | str = None
 	role: UserRole
 	crystal_balance: int = 1000

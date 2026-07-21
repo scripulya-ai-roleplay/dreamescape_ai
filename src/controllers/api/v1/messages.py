@@ -11,7 +11,7 @@ from src.application.ports import LLMModelType, UserMessageDTO
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports import ApiResponse, Page, IMessageService, IChatsService
 from src.domain.models import ChatRoles, Message, User
-from src.controllers.api.v1.auth import get_current_user
+from src.controllers.api.v1.auth_dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +20,6 @@ router = APIRouter(prefix="/api/v1/messages", tags=["messages"])
 
 
 class SendMessageRequest(BaseModel):
-	# role is intentionally omitted — a client message is always stored as
-	# ChatRoles.USER — and unknown fields are rejected (extra="forbid") so a
-	# forged role fails with 422 instead of being silently dropped.
 	model_config = ConfigDict(extra="forbid")
 
 	chat_id: UUID
@@ -37,8 +34,6 @@ async def create_message(
 	payload: SendMessageRequest = Body(),
 	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[Message]:
-	# Persists the user message and publishes to scripulya_agent (inline for
-	# testing_mock); the model reply arrives later via the chat SSE stream.
 	logger.info(f"Creating message for chat: {payload.chat_id}")
 	message = UserMessageDTO(
 		chat_id=payload.chat_id,

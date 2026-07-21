@@ -40,7 +40,6 @@ class Settings(BaseSettings):
 	MINIO_PRESIGN_EXPIRY_SECONDS: int = 900
 	MEDIA_MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
 
-	# JWT Settings
 	JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
 	JWT_PUBLIC_KEY: str = ""
 	JWT_ALGORITHM: str = "HS256"
