@@ -411,6 +411,44 @@ class TestChatsService:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
+	async def test_submit_failure_recovery_failure_still_returns_user_message(
+		self, chats_service, mock_gateway, mock_message_service, mock_events, sample_user_message_dto, sample_user_id
+	):
+		"""If recording the failure itself raises (e.g. a DB outage right after the
+		gateway failure), the request must still return the user message rather than
+		5xx. The user message is already committed, so propagating here would
+		re-introduce the partial-apply this path exists to prevent."""
+		mock_gateway.submit.side_effect = LLMGatewayException(message="broker down")
+		mock_message_service.append_model_message.side_effect = RuntimeError("DB outage")
+
+		result = await chats_service.send_message(sample_user_message_dto, sample_user_id)
+
+		# user message returned, not raised
+		assert result.role == ChatRoles.USER
+		# recording was attempted
+		mock_message_service.append_model_message.assert_awaited_once()
+		# but no SSE event could be emitted since recording failed
+		mock_events.publish_message.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_unexpected_submit_error_propagates_not_flattened_to_failed(
+		self, chats_service, mock_gateway, mock_message_service, mock_events, sample_user_message_dto, sample_user_id
+	):
+		"""A non-gateway exception (programming bug like TypeError/AttributeError)
+		propagates as a real 5xx instead of being recorded as a generic FAILED turn —
+		otherwise a genuine bug is indistinguishable from a legitimate gateway outage."""
+		mock_gateway.submit.side_effect = TypeError("bad arg")
+
+		with pytest.raises(TypeError, match="bad arg"):
+			await chats_service.send_message(sample_user_message_dto, sample_user_id)
+
+		# no FAILED row recorded, no SSE event fanned out
+		mock_message_service.append_model_message.assert_not_called()
+		mock_events.publish_message.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
 	async def test_system_prompt_assembled_from_scene_and_characters(
 		self,
 		chats_service,

@@ -21,7 +21,7 @@ from src.application.ports import (
 	UserMessageDTO,
 )
 from src.domain.models import ChatRoles, Message, MessageStatus
-from src.infrastructure.exceptions import PersonaRequiredException
+from src.infrastructure.exceptions import BaseAPIException, PersonaRequiredException
 
 
 @dataclass
@@ -78,27 +78,29 @@ class LLMChatsService(IChatsService):
 				f"===== END PROMPT ====="
 			)
 
-		# The user message is already committed here, so a submit failure is recorded
-		# in-state (FAILED model message + SSE error event) and the request returns
-		# normally — raising would 5xx after history already mutated, pushing clients
-		# to retry and duplicate the turn. Mirrors how the async result path records
-		# agent-side failures (append_model_message + publish_message).
 		try:
 			response = await gateway.submit(chat_dto, history, chat_settings=chat_settings, system_prompt=system_prompt)
-		except Exception as exc:
+		except BaseAPIException as exc:
 			self.logger.warning("LLM submit failed for chat %s: %s", chat_dto.chat_id, exc)
-			failed = await self.message_service.append_model_message(
-				LLMResult(
-					chat_id=chat_dto.chat_id,
-					error=LLMErrorResponse(
-						error_code=getattr(exc, "error_code", "LLM_GATEWAY_ERROR").lower(),
-						status=getattr(exc, "status_code", 502),
-						reason="Failed to queue model generation",
-						message=str(exc) or "Failed to queue model generation",
-					),
+			try:
+				failed = await self.message_service.append_model_message(
+					LLMResult(
+						chat_id=chat_dto.chat_id,
+						error=LLMErrorResponse(
+							error_code=exc.error_code.lower(),
+							status=exc.status_code,
+							reason="Failed to queue model generation",
+							message=str(exc) or "Failed to queue model generation",
+						),
+					)
 				)
-			)
-			self._events.publish_message(chat_dto.chat_id, failed)
+				self._events.publish_message(chat_dto.chat_id, failed)
+			except Exception:
+				self.logger.exception(
+					"Failed to record LLM submit failure in-state for chat %s "
+					"(user message committed, no FAILED row/event emitted)",
+					chat_dto.chat_id,
+				)
 			return user_message
 
 		if response is not None:
