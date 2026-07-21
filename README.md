@@ -27,11 +27,13 @@ scripulya_ai/
 │   └── init.sql               # DB bootstrap script (mounted into postgres container)
 ├── google_api_mock/           # Local mock for Google Generative Language API
 ├── docs/                      # Project documentation
-├── Dockerfile                 # Multi-stage image for the app
-├── docker-compose.yml         # Local stack: app + postgres + mock-google-api
-├── requirements.txt           # Runtime dependencies
+├── build/
+│   └── Dockerfile             # Multi-stage image for the app
+├── deploy/
+│   └── docker-compose.yml     # Local stack: app + postgres + mock-google-api
 ├── requirements-mock.txt      # Dependencies for the Google API mock
-├── pyproject.toml             # Project metadata + Ruff config + dev dependencies
+├── pyproject.toml             # Project metadata + runtime deps (single source of truth) + Ruff config
+├── uv.lock                    # Locked dependency set; Docker/CI install from this + pyproject.toml
 ├── pytest.ini                 # Pytest configuration (markers, asyncio, testpaths)
 ├── .pre-commit-config.yaml    # Pre-commit hooks (Ruff lint + format)
 ├── openapi.json               # Generated OpenAPI schema
@@ -81,7 +83,7 @@ For fully offline development, any value is fine — the `mock-google-api` servi
 #### 2. Run with Docker Compose (recommended)
 
 ```bash
-docker compose up --build
+docker compose -f deploy/docker-compose.yml up --build
 ```
 
 This starts three services:
@@ -90,13 +92,13 @@ This starts three services:
 - `postgres` — PostgreSQL 15 on `localhost:5432` (`user` / `password` / `dbname`), initialised from `scripts/init.sql`
 - `mock-google-api` — Gemini API stub
 
-Healthcheck (defined in the `Dockerfile`) probes `http://localhost:8000` every 30s.
+Healthcheck (defined in `build/Dockerfile`) probes `http://localhost:8000` every 30s.
 
 Stop the stack:
 
 ```bash
-docker compose down          # keep volumes
-docker compose down -v       # also drop postgres data
+docker compose -f deploy/docker-compose.yml down          # keep volumes
+docker compose -f deploy/docker-compose.yml down -v       # also drop postgres data
 ```
 
 #### 3. Run without Docker (optional)
@@ -104,8 +106,10 @@ docker compose down -v       # also drop postgres data
 ```bash
 python3.13 -m venv .venv
 source .venv/bin/activate
+pip install uv==0.10.4
+uv export --frozen --no-dev --no-emit-project -o requirements.txt
 pip install -r requirements.txt
-# Make sure a Postgres instance matching docker-compose.yml is reachable
+# Make sure a Postgres instance matching deploy/docker-compose.yml is reachable
 python -m src.main --http
 ```
 
@@ -160,7 +164,9 @@ Pytest configuration lives in `pytest.ini`:
 
 ```bash
 source .venv/bin/activate
-pip install -r requirements.txt   # pytest + pytest-asyncio are part of deps
+pip install uv==0.10.4
+uv export --frozen --no-dev --no-emit-project -o requirements.txt   # pytest + pytest-asyncio are part of deps
+pip install -r requirements.txt
 ```
 
 #### Commands
@@ -173,7 +179,7 @@ pytest
 pytest -m unit
 
 # Only end-to-end tests (require the full Docker stack to be up)
-docker compose up -d
+docker compose -f deploy/docker-compose.yml up -d
 pytest -m e2e
 
 # A single file / test
@@ -184,7 +190,7 @@ pytest tests/e2e/test_characters_api.py::test_create_character
 #### Running tests inside the container
 
 ```bash
-docker compose run --rm app pytest -m unit
+docker compose -f deploy/docker-compose.yml run --rm app pytest -m unit
 ```
 
 ---
