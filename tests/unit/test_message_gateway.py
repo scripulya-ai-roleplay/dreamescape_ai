@@ -225,7 +225,8 @@ class TestMessageGateway:
 		# Assert
 		assert result == message_id
 		mock_session.execute.assert_called_once()
-		mock_session.commit.assert_called_once()
+		# The gateway must not commit; the UOW owns the transaction boundary.
+		mock_session.commit.assert_not_called()
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -236,7 +237,6 @@ class TestMessageGateway:
 		mock_result = AsyncMock()
 		mock_result.rowcount = 1
 		mock_session.execute.return_value = mock_result
-		mock_session.commit = AsyncMock()
 
 		# Act
 		await message_gateway.update(message_id, updated_text)
@@ -277,7 +277,8 @@ class TestMessageGateway:
 		# Assert
 		assert result == message_id
 		mock_session.execute.assert_called_once()
-		mock_session.commit.assert_called_once()
+		# The gateway must not commit; the UOW owns the transaction boundary.
+		mock_session.commit.assert_not_called()
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio

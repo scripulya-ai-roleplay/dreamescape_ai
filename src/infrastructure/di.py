@@ -218,9 +218,9 @@ class ServiceProvider(Provider):
 
 	@provide(scope=Scope.REQUEST)
 	def provide_chat_settings_service(
-		self, chat_settings_gateway: IChatSettingsGateway, logger: logging.Logger
+		self, chat_settings_gateway: IChatSettingsGateway, uow: PostgresqlUOW, logger: logging.Logger
 	) -> IChatSettingsService:
-		return ChatSettingsService(chat_settings_gateway=chat_settings_gateway, logger=logger)
+		return ChatSettingsService(chat_settings_gateway=chat_settings_gateway, uow=uow, logger=logger)
 
 	@provide(scope=Scope.APP)
 	def provide_server_events_service(
@@ -230,9 +230,13 @@ class ServiceProvider(Provider):
 
 	@provide(scope=Scope.REQUEST)
 	def provide_chat_service(
-		self, chat_gateway: IChatGateway, authorization_service: IAuthorizationService, logger: logging.Logger
+		self,
+		chat_gateway: IChatGateway,
+		uow: PostgresqlUOW,
+		authorization_service: IAuthorizationService,
+		logger: logging.Logger,
 	) -> IChatService:
-		return ChatService(chat_gateway=chat_gateway, authz=authorization_service, logger=logger)
+		return ChatService(chat_gateway=chat_gateway, uow=uow, authz=authorization_service, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_message_service(

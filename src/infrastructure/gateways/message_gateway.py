@@ -117,7 +117,6 @@ class MessageGateway(IMessageGateway):
 		if result.rowcount == 0:
 			raise ValueError(f"Message with ID {message_uuid} not found")
 
-		await self._session.commit()
 		self.logger.info(f"Successfully updated message: {message_uuid}")
 
 		return message_uuid
@@ -131,7 +130,6 @@ class MessageGateway(IMessageGateway):
 		if result.rowcount == 0:
 			raise ValueError(f"Message with ID {message_uuid} not found")
 
-		await self._session.commit()
 		self.logger.info(f"Successfully deleted message: {message_uuid}")
 
 		return message_uuid
