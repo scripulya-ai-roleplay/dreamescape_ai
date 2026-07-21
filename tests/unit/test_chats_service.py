@@ -35,7 +35,7 @@ from src.application.chats.settings import (
 )
 from src.conf import settings
 from src.domain.models import Character, Chat, ChatRoles, Message, MessageStatus, Scene
-from src.infrastructure.exceptions import PersonaRequiredException
+from src.infrastructure.exceptions import LLMGatewayException, PersonaRequiredException
 
 
 def _persist(message: Message) -> Message:
@@ -351,13 +351,101 @@ class TestChatsService:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_submit_error_propagates(self, chats_service, mock_gateway, sample_user_message_dto, sample_user_id):
-		"""If publishing fails, the error surfaces to the HTTP client (the user message
-		is already committed)."""
-		mock_gateway.submit.side_effect = Exception("Response generation failed")
+	async def test_submit_failure_records_failed_turn_and_returns_user_message(
+		self, chats_service, mock_gateway, mock_message_service, mock_events, sample_user_message_dto, sample_user_id
+	):
+		"""A submit/publish failure is recorded in-state — a FAILED model message via
+		append_model_message plus an SSE error event — and the request still returns the
+		user message (202). The user message is already committed, so raising a 5xx here
+		would leave history mutated with no record of the failure and push clients to
+		retry-and-duplicate the turn."""
+		mock_gateway.submit.side_effect = LLMGatewayException(
+			message="failed to publish request to scripulya_agent: broker down", details={}
+		)
+		failed_row = Message(
+			id=uuid4(),
+			message="failed to publish request to scripulya_agent: broker down",
+			chat_id=sample_user_message_dto.chat_id,
+			role=ChatRoles.MODEL,
+			status=MessageStatus.FAILED,
+		)
+		mock_message_service.append_model_message.return_value = failed_row
 
-		with pytest.raises(Exception, match="Response generation failed"):
+		result = await chats_service.send_message(sample_user_message_dto, sample_user_id)
+
+		# the user message is returned, not raised as a 5xx
+		assert result.role == ChatRoles.USER
+		# exactly the user-message persist; the FAILED row went through append_model_message
+		assert mock_message_service.send_message.await_count == 1
+		mock_message_service.append_model_message.assert_awaited_once()
+		llm_result = mock_message_service.append_model_message.await_args.args[0]
+		assert llm_result.chat_id == sample_user_message_dto.chat_id
+		assert llm_result.error is not None
+		assert llm_result.error.status == 502
+		# the SSE error event fans out the FAILED model message
+		mock_events.publish_message.assert_called_once_with(sample_user_message_dto.chat_id, failed_row)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_submit_failure_preserves_provider_error_code_and_status(
+		self, chats_service, mock_gateway, mock_message_service, sample_user_message_dto, sample_user_id
+	):
+		"""A quota/rate-limit style failure keeps its own status/error_code on the
+		recorded FAILED row instead of being flattened to a generic 502."""
+		from src.infrastructure.exceptions import QuotaExceededException
+
+		mock_gateway.submit.side_effect = QuotaExceededException(message="over quota")
+		mock_message_service.append_model_message.return_value = Message(
+			id=uuid4(),
+			message="x",
+			chat_id=sample_user_message_dto.chat_id,
+			role=ChatRoles.MODEL,
+			status=MessageStatus.FAILED,
+		)
+
+		await chats_service.send_message(sample_user_message_dto, sample_user_id)
+
+		llm_result = mock_message_service.append_model_message.await_args.args[0]
+		assert llm_result.error.status == 429
+		assert llm_result.error.error_code == "quota_exceeded"
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_submit_failure_recovery_failure_still_returns_user_message(
+		self, chats_service, mock_gateway, mock_message_service, mock_events, sample_user_message_dto, sample_user_id
+	):
+		"""If recording the failure itself raises (e.g. a DB outage right after the
+		gateway failure), the request must still return the user message rather than
+		5xx. The user message is already committed, so propagating here would
+		re-introduce the partial-apply this path exists to prevent."""
+		mock_gateway.submit.side_effect = LLMGatewayException(message="broker down")
+		mock_message_service.append_model_message.side_effect = RuntimeError("DB outage")
+
+		result = await chats_service.send_message(sample_user_message_dto, sample_user_id)
+
+		# user message returned, not raised
+		assert result.role == ChatRoles.USER
+		# recording was attempted
+		mock_message_service.append_model_message.assert_awaited_once()
+		# but no SSE event could be emitted since recording failed
+		mock_events.publish_message.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_unexpected_submit_error_propagates_not_flattened_to_failed(
+		self, chats_service, mock_gateway, mock_message_service, mock_events, sample_user_message_dto, sample_user_id
+	):
+		"""A non-gateway exception (programming bug like TypeError/AttributeError)
+		propagates as a real 5xx instead of being recorded as a generic FAILED turn —
+		otherwise a genuine bug is indistinguishable from a legitimate gateway outage."""
+		mock_gateway.submit.side_effect = TypeError("bad arg")
+
+		with pytest.raises(TypeError, match="bad arg"):
 			await chats_service.send_message(sample_user_message_dto, sample_user_id)
+
+		# no FAILED row recorded, no SSE event fanned out
+		mock_message_service.append_model_message.assert_not_called()
+		mock_events.publish_message.assert_not_called()
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
