@@ -51,8 +51,12 @@ class TestAuthLogin:
 		login = client.post("/api/v1/auth/login", json={"username": "mobile", "password": "password"})
 		assert login.status_code == 200
 		token = login.json()["access_token"]
-		# Flip one character so the signature no longer verifies.
-		tampered = token[:-1] + ("X" if token[-1] != "X" else "Y")
+		# Flip the FIRST signature char: all 6 of its bits are significant. The LAST
+		# char's low bits are non-significant base64url padding (32-byte HMAC -> 43
+		# chars), so flipping only it can decode to the same signature and still verify.
+		header_b64, payload_b64, sig_b64 = token.split(".")
+		sig_b64 = ("X" if sig_b64[0] != "X" else "Y") + sig_b64[1:]
+		tampered = f"{header_b64}.{payload_b64}.{sig_b64}"
 
 		response = client.get("/api/v1/chats/", headers={"Authorization": f"Bearer {tampered}"})
 		assert response.status_code == 401
