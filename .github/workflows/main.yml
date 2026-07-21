@@ -29,15 +29,21 @@ jobs:
         with:
           args: "format --check ."
 
-      # STAGE 1: Unit tests (mirrors the image: deps from requirements.txt)
+      # STAGE 1: Unit tests (deps generated from pyproject.toml + uv.lock to mirror the image)
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
+          cache-dependency-path: uv.lock
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        # Materialise requirements.txt from pyproject.toml + uv.lock (single source of
+        # truth) so there is no hand-maintained lockfile to drift against.
+        run: |
+          pip install uv==0.10.4
+          uv export --frozen --no-dev --no-emit-project -o requirements.txt
+          pip install -r requirements.txt
 
       - name: Run Unit Tests
         run: python -m pytest tests/unit
@@ -54,7 +60,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build App Image
-        run: docker build -t main-app .
+        run: docker build -t main-app -f build/Dockerfile .
 
       # Share the built image with the e2e job (separate runner). Alternatives:
       # push to ghcr.io and pull in e2e — heavier setup, but cleaner for reuse.
