@@ -255,6 +255,27 @@ class TestCharactersAPI:
 
 		assert response.status_code == 422
 
+	# Deterministic cross-user guards: assert 403 outright (the [200, 403, 404] tests
+	# above would still pass if ownership enforcement were dropped). CHARACTER_ID is the
+	# seeded admin-owned character defined below.
+	def test_other_user_cannot_delete_character(self, client, other_auth_headers):
+		response = client.delete(f"/api/v1/characters/{self.CHARACTER_ID}", headers=other_auth_headers)
+		assert response.status_code == 403
+
+	def test_other_user_cannot_update_character(self, client, other_auth_headers):
+		payload = {
+			"name": "Hijacked Character Name",
+			"system_prompt": "Hijacked system prompt",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
+			"is_public": True,
+		}
+
+		response = client.post(
+			f"/api/v1/characters/update/{self.CHARACTER_ID}", json=payload, headers=other_auth_headers
+		)
+
+		assert response.status_code == 403
+
 	def test_characters_api_response_structure(self, client):
 		"""Test that all character endpoints return consistent response structure."""
 		# Test search endpoint response structure

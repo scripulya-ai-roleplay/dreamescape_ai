@@ -399,6 +399,39 @@ class TestScenesAPI:
 		# Should return validation error for empty body
 		assert response.status_code == 422
 
+	def test_create_scene_owner_id_mismatch_returns_403(self, client, auth_headers):
+		"""A scene whose owner_id is not the authenticated user is rejected with 403."""
+		payload = {
+			"title": "Scene with wrong owner",
+			"background_prompt": "Test scene with mismatched owner",
+			"owner_id": "11111111-2222-3333-4444-555555555555",  # not the auth_headers user
+			"initial_message_text": "Welcome!",
+		}
+
+		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
+
+		assert response.status_code == 403
+		assert "Scene owner_id must match authenticated user" in response.json().get("detail", "")
+
+	# Deterministic cross-user guards. The weak [200, 403, 404] tests above tolerate a
+	# regression where ownership enforcement is dropped; these assert 403 outright against
+	# a known admin-owned scene (SCENE_ID, defined below) accessed as a different user.
+	def test_other_user_cannot_delete_scene(self, client, other_auth_headers):
+		response = client.delete(f"/api/v1/scenes/{self.SCENE_ID}", headers=other_auth_headers)
+		assert response.status_code == 403
+
+	def test_other_user_cannot_update_scene(self, client, other_auth_headers):
+		payload = {
+			"title": "Hijacked Scene Title",
+			"background_prompt": "Hijacked background prompt",
+			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
+			"initial_message_text": "Hijacked initial message",
+		}
+
+		response = client.post(f"/api/v1/scenes/update/{self.SCENE_ID}", json=payload, headers=other_auth_headers)
+
+		assert response.status_code == 403
+
 	def test_scenes_api_response_structure(self, client):
 		"""Test that all scenes API responses have consistent structure."""
 		# Test search endpoint response structure
