@@ -1,13 +1,9 @@
-import logging
-
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter
 
 from src.application.auth.schemas import LoginRequest, Token
 from src.application.ports import IAuthService, IJWTService
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 

@@ -1,11 +1,11 @@
-from pydantic import BaseModel, Field
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from src.domain.models import UserRole
 
 
 class LoginRequest(BaseModel):
-	"""Body of POST /api/v1/auth/login — the credentials the client exchanges
-	for an access token. The signing key never leaves the server; the client only
-	ever holds this username/password and the token it receives back."""
-
 	username: str = Field(min_length=1, max_length=100)
 	password: str = Field(min_length=1, max_length=1024)
 
@@ -13,3 +13,14 @@ class LoginRequest(BaseModel):
 class Token(BaseModel):
 	access_token: str
 	token_type: str = "bearer"
+
+
+# Separate from the domain User on purpose: User is serialized in /users/search,
+# so the password hash must not ride on it. This carries only what auth needs.
+class UserAuthRecord(BaseModel):
+	model_config = ConfigDict(frozen=True)
+
+	id: UUID
+	username: str
+	role: UserRole
+	password_hash: str | None

@@ -30,7 +30,6 @@ class TestUserGateway:
 		user_model = Mock(spec=UserModel)
 		user_model.id = uuid4()
 		user_model.username = "test_user"
-		user_model.test_username = "test_user"
 		user_model.google_id = "google123"
 		user_model.role = UserRole.API
 		user_model.crystal_balance = 1000
@@ -47,9 +46,7 @@ class TestUserGateway:
 	@pytest.fixture
 	def sample_domain_user(self):
 		"""Sample domain User for testing"""
-		return User(
-			id=uuid4(), test_username="test_user", google_id="google123", role=UserRole.API, crystal_balance=1000
-		)
+		return User(id=uuid4(), username="test_user", google_id="google123", role=UserRole.API, crystal_balance=1000)
 
 	@pytest.mark.asyncio
 	async def test_find_users_by_filters_success(self, user_gateway, mock_session, sample_user_model, sample_user_dto):
@@ -73,7 +70,7 @@ class TestUserGateway:
 		assert result.offset == 0
 		assert result.limit == 10
 		assert len(result.items) == 1
-		assert result.items[0].test_username == "test_user"
+		assert result.items[0].username == "test_user"
 		assert mock_session.execute.call_count == 2
 
 	@pytest.mark.asyncio
@@ -258,7 +255,7 @@ class TestUserGateway:
 
 		# Assert
 		assert isinstance(result, User)
-		assert result.test_username == "test_user"
+		assert result.username == "test_user"
 		mock_session.execute.assert_called_once()
 
 	@pytest.mark.asyncio
@@ -310,7 +307,6 @@ class TestUserGateway:
 		# Assert
 		assert isinstance(result, User)
 		assert result.id == sample_user_model.id
-		assert result.test_username == "test_user"
 		assert result.username == "test_user"
 		assert result.google_id == "google123"
 		assert result.role == UserRole.API
@@ -327,7 +323,6 @@ class TestUserGateway:
 		user_model = Mock(spec=UserModel)
 		user_model.id = uuid4()
 		user_model.username = None
-		user_model.test_username = "test_user"
 		user_model.google_id = None
 		user_model.role = UserRole.ADMIN
 		user_model.crystal_balance = 1000
@@ -347,7 +342,6 @@ class TestUserGateway:
 		user_model = Mock(spec=UserModel)
 		user_model.id = uuid4()
 		user_model.username = None
-		user_model.test_username = "test_user"
 		user_model.google_id = None
 		user_model.role = UserRole.API
 		user_model.crystal_balance = 1000

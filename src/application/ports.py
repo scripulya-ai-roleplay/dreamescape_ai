@@ -18,8 +18,9 @@ from src.application.chats.settings import ChatSettings
 from src.application.message.schemas import MessagesFilterDto
 from src.application.scene.schemas import SceneFilterDTO
 from src.domain.models import User, Scene, Character, Message, Chat, MediaAsset, MediaEntityType
+from src.application.auth.schemas import UserAuthRecord
 from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadDTO
-from src.application.user.schemas import UserDTO, UserAuthRecord
+from src.application.user.schemas import UserDTO
 
 
 class Page[T](BaseModel):

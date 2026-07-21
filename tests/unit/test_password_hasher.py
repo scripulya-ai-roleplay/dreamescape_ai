@@ -23,9 +23,7 @@ class TestArgon2PasswordHasher:
 		assert hasher.verify_password("wrong", h) is False
 
 	def test_hash_differs_per_call(self, hasher):
-		# argon2 salts each hash, so the same password never hashes to the same string.
 		assert hasher.hash_password("same") != hasher.hash_password("same")
 
 	def test_verify_malformed_hash_is_false_not_raise(self, hasher):
-		# A garbage stored hash must not crash the login path — it just fails closed.
 		assert hasher.verify_password("anything", "not-a-valid-argon2-hash") is False

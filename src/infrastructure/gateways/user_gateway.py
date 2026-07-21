@@ -10,7 +10,8 @@ from sqlalchemy.orm import selectinload
 from src.infrastructure.logging.logger import Logger
 from src.application.ports import IUserGateway, Page
 from src.domain.models import User, UserRole
-from src.application.user.schemas import UserDTO, UserAuthRecord
+from src.application.auth.schemas import UserAuthRecord
+from src.application.user.schemas import UserDTO
 from src.infrastructure.database.models import User as UserModel
 from src.domain.models import Character, Scene, Chat
 
@@ -33,7 +34,7 @@ class UserGateway(IUserGateway):
 			conditions.append(UserModel.id.in_([str(id_) for id_ in filters.user_ids]))
 
 		if filters.usernames:
-			conditions.append(UserModel.test_username.in_(filters.usernames))
+			conditions.append(UserModel.username.in_(filters.usernames))
 
 		if filters.google_ids:
 			conditions.append(UserModel.google_id.in_(filters.google_ids))
@@ -63,11 +64,10 @@ class UserGateway(IUserGateway):
 		return Page[User](items=domain_users, count=total_count, offset=offset, limit=limit)
 
 	async def create_user(self, user: User) -> User:
-		self.logger.info(f"Creating user in database: {user.username or user.test_username}")
+		self.logger.info(f"Creating user in database: {user.username}")
 
 		user_model = UserModel(
 			username=user.username,
-			test_username=user.test_username,
 			google_id=user.google_id,
 			role=user.role.value,
 			crystal_balance=user.crystal_balance,
@@ -166,7 +166,6 @@ class UserGateway(IUserGateway):
 		return User(
 			id=user_model.id,
 			username=user_model.username,
-			test_username=user_model.test_username,
 			google_id=user_model.google_id,
 			role=UserRole(user_model.role),
 			crystal_balance=user_model.crystal_balance,

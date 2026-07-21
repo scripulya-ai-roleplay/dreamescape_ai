@@ -4,8 +4,11 @@ from dataclasses import dataclass
 from src.infrastructure.logging.logger import Logger
 from src.application.ports import IAuthService, IUserGateway, IPasswordHasher
 from src.domain.models import User
-from src.infrastructure.exceptions import InvalidCredentialsError
+from src.application.auth.errors import InvalidCredentialsError
 
+# Substituted for a stored hash when the username is unknown, so a missing-user
+# login still pays the argon2 cost and matches a wrong-password attempt's timing
+# (prevents user enumeration via response-time side channels).
 _DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$+jN0Vldj69N4fUgOdzx9bQ$dqM9quBbp6EIxTLOFy2HYb4+pMF4TWf/3TtHEH8UJn4"
 
 

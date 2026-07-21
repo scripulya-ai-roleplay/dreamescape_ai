@@ -53,7 +53,6 @@ class User(Base):
 	)
 	username: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
 	password_hash: Mapped[Optional[str]] = mapped_column(Text)
-	test_username: Mapped[Optional[str]] = mapped_column(String(255))
 	google_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
 	role: Mapped[str] = mapped_column(String(20), nullable=False, server_default="api", default="api")
 	crystal_balance: Mapped[int] = mapped_column(Integer, server_default="1000", default=1000)

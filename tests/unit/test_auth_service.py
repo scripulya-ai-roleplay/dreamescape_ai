@@ -4,9 +4,9 @@ from uuid import UUID
 import pytest
 
 from src.application.auth.service import AuthService, _DUMMY_HASH
-from src.application.user.schemas import UserAuthRecord
+from src.application.auth.schemas import UserAuthRecord
 from src.domain.models import UserRole
-from src.infrastructure.exceptions import InvalidCredentialsError
+from src.application.auth.errors import InvalidCredentialsError
 
 
 @pytest.mark.unit
@@ -41,22 +41,19 @@ class TestAuthService:
 		assert user.id == mobile_record.id
 		assert user.role == UserRole.API
 		assert user.username == "mobile"
-		# Verified against the stored hash, not the dummy.
 		hasher.verify_password.assert_called_once_with("password", mobile_record.password_hash)
 
-	async def test_authenticate_wrong_password_raises_401(self, service, gateway, hasher, mobile_record):
+	async def test_authenticate_wrong_password_raises(self, service, gateway, hasher, mobile_record):
 		gateway.get_user_auth.return_value = mobile_record
 		hasher.verify_password.return_value = False
 
 		with pytest.raises(InvalidCredentialsError) as exc:
 			await service.authenticate("mobile", "wrong")
 
-		assert exc.value.status_code == 401
+		assert exc.value.message == "Invalid username or password"
 		hasher.verify_password.assert_called_once_with("wrong", mobile_record.password_hash)
 
 	async def test_unknown_user_runs_dummy_verify_then_401(self, service, gateway, hasher):
-		# Timing-safe: a missing username must still pay the argon2 cost against the
-		# dummy hash, so the endpoint can't be timed to enumerate accounts.
 		gateway.get_user_auth.return_value = None
 		hasher.verify_password.return_value = False
 
@@ -66,7 +63,6 @@ class TestAuthService:
 		hasher.verify_password.assert_called_once_with("password", _DUMMY_HASH)
 
 	async def test_user_without_password_hash_runs_dummy_verify(self, service, gateway, hasher):
-		# A Google-only user (password_hash is None) cannot log in by password.
 		gateway.get_user_auth.return_value = UserAuthRecord(
 			id=UUID("11111111-2222-3333-4444-555555555555"),
 			username="google_only",
@@ -81,7 +77,6 @@ class TestAuthService:
 		hasher.verify_password.assert_called_once_with("password", _DUMMY_HASH)
 
 	async def test_failure_is_generic_no_username_hint(self, service, gateway, hasher, mobile_record):
-		# Both failure modes surface the identical message/error_code.
 		gateway.get_user_auth.return_value = mobile_record
 		hasher.verify_password.return_value = False
 		wrong_pw = await _capture(service, "mobile", "bad")
@@ -90,11 +85,9 @@ class TestAuthService:
 		unknown = await _capture(service, "ghost", "bad")
 
 		assert wrong_pw.message == unknown.message
-		assert wrong_pw.error_code == unknown.error_code == "INVALID_CREDENTIALS"
 
 
 async def _capture(service: AuthService, username: str, password: str) -> InvalidCredentialsError:
-	"""Run authenticate and return the raised InvalidCredentialsError."""
 	try:
 		await service.authenticate(username, password)
 	except InvalidCredentialsError as exc:

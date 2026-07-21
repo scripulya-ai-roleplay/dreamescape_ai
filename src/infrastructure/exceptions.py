@@ -66,13 +66,3 @@ class PersonaRequiredException(BaseAPIException):
 			error_code="PERSONA_REQUIRED",
 			**kwargs,
 		)
-
-
-class InvalidCredentialsError(BaseAPIException):
-	def __init__(self, message: str = "Invalid username or password", **kwargs):
-		super().__init__(
-			message=message,
-			status_code=status.HTTP_401_UNAUTHORIZED,
-			error_code="INVALID_CREDENTIALS",
-			**kwargs,
-		)

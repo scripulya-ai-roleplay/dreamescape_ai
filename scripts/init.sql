@@ -15,9 +15,8 @@ DROP TABLE IF EXISTS users CASCADE;
 
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    username VARCHAR(100) UNIQUE,                       -- login identity for password auth (nullable: Google-only/legacy users)
-    password_hash TEXT,                                 -- argon2id hash; NULL for users who can't log in by password
-    test_username VARCHAR(255),                         -- legacy display/search name (kept for /users/search)
+    username VARCHAR(100) UNIQUE,  -- single canonical identity: login + /users/search both resolve here
+    password_hash TEXT,
     google_id VARCHAR(255) UNIQUE,
     role VARCHAR(20) NOT NULL DEFAULT 'api' CHECK (role IN ('admin', 'api', 'developer')),
     crystal_balance INTEGER DEFAULT 1000
@@ -121,17 +120,17 @@ CREATE TABLE media_assets (
 CREATE INDEX idx_media_entity ON media_assets(entity_type, entity_id);
 
 
-INSERT INTO users (id, username, test_username, google_id, role, crystal_balance) VALUES
-    ('00000000-0000-0000-0000-000000000001', 'mobile',    'mobile_test', 'mobile@mobile.net',   'api',       1000),
-    ('5dbdc924-968a-4c50-94a8-44cdd165e460', 'admin',     'admin_test',  'admin@google.com',    'admin',     5000),
-    ('f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'api',       'api_test',    'api@google.com',      'api',       3000),
-    ('4954ef15-b75b-4f92-b32c-ded5e80ce802', 'developer', 'dev_test',    'dev@google.com',      'developer', 1000),
-    ('4e50271e-2b64-46e4-b312-580782ea6549', 'user',      'user_test',   'user@google.com',     'api',       2000),
-    ('e5fd1874-a299-4c22-b6b5-af4e00b796a7', 'premium',   'premium_user','premium@google.com',  'api',       10000),
-    ('c23dc540-a0ba-4d83-ac7b-d0f8eab9d463', 'broke',     'broke_user',  'broke@google.com',    'api',       0),
-    ('f3ba11a5-4026-4c16-9aed-061f0d490ade', 'newbie',    'new_user',    'new@google.com',      'api',       1000),
-    ('7edb0c2c-8dcd-402a-a979-cc7853d9b627', 'longname',  'test_user_long_name_for_testing', 'longname@google.com', 'api', 500),
-    ('53c41979-a116-4bb7-8281-57fadfd89a13', 'inactive',  'inactive_user','inactive@google.com', 'api',       2500);
+INSERT INTO users (id, username, google_id, role, crystal_balance) VALUES
+    ('00000000-0000-0000-0000-000000000001', 'mobile',    'mobile@mobile.net',   'api',       1000),
+    ('5dbdc924-968a-4c50-94a8-44cdd165e460', 'admin',     'admin@google.com',    'admin',     5000),
+    ('f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'api',       'api@google.com',      'api',       3000),
+    ('4954ef15-b75b-4f92-b32c-ded5e80ce802', 'developer', 'dev@google.com',      'developer', 1000),
+    ('4e50271e-2b64-46e4-b312-580782ea6549', 'user',      'user@google.com',     'api',       2000),
+    ('e5fd1874-a299-4c22-b6b5-af4e00b796a7', 'premium',   'premium@google.com',  'api',       10000),
+    ('c23dc540-a0ba-4d83-ac7b-d0f8eab9d463', 'broke',     'broke@google.com',    'api',       0),
+    ('f3ba11a5-4026-4c16-9aed-061f0d490ade', 'newbie',    'new@google.com',      'api',       1000),
+    ('7edb0c2c-8dcd-402a-a979-cc7853d9b627', 'longname',  'longname@google.com', 'api',       500),
+    ('53c41979-a116-4bb7-8281-57fadfd89a13', 'inactive',  'inactive@google.com', 'api',       2500);
 
 
 UPDATE users SET password_hash = '$argon2id$v=19$m=65536,t=3,p=4$qXUelaeIrpiI270hrsHowQ$G5DMjlQlJYB354uQujZoptA6LKecJ9UBdznlm/1ZOiY'
