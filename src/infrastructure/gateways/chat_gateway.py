@@ -29,7 +29,7 @@ class ChatGateway(IChatGateway):
 		)
 
 		self._session.add(chat_model)
-		await self._session.commit()
+		await self._session.flush()
 		await self._session.refresh(chat_model)
 
 		self.logger.info(f"Successfully created chat with ID: {chat_model.id}")
@@ -97,7 +97,6 @@ class ChatGateway(IChatGateway):
 		if result.rowcount == 0:
 			raise ValueError(f"Chat with ID {chat_uuid} not found")
 
-		await self._session.commit()
 		self.logger.info(f"Successfully deleted chat: {chat_uuid}")
 
 		return chat_uuid
@@ -112,7 +111,6 @@ class ChatGateway(IChatGateway):
 		if result.rowcount == 0:
 			raise ValueError(f"Chat with ID {target_chat_uuid} not found")
 
-		await self._session.commit()
 		self.logger.info(f"Successfully updated chat: {target_chat_uuid}")
 
 		return target_chat_uuid
@@ -132,7 +130,6 @@ class ChatGateway(IChatGateway):
 		if result.rowcount == 0:
 			raise ValueError(f"Chat with ID {chat_uuid} not found")
 
-		await self._session.commit()
 		self.logger.info(f"Successfully set persona on chat: {chat_uuid}")
 
 		return chat_uuid

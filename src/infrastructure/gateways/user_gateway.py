@@ -77,7 +77,7 @@ class UserGateway(IUserGateway):
 		)
 
 		self._session.add(user_model)
-		await self._session.commit()
+		await self._session.flush()
 		await self._session.refresh(user_model)
 
 		created_user = self._to_domain_user(user_model)
@@ -95,7 +95,6 @@ class UserGateway(IUserGateway):
 		if result.rowcount == 0:
 			raise ValueError(f"User with ID {user_id} not found")
 
-		await self._session.commit()
 		self.logger.info(f"Successfully deleted user: {user_id}")
 
 	async def get_user_by_id(self, user_id: UUID) -> Optional[User]:

@@ -56,7 +56,7 @@ class TestChatGateway:
 			model.id = expected_id
 
 		mock_session.add = Mock(side_effect=mock_add)
-		mock_session.commit = AsyncMock()
+		mock_session.flush = AsyncMock()
 		mock_session.refresh = AsyncMock()
 
 		# Act
@@ -65,7 +65,7 @@ class TestChatGateway:
 		# Assert
 		assert result == expected_id
 		mock_session.add.assert_called_once()
-		mock_session.commit.assert_called_once()
+		mock_session.flush.assert_called_once()
 		mock_session.refresh.assert_called_once()
 
 	@pytest.mark.unit
@@ -189,7 +189,8 @@ class TestChatGateway:
 		# Assert
 		assert result == chat_id
 		mock_session.execute.assert_called_once()
-		mock_session.commit.assert_called_once()
+		# The gateway must not commit; the UOW owns the transaction boundary.
+		mock_session.commit.assert_not_called()
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -221,7 +222,8 @@ class TestChatGateway:
 		# Assert
 		assert result == chat_id
 		mock_session.execute.assert_called_once()
-		mock_session.commit.assert_called_once()
+		# The gateway must not commit; the UOW owns the transaction boundary.
+		mock_session.commit.assert_not_called()
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -255,7 +257,8 @@ class TestChatGateway:
 		# Assert
 		assert result == chat_id
 		mock_session.execute.assert_called_once()
-		mock_session.commit.assert_called_once()
+		# The gateway must not commit; the UOW owns the transaction boundary.
+		mock_session.commit.assert_not_called()
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio

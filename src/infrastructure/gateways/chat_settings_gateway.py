@@ -42,7 +42,6 @@ class ChatSettingsGateway(IChatSettingsGateway):
 			set_={"settings": stmt.excluded.settings, "updated_at": func.now()},
 		)
 		await self._session.execute(stmt)
-		await self._session.commit()
 
 		self.logger.info(f"Successfully stored settings for chat: {chat_id}")
 		return settings

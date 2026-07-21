@@ -192,7 +192,7 @@ class TestUserGateway:
 		# Assert
 		assert isinstance(result, User)
 		mock_session.add.assert_called_once()
-		mock_session.commit.assert_called_once()
+		mock_session.flush.assert_called_once()
 		mock_session.refresh.assert_called_once()
 
 	@pytest.mark.asyncio
@@ -208,7 +208,7 @@ class TestUserGateway:
 		# Assert
 		assert isinstance(result, User)
 		mock_session.add.assert_called_once()
-		mock_session.commit.assert_called_once()
+		mock_session.flush.assert_called_once()
 
 	@pytest.mark.asyncio
 	async def test_delete_user_success(self, user_gateway, mock_session):
@@ -224,7 +224,8 @@ class TestUserGateway:
 
 		# Assert
 		mock_session.execute.assert_called_once()
-		mock_session.commit.assert_called_once()
+		# The gateway must not commit; the UOW owns the transaction boundary.
+		mock_session.commit.assert_not_called()
 
 	@pytest.mark.asyncio
 	async def test_delete_user_not_found(self, user_gateway, mock_session):

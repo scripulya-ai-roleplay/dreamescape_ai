@@ -42,12 +42,14 @@ class MessageService(IMessageService):
 	async def update(self, message_uuid: UUID, updated_text: str, actor_id: UUID) -> UUID:
 		self.logger.info(f"Updating message: {message_uuid}")
 		await self._require_owned(message_uuid, actor_id)
-		return await self.message_gateway.update(message_uuid, updated_text)
+		async with self._uow:
+			return await self.message_gateway.update(message_uuid, updated_text)
 
 	async def delete(self, message_uuid: UUID, actor_id: UUID) -> UUID:
 		self.logger.info(f"Deleting message: {message_uuid}")
 		await self._require_owned(message_uuid, actor_id)
-		return await self.message_gateway.delete(message_uuid)
+		async with self._uow:
+			return await self.message_gateway.delete(message_uuid)
 
 	async def append_model_message(self, result: LLMResult) -> Message:
 		if result.error is not None:

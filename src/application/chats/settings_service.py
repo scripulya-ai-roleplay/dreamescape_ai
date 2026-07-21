@@ -4,12 +4,13 @@ from uuid import UUID
 
 from src.infrastructure.logging.logger import Logger
 from src.application.chats.settings import ChatSettings
-from src.application.ports import IChatSettingsGateway, IChatSettingsService
+from src.application.ports import IChatSettingsGateway, IChatSettingsService, IUnitOfWork
 
 
 @dataclass
 class ChatSettingsService(IChatSettingsService):
 	chat_settings_gateway: IChatSettingsGateway
+	uow: IUnitOfWork
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def get_for_chat(self, chat_uuid: UUID) -> ChatSettings | None:
@@ -20,6 +21,7 @@ class ChatSettingsService(IChatSettingsService):
 
 	async def upsert(self, chat_uuid: UUID, settings: ChatSettings) -> ChatSettings:
 		self.logger.info(f"Upserting chat settings: {chat_uuid}")
-		result = await self.chat_settings_gateway.upsert(chat_uuid, settings)
+		async with self.uow:
+			result = await self.chat_settings_gateway.upsert(chat_uuid, settings)
 		self.logger.info(f"Successfully upserted chat settings: {chat_uuid}")
 		return result

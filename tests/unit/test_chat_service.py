@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from src.application.authz import AuthorizationService
 from src.application.chats.service import ChatService
 from src.application.chats.schemas import ChatFilterDTO
-from src.application.ports import IChatGateway, Page
+from src.application.ports import IChatGateway, IUnitOfWork, Page
 from src.domain.models import Chat
 
 
@@ -21,8 +21,15 @@ class TestChatService:
 		return AsyncMock(spec=IChatGateway)
 
 	@pytest.fixture
-	def chat_service(self, mock_chat_gateway, authz):
-		return ChatService(chat_gateway=mock_chat_gateway, authz=authz)
+	def mock_uow(self):
+		uow = AsyncMock(spec=IUnitOfWork)
+		uow.__aenter__ = AsyncMock()
+		uow.__aexit__ = AsyncMock(return_value=False)
+		return uow
+
+	@pytest.fixture
+	def chat_service(self, mock_chat_gateway, mock_uow, authz):
+		return ChatService(chat_gateway=mock_chat_gateway, uow=mock_uow, authz=authz)
 
 	@pytest.fixture
 	def sample_chat(self):
