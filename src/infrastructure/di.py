@@ -1,10 +1,12 @@
 import logging
 from typing import AsyncGenerator
 
+import redis.asyncio
 from dishka import AsyncContainer, Provider, Scope, make_async_container, provide
 
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, create_async_engine, async_sessionmaker
 
+from src.application.llm_watchdog import GenerationWatchdog
 from src.conf import settings
 from src.controllers.rabbit.v1.broker import broker
 from src.infrastructure.database.postgresqluow import PostgresqlUOW
@@ -37,6 +39,7 @@ from src.application.ports import (
 	IMediaService,
 	IImageReader,
 	IScripulyaAgentClient,
+	IGenerationHeartbeat,
 	IAuthorizationService,
 	IVisibilityGateway,
 	LLMModelType,
@@ -51,6 +54,7 @@ from src.infrastructure.gateways.chat_settings_gateway import ChatSettingsGatewa
 from src.infrastructure.gateways.message_gateway import MessageGateway
 from src.infrastructure.gateways.chat_event_gateway import ChatEventGateway
 from src.infrastructure.gateways.object_storage_gateway import MinioObjectStorageGateway
+from src.infrastructure.gateways.redis_heartbeat import RedisGenerationHeartbeat
 from src.infrastructure.gateways.image_reader import ImageReader
 from src.infrastructure.gateways.media_gateway import MediaGateway
 from src.infrastructure.gateways.visibility import VisibilityGateway
@@ -76,13 +80,31 @@ class GatewayProvider(Provider):
 		return logging.getLogger(Logger.LOGGER_NAME)
 
 	@provide(scope=Scope.APP)
-	def provide_scripulya_agent_client(self, logger: logging.Logger) -> IScripulyaAgentClient:
+	async def provide_redis_client(self) -> AsyncGenerator[redis.asyncio.Redis, None]:
+		# Yielded so dishka closes the connection pool on container shutdown.
+		client = redis.asyncio.from_url(settings.REDIS_URL, decode_responses=True)
+		try:
+			yield client
+		finally:
+			await client.aclose()
+
+	@provide(scope=Scope.APP)
+	def provide_generation_heartbeat(
+		self, redis_client: redis.asyncio.Redis, logger: logging.Logger
+	) -> IGenerationHeartbeat:
+		return RedisGenerationHeartbeat(_redis=redis_client, logger=logger)
+
+	@provide(scope=Scope.APP)
+	def provide_scripulya_agent_client(
+		self, logger: logging.Logger, heartbeat: IGenerationHeartbeat
+	) -> IScripulyaAgentClient:
 		if settings.LLM_AGENT_ENABLED:
 			return ScripulyaAgentClient(
 				broker=broker,
 				request_queue=settings.LLM_AGENT_REQUEST_QUEUE,
 				timeout=settings.LLM_AGENT_TIMEOUT,
 				logger=logger,
+				heartbeat=heartbeat,
 			)
 		return MockScripulyaAgentClient(logger=logger)
 
@@ -235,6 +257,16 @@ class ServiceProvider(Provider):
 		self, events: IChatEventGateway, container: AsyncContainer
 	) -> IServerEventsService:
 		return ServerEventsService(_events=events, _container=container)
+
+	@provide(scope=Scope.APP)
+	def provide_generation_watchdog(
+		self,
+		heartbeat: IGenerationHeartbeat,
+		events: IChatEventGateway,
+		container: AsyncContainer,
+		logger: logging.Logger,
+	) -> GenerationWatchdog:
+		return GenerationWatchdog(_heartbeat=heartbeat, _events=events, _container=container, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_chat_service(

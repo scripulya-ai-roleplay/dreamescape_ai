@@ -88,7 +88,11 @@ class TestServerEventsServiceStreaming:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_published_failed_message_is_error_event(self):
+	async def test_published_failed_message_is_message_event(self):
+		# A failed generation is delivered on the standard "message" channel, with
+		# status=failed carried in the payload. It must NOT use the SSE "error" event
+		# name: that collides with EventSource's reserved connection-error event, so
+		# clients listening for "message" silently dropped it and waited forever.
 		chat_id = uuid4()
 		gateway = ChatEventGateway()
 		service = ServerEventsService(_events=gateway, _container=MagicMock())
@@ -100,8 +104,9 @@ class TestServerEventsServiceStreaming:
 		frame = await _next_frame(iterator)
 		await task
 
-		assert frame.startswith("event: error\n")
+		assert frame.startswith("event: message\n")
 		assert "boom" in frame
+		assert '"status": "failed"' in frame
 
 		await iterator.aclose()
 

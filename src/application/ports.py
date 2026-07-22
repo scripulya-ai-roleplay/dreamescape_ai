@@ -449,6 +449,14 @@ class IChatEventGateway(abc.ABC):
 	def publish_message(self, chat_id: UUID, message: Message) -> None: ...
 
 
+class IGenerationHeartbeat(abc.ABC):
+	@abc.abstractmethod
+	async def register_inflight(self, request_id: str, chat_id: UUID) -> None: ...
+
+	@abc.abstractmethod
+	async def sweep_dead(self) -> list[tuple[str, UUID]]: ...
+
+
 class IServerEventsService(abc.ABC):
 	@abc.abstractmethod
 	async def open_stream(self, chat_id: UUID, user_id: UUID) -> StreamingResponse: ...
@@ -472,6 +480,9 @@ class IMessageService(abc.ABC):
 
 	@abc.abstractmethod
 	async def append_model_message(self, result: LLMResult) -> Message: ...
+
+	@abc.abstractmethod
+	async def record_failed_generation(self, chat_id: UUID, reason: str) -> Message: ...
 
 	@abc.abstractmethod
 	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]: ...

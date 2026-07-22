@@ -340,6 +340,25 @@ class TestMessageService:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
+	async def test_record_failed_generation_persists_failed_row(self, message_service, mock_message_gateway):
+		# Out-of-band FAILED turn (no LLMResult) — used by the heartbeat watchdog.
+		chat_id = uuid4()
+		persisted = Message(
+			id=uuid4(), message="timed out", chat_id=chat_id, role=ChatRoles.MODEL, status=MessageStatus.FAILED
+		)
+		mock_message_gateway.create.return_value = persisted
+
+		got = await message_service.record_failed_generation(chat_id, "timed out")
+
+		assert got is persisted
+		sent = mock_message_gateway.create.await_args.args[0]
+		assert sent.chat_id == chat_id
+		assert sent.role == ChatRoles.MODEL
+		assert sent.status == MessageStatus.FAILED
+		assert sent.message == "timed out"
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
 	async def test_latest_model_message_delegates(self, message_service, mock_message_gateway):
 		chat_id = uuid4()
 		await message_service.latest_model_message(chat_id)

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, Mock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from src.application.ports import (
 	LLMModelType,
@@ -77,11 +77,25 @@ class TestScripulyaAgentClient:
 		return broker
 
 	@pytest.fixture
-	def client(self, fake_broker):
-		return ScripulyaAgentClient(broker=fake_broker, request_queue="llm.agent.request", timeout=5.0, logger=Mock())
+	def heartbeat(self):
+		return AsyncMock()
+
+	@pytest.fixture
+	def client(self, fake_broker, heartbeat):
+		return ScripulyaAgentClient(
+			broker=fake_broker,
+			request_queue="llm.agent.request",
+			timeout=5.0,
+			logger=Mock(),
+			heartbeat=heartbeat,
+		)
 
 	@pytest.mark.asyncio
-	async def test_publish_correlates_by_chat_id(self, client, fake_broker):
+	async def test_publish_correlates_by_request_id_and_registers_heartbeat(
+		self, client, fake_broker, heartbeat, monkeypatch
+	):
+		fixed_rid = UUID("11111111-2222-3333-4444-555555555555")
+		monkeypatch.setattr("src.infrastructure.gateways.scripulya_agent_gateway.uuid4", lambda: fixed_rid)
 		msg = _user_message()
 		req = LLMRequest(message=msg, history=[])
 
@@ -92,14 +106,17 @@ class TestScripulyaAgentClient:
 		payload, queue = args
 		assert queue == "llm.agent.request"
 		assert payload == req.model_dump(mode="json")
-		assert kwargs["correlation_id"] == str(msg.chat_id)
+		assert kwargs["correlation_id"] == str(fixed_rid)  # per-call request_id, not chat_id
+		assert kwargs["correlation_id"] != str(msg.chat_id)
 		assert kwargs["timeout"] == 5.0
+		heartbeat.register_inflight.assert_awaited_once_with(str(fixed_rid), msg.chat_id)
 
 	@pytest.mark.asyncio
-	async def test_publish_wraps_failure_in_gateway_exception(self, client, fake_broker):
+	async def test_publish_wraps_failure_and_skips_heartbeat(self, client, fake_broker, heartbeat):
 		fake_broker.publish.side_effect = RuntimeError("broker down")
 
 		with pytest.raises(LLMGatewayException) as exc_info:
 			await client.publish(LLMRequest(message=_user_message(), history=[]))
 
 		assert "failed to publish" in exc_info.value.message
+		heartbeat.register_inflight.assert_not_awaited()

@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Seed anime-style scene background images into MinIO on dev setup.
+"""Seed anime-style scene backgrounds and character portraits into MinIO on dev setup.
 
 Runs as the ``minio-init`` sidecar (``scripulya_deploy/docker-compose.yml``). For every
-scene that has a ``media_assets`` row (``entity_type='scene'``), it generates an anime
-background from the scene's ``background_prompt`` via Google Imagen and uploads it to the
-public MinIO bucket at the row's ``object_key``.
+``media_assets`` row that carries an ``object_key`` it generates an anime image via Google
+Imagen and uploads it to the public MinIO bucket: wide 16:9 landscapes for scenes
+(``entity_type='scene'``, prompt from ``background_prompt``) and 1:1 head-and-shoulders
+portraits for characters (``entity_type='character'``, prompt from ``system_prompt``).
 
 ``init.sql`` is the single source of truth: the prompt comes from ``scenes.background_prompt``
-and the target path from ``media_assets.object_key`` — this script never duplicates either,
-so adding/changing a scene image is a one-file edit in ``init.sql``.
+or ``characters.system_prompt`` and the target path from ``media_assets.object_key`` — this
+script never duplicates either, so adding/changing a seeded image is a one-file edit in
+``init.sql``.
 
 Idempotent: objects already present are skipped unless ``FORCE_REGENERATE_MEDIA=1``, so it
 only spends API quota when the MinIO volume is fresh (``make reseed``) or when forced.
@@ -21,7 +23,7 @@ the PNGs without spending any quota. ``FORCE_REGENERATE_MEDIA=1`` bypasses the c
 (but still writes through) so ``make regen-media`` stays a true regeneration.
 
 Best-effort: a missing API key logs a warning and exits 0 (the app still runs, just without
-seeded art); a per-scene failure is logged and skipped. Only infrastructure errors (DB or
+seeded art); a per-image failure is logged and skipped. Only infrastructure errors (DB or
 MinIO unreachable) exit non-zero.
 """
 
@@ -76,6 +78,21 @@ class Settings:
 	backup_dir: str | None  # host dir of pre-generated PNGs; None disables the offline cache
 
 
+@dataclass
+class MediaTarget:
+	"""One image to generate and upload.
+
+	prompt and object_key both come from the DB (init.sql is the source of truth);
+	aspect_ratio is fixed per entity kind (16:9 scene landscapes, 1:1 character portraits).
+	"""
+
+	id: str  # media_assets.id — backfilled into size_bytes after upload
+	object_key: str
+	label: str  # human-readable, for logs ("scene/x.png (Title)")
+	prompt: str
+	aspect_ratio: str
+
+
 def _truthy(value: str | None) -> bool:
 	return str(value or "").lower() in ("1", "true", "yes", "on")
 
@@ -116,7 +133,7 @@ def _psycopg_dsn(database_url: str) -> str:
 	return database_url
 
 
-def fetch_scene_targets(settings: Settings) -> list[dict]:
+def fetch_scene_targets(settings: Settings) -> list[MediaTarget]:
 	"""One row per scene that should get a background image.
 
 	prompt and object_key both come from the DB (init.sql is the source of truth).
@@ -131,8 +148,43 @@ def fetch_scene_targets(settings: Settings) -> list[dict]:
 	"""
 	with psycopg2.connect(_psycopg_dsn(settings.database_url)) as conn, conn.cursor() as cur:
 		cur.execute(query)
-		cols = [c[0] for c in cur.description]
-		return [dict(zip(cols, row)) for row in cur.fetchall()]
+		return [
+			MediaTarget(
+				id=row[3],
+				object_key=row[2],
+				label=f"{row[2]} ({row[0]})",
+				prompt=build_scene_prompt(row[0], row[1] or ""),
+				aspect_ratio="16:9",
+			)
+			for row in cur.fetchall()
+		]
+
+
+def fetch_character_targets(settings: Settings) -> list[MediaTarget]:
+	"""One MediaTarget per character that should get a portrait (1:1).
+
+	prompt is built from the character's name + system_prompt; object_key from init.sql.
+	"""
+	query = """
+		SELECT c.name, c.system_prompt, m.object_key, m.id::text
+		FROM characters c
+		JOIN media_assets m
+		  ON m.entity_id = c.id AND m.entity_type = 'character'
+		WHERE m.object_key IS NOT NULL
+		ORDER BY c.name
+	"""
+	with psycopg2.connect(_psycopg_dsn(settings.database_url)) as conn, conn.cursor() as cur:
+		cur.execute(query)
+		return [
+			MediaTarget(
+				id=row[3],
+				object_key=row[2],
+				label=f"{row[2]} ({row[0]})",
+				prompt=build_character_prompt(row[0], row[1] or ""),
+				aspect_ratio="1:1",
+			)
+			for row in cur.fetchall()
+		]
 
 
 def ensure_public_bucket(client: Minio, bucket: str) -> None:
@@ -198,7 +250,7 @@ def _write_cache(backup_dir: str | None, object_key: str, data: bytes) -> None:
 			pass
 
 
-def build_prompt(title: str, background_prompt: str) -> str:
+def build_scene_prompt(title: str, background_prompt: str) -> str:
 	return (
 		"Anime-style background illustration, atmospheric, cinematic lighting, "
 		"wide landscape, highly detailed, no people, no characters, no faces, "
@@ -206,18 +258,27 @@ def build_prompt(title: str, background_prompt: str) -> str:
 	)
 
 
-def generate_image(gen_client: genai.Client, model: str, title: str, background_prompt: str) -> bytes:
-	prompt = build_prompt(title, background_prompt)
+def build_character_prompt(name: str, system_prompt: str) -> str:
+	# system_prompt describes personality rather than appearance, so we frame it as a
+	# portrait of "a character who is …" and let the model imagine a fitting look.
+	return (
+		"Anime-style character portrait, head and shoulders, centered, expressive face, "
+		"highly detailed, soft simple background, no text, no watermark, no logos. "
+		f"Character: {name}. {system_prompt}"
+	)
+
+
+def generate_image(gen_client: genai.Client, model: str, target: MediaTarget) -> bytes:
 	resp = gen_client.models.generate_images(
 		model=model,
-		prompt=prompt,
+		prompt=target.prompt,
 		config=gtypes.GenerateImagesConfig(
 			number_of_images=1,
-			aspect_ratio="16:9",
+			aspect_ratio=target.aspect_ratio,
 			output_mime_type="image/png",
 			# NOTE: negative_prompt is unsupported on the Gemini Developer API (API-key)
 			# path — Enterprise-only — so the "no people/text" guidance lives in the
-			# positive prompt above instead.
+			# positive prompt instead.
 		),
 	)
 	if not resp.generated_images:
@@ -259,14 +320,14 @@ def main() -> int:
 	)
 	ensure_public_bucket(minio_client, settings.bucket_public)
 	gen_client = genai.Client(api_key=settings.image_api_key) if settings.image_api_key else None
-	targets = fetch_scene_targets(settings)
+	targets = fetch_scene_targets(settings) + fetch_character_targets(settings)
 
 	if not targets:
-		log.warning("No scene media_assets rows with an object_key found — nothing to seed.")
+		log.warning("No media_assets rows with an object_key found — nothing to seed.")
 		return 0
 
 	log.info(
-		"Seeding %d scene image(s) into bucket '%s' (model=%s, force=%s).",
+		"Seeding %d image(s) into bucket '%s' (model=%s, force=%s).",
 		len(targets),
 		settings.bucket_public,
 		settings.image_api_model,
@@ -274,9 +335,9 @@ def main() -> int:
 	)
 
 	uploaded = skipped = failed = restored = generated = 0
-	for row in targets:
-		object_key = row["object_key"]
-		label = f"{object_key} ({row['title']})"
+	for target in targets:
+		object_key = target.object_key
+		label = target.label
 		try:
 			if not settings.force and object_exists(minio_client, settings.bucket_public, object_key):
 				log.info("skip (exists): %s", label)
@@ -294,14 +355,14 @@ def main() -> int:
 				skipped += 1
 				continue
 			else:
-				data = generate_image(gen_client, settings.image_api_model, row["title"], row["background_prompt"])
+				data = generate_image(gen_client, settings.image_api_model, target)
 				_write_cache(settings.backup_dir, object_key, data)
 				log.info("generated + cached: %s", label)
 
 			minio_client.put_object(
 				settings.bucket_public, object_key, io.BytesIO(data), length=len(data), content_type="image/png"
 			)
-			update_size_bytes(settings, row["id"], len(data))
+			update_size_bytes(settings, target.id, len(data))
 			log.info("uploaded: %s (%d bytes)", label, len(data))
 			uploaded += 1
 			# Counted post-upload: a failed put_object must not inflate restored and

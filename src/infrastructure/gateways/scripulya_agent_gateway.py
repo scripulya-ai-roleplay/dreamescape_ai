@@ -1,10 +1,12 @@
 from dataclasses import dataclass
 from logging import Logger
+from uuid import uuid4
 
 from faststream.rabbit import RabbitBroker
 
 from src.application.chats.settings import ChatSettings
 from src.application.ports import (
+	IGenerationHeartbeat,
 	ILLMChatGateway,
 	IScripulyaAgentClient,
 	LLMRequest,
@@ -16,30 +18,24 @@ from src.infrastructure.exceptions import LLMGatewayException
 
 @dataclass
 class ScripulyaAgentClient(IScripulyaAgentClient):
-	"""Fire-and-forget RabbitMQ publisher for the scripulya_agent worker.
-
-	Publishes LLMRequests to the request queue (correlated by chat_id) and returns
-	immediately. The reply arrives later on the llm.agent.result queue and is handled
-	by the result subscriber (controllers/rabbit/v1/llm.py), which persists it and
-	notifies the chat SSE listeners. There is no in-process awaiting here — the HTTP
-	request returns 202 as soon as the request is queued.
-
-	Safe to share as an APP-scoped singleton.
-	"""
+	"""Correlated by a per-call request_id (the RabbitMQ correlation_id), not chat_id:
+	the agent reuses it as its heartbeat key and the backend watchdog keys liveness off
+	it per-generation."""
 
 	broker: RabbitBroker
 	request_queue: str
 	timeout: float
 	logger: Logger
+	heartbeat: IGenerationHeartbeat
 
 	async def publish(self, req: LLMRequest) -> None:
-		"""Publish a request to scripulya_agent, correlated by chat_id."""
 		chat_id = req.message.chat_id
+		request_id = uuid4()
 		try:
 			await self.broker.publish(
 				req.model_dump(mode="json"),
 				self.request_queue,
-				correlation_id=str(chat_id),
+				correlation_id=str(request_id),
 				timeout=self.timeout,
 			)
 		except Exception as exc:  # broker down / publish confirm timeout
@@ -48,6 +44,9 @@ class ScripulyaAgentClient(IScripulyaAgentClient):
 				message=f"failed to publish request to scripulya_agent: {exc}",
 				details={"chat_id": str(chat_id)},
 			)
+		# Register only after publish succeeds — a failed publish is already surfaced by
+		# send_message, and a leftover entry here would be FAILed again by the watchdog.
+		await self.heartbeat.register_inflight(str(request_id), chat_id)
 
 
 @dataclass

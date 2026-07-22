@@ -13,7 +13,7 @@ from src.application.ports import (
 	IMessageService,
 	IServerEventsService,
 )
-from src.domain.models import Message, MessageStatus
+from src.domain.models import Message
 
 _KEEPALIVE_SECONDS = 15.0
 
@@ -31,10 +31,13 @@ class ServerEventsService(IServerEventsService):
 	_container: AsyncContainer
 
 	def _sse_frame(self, payload: Dict[str, Any]) -> str:
-		message = payload.get("message") or {}
-		name = "error" if message.get("status") == MessageStatus.FAILED.value else "message"
+		# Always emit on the standard "message" channel. A failed generation still
+		# arrives as a chat message (status=failed is in the payload), so the client
+		# can render it. Using the SSE event name "error" collided with EventSource's
+		# reserved connection-error event: clients listening for "message" silently
+		# dropped failed replies and the UI waited forever on provider errors.
 		data = json.dumps(payload, ensure_ascii=False, default=str)
-		return f"event: {name}\ndata: {data}\n\n"
+		return f"event: message\ndata: {data}\n\n"
 
 	async def open_stream(self, chat_id: UUID, user_id: UUID) -> StreamingResponse:
 
