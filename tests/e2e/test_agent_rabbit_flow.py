@@ -18,7 +18,7 @@ import pytest
 from dishka.integrations.faststream import setup_dishka
 from faststream.rabbit import TestRabbitBroker
 
-from src.application.ports import IScripulyaAgentClient, LLMModelType, LLMRequest, UserMessageDTO
+from src.application.ports import LLMModelType, LLMRequest, UserMessageDTO
 from src.conf import settings
 from src.controllers.rabbit.v1 import llm as rabbit_llm  # noqa: F401  registers the result subscriber
 from src.controllers.rabbit.v1.broker import broker
@@ -46,7 +46,15 @@ async def test_submit_publishes_to_request_queue_via_broker():
 	broker.subscriber(settings.LLM_AGENT_REQUEST_QUEUE)(fake_agent)
 
 	try:
-		client = await container.get(IScripulyaAgentClient)
+		# Construct the client with a mock heartbeat so this test exercises only the
+		# publish wiring (the real client's heartbeat hits Redis — covered elsewhere).
+		client = ScripulyaAgentClient(
+			broker=broker,
+			request_queue=settings.LLM_AGENT_REQUEST_QUEUE,
+			timeout=settings.LLM_AGENT_TIMEOUT,
+			logger=logging.getLogger("test"),
+			heartbeat=AsyncMock(),
+		)
 		gateway = ScripulyaAgentGateway(logger=logging.getLogger("test"), _client=client)
 		msg = UserMessageDTO(
 			chat_id=uuid4(), message="hi", llm_model=LLMModelType.gemini_flash_preview, role=ChatRoles.USER
@@ -78,6 +86,7 @@ async def test_publish_failure_wraps_as_llm_gateway_exception():
 		request_queue=settings.LLM_AGENT_REQUEST_QUEUE,
 		timeout=settings.LLM_AGENT_TIMEOUT,
 		logger=logging.getLogger("test"),
+		heartbeat=AsyncMock(),
 	)
 	req = LLMRequest(
 		message=UserMessageDTO(

@@ -73,5 +73,17 @@ class MessageService(IMessageService):
 				)
 			)
 
+	async def record_failed_generation(self, chat_id: UUID, reason: str) -> Message:
+		self.logger.info("Recording failed generation for chat: %s", chat_id)
+		async with self._uow:
+			return await self.message_gateway.create(
+				Message(
+					message=reason,
+					chat_id=chat_id,
+					role=ChatRoles.MODEL,
+					status=MessageStatus.FAILED,
+				)
+			)
+
 	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]:
 		return await self.message_gateway.latest_model_message(chat_id)

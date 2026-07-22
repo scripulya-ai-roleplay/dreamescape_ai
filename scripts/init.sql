@@ -269,22 +269,13 @@ INSERT INTO messages (id, chat_id, role, content, cost_crystals, created_at) VAL
 UPDATE messages SET updated_at = created_at;
 
 INSERT INTO media_assets (id, file_url, entity_type, entity_id) VALUES
-    ('fc8a47d7-010a-48f1-8be4-a711760c547f', 'https://example.com/avatar1.png', 'character', '43341001-4ea1-4f03-b315-811d3264b6a3'),
-    ('c9709cfb-f8bc-4744-99bf-f4273b01f0dc', 'https://example.com/avatar2.png', 'character', '1a0fca84-996c-43b5-976a-0c676c61dde5'),
     ('8961b230-0504-4540-bb4c-540551cf2bdf', 'https://example.com/user_profile1.jpg', 'user', '5dbdc924-968a-4c50-94a8-44cdd165e460'),
     ('4fdf4deb-1e61-4e22-8c29-77514fab0f83', 'https://example.com/user_profile2.jpg', 'user', 'f5ac5447-d562-4d7b-91fb-dc4d5bcc4395'),
-    ('886e8915-2492-4faa-8c57-9fa3ec5dd37b', 'https://cdn.amazonaws.com/storage/characters/sophisticated-character-avatar-high-resolution.png', 'character', '117737b7-e183-4aac-9a09-47a45c3d6f58'),
-    ('fa0c662f-a84c-4862-ad38-643816925d1a', 'https://example.com/simple.gif', 'character', '8ed61d7f-27db-4bef-a583-98a0d703ea66'),
-    ('5dcbfb55-ceab-4ddc-889c-ab646576ebcd', 'https://gaming-assets.s3.amazonaws.com/avatars/gaming_companion_animated.webp', 'character', '8abecb4a-8d05-4d24-8fab-31ea776640f2'),
-    ('a2c3f558-2939-4502-9fc5-2a4551599e87', 'https://meditation-images.cloudfront.net/peaceful-guide-portrait.svg', 'character', '84d54c1c-6837-44bf-ad31-26c78729a42c'),
-    ('4a077616-4dc5-4b70-8145-fc7fce723813', 'https://travel-media.example.org/advisor-profile-hd.jpeg', 'character', '9a6cf9ec-11d7-471b-8678-c8651b8f331f'),
     ('26e7e583-63eb-4069-b6c3-f9c93e3b9708', 'https://user-profiles.example.com/premium-user-badge.ico', 'user', 'e5fd1874-a299-4c22-b6b5-af4e00b796a7'),
     ('449b8ea2-f9d6-4c88-a70b-63d832f2436a', 'https://example.com/default-avatar.svg', 'user', 'c23dc540-a0ba-4d83-ac7b-d0f8eab9d463'),
     ('bcfb901c-84c9-4236-8c9f-d7d6fee7805e', 'https://profile-images.example.net/new-user-welcome-banner.webp', 'user', 'f3ba11a5-4026-4c16-9aed-061f0d490ade'),
     ('8212d164-1600-4aea-936e-16ce861eb58b', 'https://very-long-domain-name-for-testing-purposes.example.organization/extremely/long/path/structure/for/testing/url/length/limits/user-profile-image-with-very-descriptive-filename.jpg', 'user', '7edb0c2c-8dcd-402a-a979-cc7853d9b627'),
-    ('34e2a21b-d1cd-4cb9-9f30-f1cee4703868', 'https://inactive-user-assets.example.com/placeholder.png', 'user', '53c41979-a116-4bb7-8281-57fadfd89a13'),
-    ('a11ee000-0000-4000-8000-000000000001', 'https://example.com/alizee-avatar.png', 'character', '83855bba-0735-4f4c-93c2-00c253b5d43c'),
-    ('01e00000-0000-4000-8000-000000000002', 'https://example.com/olegus-avatar.jpg', 'character', '1590de4d-c0e1-4ca1-aa98-a15312aadf41');
+    ('34e2a21b-d1cd-4cb9-9f30-f1cee4703868', 'https://inactive-user-assets.example.com/placeholder.png', 'user', '53c41979-a116-4bb7-8281-57fadfd89a13');
 
 INSERT INTO media_assets (id, object_key, bucket, content_type, entity_type, entity_id, is_public) VALUES
     ('1c93f02d-e19a-4304-9eaa-bcf9edc6d24f', 'scene/e2e-test.png',         'scripulya-public', 'image/png', 'scene', '5c194d75-401f-4fa2-808c-7092153135b7', true), -- E2E Test Scene
@@ -298,6 +289,18 @@ INSERT INTO media_assets (id, object_key, bucket, content_type, entity_type, ent
     ('bca058ca-e53d-47a4-9145-501510142c29', 'scene/space-station.png',    'scripulya-public', 'image/png', 'scene', '5277db85-10c6-4f12-ab23-810f289ca6df', true), -- Space Station Alpha
     ('febfb826-a578-43ab-858d-0c8060699e77', 'scene/underground-lab.png',  'scripulya-public', 'image/png', 'scene', 'e1daa2c4-3c0b-4ac5-9937-c9540f80c85e', true); -- Underground Laboratory
 
+INSERT INTO media_assets (id, object_key, bucket, content_type, entity_type, entity_id, is_public) VALUES
+    ('fc8a47d7-010a-48f1-8be4-a711760c547f', 'character/helpful-assistant.png', 'scripulya-public', 'image/png', 'character', '43341001-4ea1-4f03-b315-811d3264b6a3', true), -- Helpful Assistant
+    ('c9709cfb-f8bc-4744-99bf-f4273b01f0dc', 'character/code-mentor.png', 'scripulya-public', 'image/png', 'character', '1a0fca84-996c-43b5-976a-0c676c61dde5', true), -- Code Mentor
+    ('0cee0000-0000-4000-8000-000000000003', 'character/creative-writer.png', 'scripulya-public', 'image/png', 'character', '08f6aff7-e5c6-4e96-b4f7-971e03cb81f8', true), -- Creative Writer
+    ('0dee0000-0000-4000-8000-000000000004', 'character/math-tutor.png', 'scripulya-public', 'image/png', 'character', '3a50caae-9f5d-4be3-882b-f17cdc10d0e3', true), -- Math Tutor
+    ('886e8915-2492-4faa-8c57-9fa3ec5dd37b', 'character/dr-sophisticated.png', 'scripulya-public', 'image/png', 'character', '117737b7-e183-4aac-9a09-47a45c3d6f58', true), -- Dr. Sophisticated
+    ('fa0c662f-a84c-4862-ad38-643816925d1a', 'character/simple-bot.png', 'scripulya-public', 'image/png', 'character', '8ed61d7f-27db-4bef-a583-98a0d703ea66', true), -- Simple Bot
+    ('5dcbfb55-ceab-4ddc-889c-ab646576ebcd', 'character/gaming-companion.png', 'scripulya-public', 'image/png', 'character', '8abecb4a-8d05-4d24-8fab-31ea776640f2', true), -- Gaming Companion
+    ('a2c3f558-2939-4502-9fc5-2a4551599e87', 'character/meditation-guide.png', 'scripulya-public', 'image/png', 'character', '84d54c1c-6837-44bf-ad31-26c78729a42c', true), -- Meditation Guide
+    ('4a077616-4dc5-4b70-8145-fc7fce723813', 'character/travel-advisor.png', 'scripulya-public', 'image/png', 'character', '9a6cf9ec-11d7-471b-8678-c8651b8f331f', true), -- Travel Advisor
+    ('a11ee000-0000-4000-8000-000000000001', 'character/alizee.png', 'scripulya-public', 'image/png', 'character', '83855bba-0735-4f4c-93c2-00c253b5d43c', true), -- Alizee
+    ('01e00000-0000-4000-8000-000000000002', 'character/olegus.png', 'scripulya-public', 'image/png', 'character', '1590de4d-c0e1-4ca1-aa98-a15312aadf41', true); -- Olegus
 UPDATE media_assets SET is_public = true WHERE object_key IS NULL;
 
 SELECT 'Database initialization completed successfully!' as status;

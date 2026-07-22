@@ -1,9 +1,11 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends
 from asgi_correlation_id import CorrelationIdMiddleware
 
+from src.application.llm_watchdog import GenerationWatchdog
 from src.conf import settings
 from src.controllers.api.v1.auth import router as auth_router
 from src.controllers.api.v1.auth_dependencies import set_token_to_request_state
@@ -41,9 +43,27 @@ async def lifespan(app: FastAPI):
 
 	await broker.start()
 	logger.info("RabbitMQ broker started; consuming %s", settings.LLM_AGENT_RESULT_QUEUE)
+
+	# Anti-hang watchdog: marks in-flight generations FAILED when the agent's Redis
+	# heartbeat expires, so a dead/stalled agent can't hang the client SSE forever.
+	watchdog_task: asyncio.Task[None] | None = None
+	try:
+		watchdog = await app.state.dishka_container.get(GenerationWatchdog)
+		watchdog_task = asyncio.create_task(watchdog.run_forever())
+		logger.info("Generation watchdog started (sweep every %ss)", settings.LLM_SWEEP_INTERVAL_SECONDS)
+	except Exception:
+		logger.warning("Could not start generation watchdog; anti-hang safety net inactive", exc_info=True)
+
 	try:
 		yield
 	finally:
+		if watchdog_task is not None:
+			watchdog_task.cancel()
+			try:
+				await watchdog_task
+			except asyncio.CancelledError:
+				pass
+			logger.info("Generation watchdog stopped")
 		await broker.close()
 		logger.info("RabbitMQ broker closed")
 
