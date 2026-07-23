@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.application.llm_watchdog import GenerationWatchdog
+from src.application.streaming.llm_watchdog import GenerationWatchdog
 from src.domain.models import ChatRoles, Message, MessageStatus
 
 

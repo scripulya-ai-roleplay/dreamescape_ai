@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.infrastructure.logging.logger import Logger
-from src.application.ports import ISceneGateway, IVisibilityGateway, Page
+from src.application.ports.scenes import ISceneGateway
+from src.application.ports.authorization import IVisibilityGateway
+from src.application.ports.common import Page
 from src.application.scene.schemas import SceneFilterDTO, SceneSortBy, SortOrder
 from src.domain.models import Scene
 from src.infrastructure.database.models import (

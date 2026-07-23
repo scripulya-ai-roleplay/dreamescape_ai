@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from fastapi import UploadFile
 
 from src.infrastructure.logging.logger import Logger
-from src.application.ports import IImageReader, UploadedImage
+from src.application.ports.media import IImageReader, UploadedImage
 from src.infrastructure.exceptions import ImageTooLargeException, UnsupportedImageTypeException
 
 # Image content types accepted on upload. The extension is derived from the

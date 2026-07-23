@@ -3,7 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import ColumnElement, or_
 
-from src.application.ports import IVisibilityGateway
+from src.application.ports.authorization import IVisibilityGateway
 
 
 @dataclass

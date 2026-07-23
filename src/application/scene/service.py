@@ -3,15 +3,9 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from src.infrastructure.logging.logger import Logger
-from src.application.ports import (
-	IAuthorizationService,
-	ISceneService,
-	IUnitOfWork,
-	ISceneGateway,
-	Page,
-	LikeState,
-	BookmarkState,
-)
+from src.application.ports.authorization import IAuthorizationService
+from src.application.ports.scenes import ISceneService, ISceneGateway
+from src.application.ports.common import IUnitOfWork, Page, LikeState, BookmarkState
 from src.application.scene.schemas import SceneFilterDTO
 from src.domain.models import Scene
 

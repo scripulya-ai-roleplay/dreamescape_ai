@@ -7,7 +7,8 @@ from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 
 from src.application.character.schemas import CharacterFilterDTO
-from src.application.ports import ApiResponse, Page, ICharacterService, LikeState, BookmarkState
+from src.application.ports.common import ApiResponse, Page, LikeState, BookmarkState
+from src.application.ports.characters import ICharacterService
 from src.domain.models import Character, User
 from src.controllers.api.v1.auth_dependencies import get_current_user, get_optional_user
 
@@ -24,15 +25,12 @@ async def create_character(
 	character: Character = Body(),
 	current_user: User = Depends(get_current_user),
 ) -> ApiResponse:
-	logger.info(f"Current user payload: {current_user}")
 	user_id = current_user.id
-	logger.info(f"Extracted user ID: {user_id}")
+	logger.debug("create_character user=%s role=%s", current_user.id, current_user.role)
 
 	if character.owner_id != user_id:
 		logger.warning(f"Owner ID mismatch: character.owner_id={character.owner_id}, user_id={user_id}")
 		raise HTTPException(status_code=403, detail="Character owner_id must match authenticated user")
-
-	logger.info(f"Character object validation passed with owner_id: {character.owner_id}")
 
 	await character_service.create_character(character)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())

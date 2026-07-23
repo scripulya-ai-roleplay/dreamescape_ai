@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from logging import Logger
 
 from src.application.chats.settings import ChatSettings
-from src.application.ports import ILLMChatGateway, LLMModelType, LLMResponse, UserMessageDTO
+from src.application.ports.llm import ILLMChatGateway, LLMModelType, LLMResponse, UserMessageDTO
 
 
 @dataclass

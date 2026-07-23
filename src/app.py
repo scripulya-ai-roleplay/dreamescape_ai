@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from asgi_correlation_id import CorrelationIdMiddleware
 
-from src.application.llm_watchdog import GenerationWatchdog
+from src.application.streaming.llm_watchdog import GenerationWatchdog
 from src.conf import settings
 from src.controllers.api.v1.auth import router as auth_router
 from src.controllers.api.v1.auth_dependencies import set_token_to_request_state
@@ -20,7 +20,7 @@ from src.controllers.api.v1.chat_settings import router as chat_settings_router
 from src.controllers.api.v1.scenes import router as scenes_router
 from src.controllers.api.v1.users import router as users_router
 from src.controllers.api.v1.media import router as media_router
-from src.application.ports import IObjectStorageGateway
+from src.application.ports.media import IObjectStorageGateway
 from src.infrastructure.web.global_exceptions_handler import register_exception_handlers
 from src.infrastructure.web.middlewares import TraceAndLogRequestsMiddleware
 

@@ -3,7 +3,7 @@ from dishka.integrations.fastapi import inject
 from fastapi import APIRouter
 
 from src.application.auth.schemas import LoginRequest, Token
-from src.application.ports import IAuthService, IJWTService
+from src.application.ports.auth import IAuthService, IJWTService
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 

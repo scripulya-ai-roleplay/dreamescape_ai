@@ -4,10 +4,11 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from src.application.authz import AuthorizationService
+from src.application.auth.authz import AuthorizationService
 from src.application.chats.service import ChatService
 from src.application.chats.schemas import ChatFilterDTO
-from src.application.ports import IChatGateway, IUnitOfWork, Page
+from src.application.ports.chats import IChatGateway
+from src.application.ports.common import IUnitOfWork, Page
 from src.domain.models import Chat
 
 

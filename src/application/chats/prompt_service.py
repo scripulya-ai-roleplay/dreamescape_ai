@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from src.application.ports import IPromptService
+from src.application.ports.llm import IPromptService
 from src.conf import settings
 from src.domain.models import Character, Scene
 

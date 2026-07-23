@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock
 
 from src.infrastructure.gateways.gateway_factory import GatewayFactory
-from src.application.ports import ILLMChatGateway, IGatewayFactory
+from src.application.ports.llm import ILLMChatGateway, IGatewayFactory
 
 
 @pytest.mark.unit

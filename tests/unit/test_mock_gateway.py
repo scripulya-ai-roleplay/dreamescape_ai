@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock
 from uuid import uuid4
 
-from src.application.ports import LLMModelType, UserMessageDTO
+from src.application.ports.llm import LLMModelType, UserMessageDTO
 from src.domain.models import ChatRoles
 from src.infrastructure.gateways.mock_gateway import MockGateway
 

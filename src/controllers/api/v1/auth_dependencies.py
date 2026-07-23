@@ -7,7 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette import status
 from starlette.requests import Request
 
-from src.application.ports import IJWTService
+from src.application.ports.auth import IJWTService
 from src.domain.models import User
 
 logger = logging.getLogger(__name__)

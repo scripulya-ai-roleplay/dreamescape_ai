@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.infrastructure.logging.logger import Logger
 from src.application.media.schemas import MediaFilterDTO
-from src.application.ports import IMediaGateway, IVisibilityGateway, Page
+from src.application.ports.media import IMediaGateway
+from src.application.ports.authorization import IVisibilityGateway
+from src.application.ports.common import Page
 from src.domain.models import MediaAsset, MediaEntityType
 from src.infrastructure.database.models import (
 	MediaAsset as MediaAssetModel,

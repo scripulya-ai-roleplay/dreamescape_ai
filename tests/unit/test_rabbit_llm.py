@@ -4,10 +4,11 @@ from uuid import uuid4
 
 import pytest
 
-from src.application.ports import LLMErrorResponse, LLMResult
+from src.application.ports.llm import LLMErrorResponse, LLMResult
 
-# Importing the module registers the result subscriber on the module-level broker.
-from src.controllers.rabbit.v1.llm import handle_agent_result  # noqa: F401
+# Importing the module registers the result subscriber on the module-level broker
+# (side effect of the @broker.subscriber decorator on handle_agent_result).
+from src.controllers.rabbit.v1.llm import _dispatch_agent_result
 from src.domain.models import ChatRoles, Message, MessageStatus
 
 
@@ -44,7 +45,7 @@ async def test_error_result_is_logged_and_dispatched(caplog):
 	events = MagicMock()
 
 	with caplog.at_level(logging.WARNING):
-		await handle_agent_result(result, message_service=message_service, events=events)
+		await _dispatch_agent_result(result, message_service=message_service, events=events)
 
 	message_service.append_model_message.assert_awaited_once_with(result)
 	events.publish_message.assert_called_once_with(chat_id, created)
@@ -65,7 +66,7 @@ async def test_success_result_is_dispatched_without_warning(caplog):
 	events = MagicMock()
 
 	with caplog.at_level(logging.WARNING):
-		await handle_agent_result(result, message_service=message_service, events=events)
+		await _dispatch_agent_result(result, message_service=message_service, events=events)
 
 	message_service.append_model_message.assert_awaited_once_with(result)
 	events.publish_message.assert_called_once_with(chat_id, created)

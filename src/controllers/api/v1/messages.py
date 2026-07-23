@@ -7,9 +7,11 @@ from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Body, Depends, status
 from pydantic import BaseModel, ConfigDict
 
-from src.application.ports import LLMModelType, UserMessageDTO
+from src.application.ports.llm import LLMModelType, UserMessageDTO
 from src.application.message.schemas import MessagesFilterDto
-from src.application.ports import ApiResponse, Page, IMessageService, IChatsService
+from src.application.ports.common import ApiResponse, Page
+from src.application.ports.messages import IMessageService
+from src.application.ports.chats import IChatsService
 from src.domain.models import ChatRoles, Message, User
 from src.controllers.api.v1.auth_dependencies import get_current_user
 

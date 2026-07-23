@@ -3,13 +3,9 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from src.infrastructure.logging.logger import Logger
-from src.application.ports import (
-	IAuthorizationService,
-	IChatService,
-	IChatGateway,
-	IUnitOfWork,
-	Page,
-)
+from src.application.ports.authorization import IAuthorizationService
+from src.application.ports.chats import IChatService, IChatGateway
+from src.application.ports.common import IUnitOfWork, Page
 from src.application.chats.schemas import ChatFilterDTO
 from src.domain.models import Chat
 

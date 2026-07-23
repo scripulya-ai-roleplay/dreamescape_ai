@@ -2,7 +2,8 @@ import logging
 from dataclasses import dataclass
 
 from src.infrastructure.logging.logger import Logger
-from src.application.ports import IAuthService, IUserGateway, IPasswordHasher
+from src.application.ports.auth import IAuthService, IPasswordHasher
+from src.application.ports.user import IUserGateway
 from src.domain.models import User
 from src.application.auth.errors import InvalidCredentialsError
 

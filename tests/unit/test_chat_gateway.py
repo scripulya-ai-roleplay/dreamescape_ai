@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.infrastructure.gateways.chat_gateway import ChatGateway
 from src.application.chats.schemas import ChatFilterDTO
-from src.application.ports import Page
+from src.application.ports.common import Page
 from src.domain.models import Chat
 from src.infrastructure.database.models import Chat as ChatModel
 

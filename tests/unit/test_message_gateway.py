@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.infrastructure.gateways.message_gateway import MessageGateway
 from src.application.message.schemas import MessagesFilterDto
-from src.application.ports import Page
+from src.application.ports.common import Page
 from src.domain.models import Message, ChatRoles, MessageStatus
 from src.infrastructure.database.models import Message as MessageModel
 

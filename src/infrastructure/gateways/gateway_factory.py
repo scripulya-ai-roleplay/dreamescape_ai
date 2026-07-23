@@ -1,5 +1,5 @@
 from typing import Dict
-from src.application.ports import ILLMChatGateway, IGatewayFactory
+from src.application.ports.llm import ILLMChatGateway, IGatewayFactory
 
 
 class GatewayFactory(IGatewayFactory):

@@ -5,7 +5,7 @@ from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Depends, Path
 from fastapi.responses import StreamingResponse
 
-from src.application.ports import IServerEventsService
+from src.application.ports.messages import IServerEventsService
 from src.controllers.api.v1.auth_dependencies import get_current_user
 from src.domain.models import User
 

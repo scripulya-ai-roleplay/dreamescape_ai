@@ -4,7 +4,7 @@ import pytest
 from fastapi import UploadFile
 from starlette.datastructures import Headers
 
-from src.application.ports import UploadedImage
+from src.application.ports.media import UploadedImage
 from src.infrastructure.exceptions import ImageTooLargeException, UnsupportedImageTypeException
 from src.infrastructure.gateways.image_reader import ImageReader, _sniff_image_type
 

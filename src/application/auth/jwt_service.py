@@ -7,7 +7,7 @@ from uuid import UUID
 import jwt
 from jwt import InvalidTokenError
 
-from src.application.ports import IJWTService
+from src.application.ports.auth import IJWTService
 from src.domain.models import User, UserRole
 
 

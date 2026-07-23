@@ -5,10 +5,10 @@ from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy.exc import NoResultFound
 
-from src.application.authz import AuthorizationService
+from src.application.auth.authz import AuthorizationService
 from src.application.character.service import CharacterService
 from src.domain.models import Character
-from src.application.ports import Page, LikeState, BookmarkState
+from src.application.ports.common import Page, LikeState, BookmarkState
 from src.application.character.schemas import CharacterFilterDTO
 
 

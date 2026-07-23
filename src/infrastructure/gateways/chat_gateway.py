@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.infrastructure.logging.logger import Logger
-from src.application.ports import IChatGateway, Page
+from src.application.ports.chats import IChatGateway
+from src.application.ports.common import Page
 from src.application.chats.schemas import ChatFilterDTO
 from src.domain.models import Chat
 from src.infrastructure.database.models import Chat as ChatModel, Character as CharacterModel

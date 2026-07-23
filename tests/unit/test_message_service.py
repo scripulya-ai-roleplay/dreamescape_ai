@@ -4,17 +4,12 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from src.application.authz import AuthorizationService
+from src.application.auth.authz import AuthorizationService
 from src.application.message.service import MessageService
 from src.application.message.schemas import MessagesFilterDto
-from src.application.ports import (
-	IMessageGateway,
-	IUnitOfWork,
-	Page,
-	LLMErrorResponse,
-	LLMResult,
-	UserMessageDTO,
-)
+from src.application.ports.messages import IMessageGateway
+from src.application.ports.common import IUnitOfWork, Page
+from src.application.ports.llm import LLMErrorResponse, LLMResult, UserMessageDTO
 from src.domain.models import Message, ChatRoles, MessageStatus
 
 
