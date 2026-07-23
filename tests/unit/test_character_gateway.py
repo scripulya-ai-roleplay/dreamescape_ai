@@ -7,7 +7,7 @@ from sqlalchemy.dialects import postgresql
 from src.infrastructure.gateways.character_gateway import CharacterGateway
 from src.infrastructure.gateways.visibility import VisibilityGateway
 from src.domain.models import Character
-from src.application.ports import Page
+from src.application.ports.common import Page
 from src.application.character.schemas import CharacterFilterDTO
 
 

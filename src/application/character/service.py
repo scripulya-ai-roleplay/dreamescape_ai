@@ -4,15 +4,9 @@ from uuid import UUID
 
 from src.infrastructure.logging.logger import Logger
 from src.application.character.schemas import CharacterFilterDTO
-from src.application.ports import (
-	IAuthorizationService,
-	ICharacterService,
-	IUnitOfWork,
-	ICharacterGateway,
-	Page,
-	LikeState,
-	BookmarkState,
-)
+from src.application.ports.authorization import IAuthorizationService
+from src.application.ports.characters import ICharacterService, ICharacterGateway
+from src.application.ports.common import IUnitOfWork, Page, LikeState, BookmarkState
 from src.domain.models import Character
 
 

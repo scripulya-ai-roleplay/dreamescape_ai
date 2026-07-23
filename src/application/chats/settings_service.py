@@ -4,7 +4,8 @@ from uuid import UUID
 
 from src.infrastructure.logging.logger import Logger
 from src.application.chats.settings import ChatSettings
-from src.application.ports import IChatSettingsGateway, IChatSettingsService, IUnitOfWork
+from src.application.ports.chats import IChatSettingsGateway, IChatSettingsService
+from src.application.ports.common import IUnitOfWork
 
 
 @dataclass

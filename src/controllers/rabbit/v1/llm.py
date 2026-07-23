@@ -2,7 +2,9 @@ import logging
 
 from dishka.integrations.faststream import FromDishka
 
-from src.application.ports import IChatEventGateway, IMessageService, LLMResult
+from src.application.ports.chats import IChatEventGateway
+from src.application.ports.messages import IMessageService
+from src.application.ports.llm import LLMResult
 from src.conf import settings
 from src.controllers.rabbit.v1.broker import broker
 from src.infrastructure.logging.logger import Logger
@@ -10,11 +12,10 @@ from src.infrastructure.logging.logger import Logger
 logger = logging.getLogger(Logger.LOGGER_NAME)
 
 
-@broker.subscriber(settings.LLM_AGENT_RESULT_QUEUE)
-async def handle_agent_result(
+async def _dispatch_agent_result(
 	result: LLMResult,
-	message_service: FromDishka[IMessageService],
-	events: FromDishka[IChatEventGateway],
+	message_service: IMessageService,
+	events: IChatEventGateway,
 ) -> None:
 	# Surface provider failures in the backend log too. Without this the only
 	# trace of a failed generation lived in the agent process, so backend-side
@@ -30,3 +31,14 @@ async def handle_agent_result(
 		)
 	message = await message_service.append_model_message(result)
 	events.publish_message(result.chat_id, message)
+
+
+@broker.subscriber(settings.LLM_AGENT_RESULT_QUEUE)
+async def handle_agent_result(
+	result: LLMResult,
+	message_service: FromDishka[IMessageService],
+	events: FromDishka[IChatEventGateway],
+) -> None:
+	# Plain helper kept separate (and DI-free) so the dispatch logic is unit-testable
+	# without standing up the dishka container the FromDishka middleware resolves.
+	await _dispatch_agent_result(result, message_service, events)

@@ -7,7 +7,7 @@ from src.infrastructure.gateways.media_gateway import MediaGateway
 from src.infrastructure.gateways.visibility import VisibilityGateway
 from src.domain.models import MediaAsset, MediaEntityType
 from src.application.media.schemas import MediaFilterDTO
-from src.application.ports import Page
+from src.application.ports.common import Page
 
 
 @pytest.mark.unit

@@ -5,9 +5,9 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from src.application.user.user_service import UserService
-from src.application.authz import AuthorizationService
+from src.application.auth.authz import AuthorizationService
 from src.domain.models import User, UserRole
-from src.application.ports import Page
+from src.application.ports.common import Page
 from src.application.user.schemas import UserDTO
 
 

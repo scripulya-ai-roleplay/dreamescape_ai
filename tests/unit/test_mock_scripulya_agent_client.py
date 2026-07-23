@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.application.ports import IScripulyaAgentClient, LLMModelType, LLMRequest, UserMessageDTO
+from src.application.ports.llm import IScripulyaAgentClient, LLMModelType, LLMRequest, UserMessageDTO
 from src.domain.models import ChatRoles
 from src.infrastructure.gateways.mock_scripulya_agent_client import MockScripulyaAgentClient
 

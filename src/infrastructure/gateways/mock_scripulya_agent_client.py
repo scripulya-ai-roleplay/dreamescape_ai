@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from logging import Logger
 
-from src.application.ports import IScripulyaAgentClient, LLMRequest
+from src.application.ports.llm import IScripulyaAgentClient, LLMRequest
 
 
 @dataclass

@@ -6,44 +6,29 @@ from dishka import AsyncContainer, Provider, Scope, make_async_container, provid
 
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, create_async_engine, async_sessionmaker
 
-from src.application.llm_watchdog import GenerationWatchdog
+from src.application.streaming.llm_watchdog import GenerationWatchdog
 from src.conf import settings
 from src.controllers.rabbit.v1.broker import broker
 from src.infrastructure.database.postgresqluow import PostgresqlUOW
 from src.infrastructure.gateways.scripulya_agent_gateway import ScripulyaAgentClient, ScripulyaAgentGateway
 from src.infrastructure.gateways.mock_scripulya_agent_client import MockScripulyaAgentClient
 from src.infrastructure.logging.logger import Logger
-from src.application.ports import (
-	IUserService,
-	IUserGateway,
-	IJWTService,
-	IAuthService,
-	IPasswordHasher,
-	IGatewayFactory,
+from src.application.ports.user import IUserService, IUserGateway
+from src.application.ports.auth import IJWTService, IAuthService, IPasswordHasher
+from src.application.ports.llm import IGatewayFactory, IPromptService, IScripulyaAgentClient, LLMModelType
+from src.application.ports.chats import (
 	IChatsService,
 	IChatService,
 	IChatGateway,
 	IChatEventGateway,
 	IChatSettingsGateway,
 	IChatSettingsService,
-	IServerEventsService,
-	IMessageService,
-	IMessageGateway,
-	IPromptService,
-	ISceneService,
-	ISceneGateway,
-	ICharacterService,
-	ICharacterGateway,
-	IObjectStorageGateway,
-	IMediaGateway,
-	IMediaService,
-	IImageReader,
-	IScripulyaAgentClient,
-	IGenerationHeartbeat,
-	IAuthorizationService,
-	IVisibilityGateway,
-	LLMModelType,
 )
+from src.application.ports.messages import IServerEventsService, IMessageService, IMessageGateway, IGenerationHeartbeat
+from src.application.ports.scenes import ISceneService, ISceneGateway
+from src.application.ports.characters import ICharacterService, ICharacterGateway
+from src.application.ports.media import IObjectStorageGateway, IMediaGateway, IMediaService, IImageReader
+from src.application.ports.authorization import IAuthorizationService, IVisibilityGateway
 from src.infrastructure.gateways.mock_gateway import MockGateway
 from src.infrastructure.gateways.gateway_factory import GatewayFactory
 from src.infrastructure.gateways.user_gateway import UserGateway
@@ -68,7 +53,7 @@ from src.application.chats.llm_service import LLMChatsService
 from src.application.chats.prompt_service import PromptService
 from src.application.message.service import MessageService
 from src.application.media.service import MediaService
-from src.application.authz import AuthorizationService
+from src.application.auth.authz import AuthorizationService
 from src.application.auth.jwt_service import JWTService
 from src.application.auth.password_hasher import Argon2PasswordHasher
 from src.application.auth.service import AuthService

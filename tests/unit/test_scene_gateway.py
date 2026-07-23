@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.infrastructure.gateways.scenes_gateway import SceneGateway
 from src.infrastructure.gateways.visibility import VisibilityGateway
 from src.domain.models import Scene
-from src.application.ports import Page
+from src.application.ports.common import Page
 from src.application.scene.schemas import SceneFilterDTO, SceneSortBy, SortOrder
 from sqlalchemy.dialects import postgresql
 

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.infrastructure.gateways.user_gateway import UserGateway
 from src.domain.models import User, UserRole
-from src.application.ports import Page
+from src.application.ports.common import Page
 from src.application.user.schemas import UserDTO
 from src.infrastructure.database.models import User as UserModel
 

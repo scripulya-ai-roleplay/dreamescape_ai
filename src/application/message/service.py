@@ -4,9 +4,12 @@ from typing import Optional
 from uuid import UUID
 
 from src.infrastructure.logging.logger import Logger
-from src.application.ports import IUnitOfWork
+from src.application.ports.common import IUnitOfWork
 from src.application.message.schemas import MessagesFilterDto
-from src.application.ports import IAuthorizationService, IMessageService, IMessageGateway, Page, LLMResult
+from src.application.ports.authorization import IAuthorizationService
+from src.application.ports.messages import IMessageService, IMessageGateway
+from src.application.ports.common import Page
+from src.application.ports.llm import LLMResult
 from src.domain.models import ChatRoles, Message, MessageStatus
 
 

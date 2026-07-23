@@ -9,7 +9,9 @@ from sqlalchemy.orm import selectinload
 
 from src.infrastructure.logging.logger import Logger
 from src.application.character.schemas import CharacterFilterDTO
-from src.application.ports import ICharacterGateway, IVisibilityGateway, Page
+from src.application.ports.characters import ICharacterGateway
+from src.application.ports.authorization import IVisibilityGateway
+from src.application.ports.common import Page
 from src.domain.models import Character
 from src.infrastructure.database.models import (
 	Character as CharacterModel,

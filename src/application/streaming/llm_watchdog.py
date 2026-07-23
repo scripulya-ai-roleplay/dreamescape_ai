@@ -4,7 +4,8 @@ from dataclasses import dataclass, field
 
 from dishka import AsyncContainer, Scope
 
-from src.application.ports import IChatEventGateway, IGenerationHeartbeat, IMessageService
+from src.application.ports.chats import IChatEventGateway
+from src.application.ports.messages import IGenerationHeartbeat, IMessageService
 from src.conf import settings
 from src.infrastructure.logging.logger import Logger
 

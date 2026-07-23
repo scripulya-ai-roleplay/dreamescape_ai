@@ -7,12 +7,8 @@ from uuid import UUID
 from dishka import AsyncContainer, Scope
 from fastapi.responses import StreamingResponse
 
-from src.application.ports import (
-	IChatEventGateway,
-	IChatService,
-	IMessageService,
-	IServerEventsService,
-)
+from src.application.ports.chats import IChatEventGateway, IChatService
+from src.application.ports.messages import IMessageService, IServerEventsService
 from src.domain.models import Message
 
 _KEEPALIVE_SECONDS = 15.0

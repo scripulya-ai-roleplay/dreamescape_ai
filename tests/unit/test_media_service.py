@@ -7,10 +7,10 @@ from fastapi import HTTPException, UploadFile
 from pydantic import ValidationError
 from starlette.datastructures import Headers
 
-from src.application.authz import AuthorizationService
+from src.application.auth.authz import AuthorizationService
 from src.application.media.schemas import MediaFilterDTO, MediaUploadDTO
 from src.application.media.service import MediaService
-from src.application.ports import UploadedImage
+from src.application.ports.media import UploadedImage
 from src.domain.models import MediaAsset, MediaEntityType
 
 

@@ -7,7 +7,8 @@ from sqlalchemy import select, delete, func, and_, update, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.infrastructure.logging.logger import Logger
-from src.application.ports import IMessageGateway, Page
+from src.application.ports.messages import IMessageGateway
+from src.application.ports.common import Page
 from src.application.message.schemas import MessagesFilterDto
 from src.domain.models import Message, ChatRoles, MessageStatus
 from src.infrastructure.database.models import Message as MessageModel, Chat as ChatModel

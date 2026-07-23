@@ -8,7 +8,8 @@ from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Depends, File, Form, UploadFile
 
 from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadDTO
-from src.application.ports import ApiResponse, Page, IMediaService
+from src.application.ports.common import ApiResponse, Page
+from src.application.ports.media import IMediaService
 from src.domain.models import MediaEntityType, User
 from src.controllers.api.v1.auth_dependencies import get_current_user, get_optional_user
 

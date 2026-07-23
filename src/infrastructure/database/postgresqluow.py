@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.application.ports import IUnitOfWork
+from src.application.ports.common import IUnitOfWork
 
 
 class PostgresqlUOW(IUnitOfWork):

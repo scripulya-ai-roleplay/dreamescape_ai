@@ -18,7 +18,7 @@ import pytest
 from dishka.integrations.faststream import setup_dishka
 from faststream.rabbit import TestRabbitBroker
 
-from src.application.ports import LLMModelType, LLMRequest, UserMessageDTO
+from src.application.ports.llm import LLMModelType, LLMRequest, UserMessageDTO
 from src.conf import settings
 from src.controllers.rabbit.v1 import llm as rabbit_llm  # noqa: F401  registers the result subscriber
 from src.controllers.rabbit.v1.broker import broker

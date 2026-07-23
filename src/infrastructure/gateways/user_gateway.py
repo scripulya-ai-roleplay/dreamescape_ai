@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.infrastructure.logging.logger import Logger
-from src.application.ports import IUserGateway, Page
+from src.application.ports.user import IUserGateway
+from src.application.ports.common import Page
 from src.domain.models import User, UserRole
 from src.application.auth.schemas import UserAuthRecord
 from src.application.user.schemas import UserDTO

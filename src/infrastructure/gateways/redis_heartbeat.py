@@ -4,7 +4,7 @@ from uuid import UUID
 
 import redis.asyncio
 
-from src.application.ports import IGenerationHeartbeat
+from src.application.ports.messages import IGenerationHeartbeat
 from src.conf import settings
 from src.infrastructure.logging.logger import Logger
 

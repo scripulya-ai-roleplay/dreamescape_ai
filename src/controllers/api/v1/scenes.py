@@ -7,10 +7,13 @@ from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 
-from src.application.ports import ISceneService, ICharacterService, ApiResponse, Page, LikeState, BookmarkState
+from src.application.ports.scenes import ISceneService
+from src.application.ports.characters import ICharacterService
+from src.application.ports.common import ApiResponse, Page, LikeState, BookmarkState
 from src.application.scene.schemas import SceneFilterDTO, AttachCharactersDTO
 from src.domain.models import Scene, Character, User
 from src.controllers.api.v1.auth_dependencies import get_current_user, get_optional_user
+from src.infrastructure.logging.redact import preview
 
 logger = logging.getLogger(__name__)
 
@@ -25,23 +28,22 @@ async def create_scene(
 	scene: Scene = Body(),
 	current_user: User = Depends(get_current_user),
 ) -> ApiResponse:
-	logger.info(f"Current user payload: {current_user}")
 	user_id = current_user.id
-	logger.info(f"Extracted user ID: {user_id}")
 
-	# Debug: Log the received scene object
-	logger.info(f"Received scene object: {scene}")
-	logger.info(f"Scene title: {scene.title}")
-	logger.info(f"Scene background_prompt: {scene.background_prompt}")
-	logger.info(f"Scene initial_message_text: {scene.initial_message_text}")
-	logger.info(f"Scene owner_id: {scene.owner_id}")
+	if logger.isEnabledFor(logging.DEBUG):
+		logger.debug(
+			"create_scene user=%s role=%s title=%r background_prompt=%r initial_message_text=%r",
+			current_user.id,
+			current_user.role,
+			preview(scene.title),
+			preview(scene.background_prompt),
+			preview(scene.initial_message_text),
+		)
 
 	# Validate that the Scene's owner_id matches the authenticated user
 	if scene.owner_id != user_id:
 		logger.warning(f"Owner ID mismatch: scene.owner_id={scene.owner_id}, user_id={user_id}")
 		raise HTTPException(status_code=403, detail="Scene owner_id must match authenticated user")
-
-	logger.info(f"Scene object validation passed with owner_id: {scene.owner_id}")
 
 	await scenes_service.create_scene(scene)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())

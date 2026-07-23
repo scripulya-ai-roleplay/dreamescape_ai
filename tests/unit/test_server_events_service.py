@@ -8,7 +8,8 @@ from fastapi.responses import StreamingResponse
 
 from src.application.events import server_events_service
 from src.application.events.server_events_service import ServerEventsService
-from src.application.ports import IChatService, IMessageService
+from src.application.ports.chats import IChatService
+from src.application.ports.messages import IMessageService
 from src.domain.models import ChatRoles, Message, MessageStatus
 from src.infrastructure.gateways.chat_event_gateway import ChatEventGateway
 

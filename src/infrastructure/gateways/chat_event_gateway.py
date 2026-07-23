@@ -5,7 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from src.infrastructure.logging.logger import Logger
-from src.application.ports import IChatEventGateway
+from src.application.ports.chats import IChatEventGateway
 from src.domain.models import Message
 
 # Bounded so a slow/stalled SSE client can't accumulate unbounded memory.

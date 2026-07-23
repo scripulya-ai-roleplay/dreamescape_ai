@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.infrastructure.logging.logger import Logger
 from src.application.chats.settings import ChatSettings
-from src.application.ports import IChatSettingsGateway
+from src.application.ports.chats import IChatSettingsGateway
 from src.infrastructure.database.models import ChatSettings as ChatSettingsModel
 
 

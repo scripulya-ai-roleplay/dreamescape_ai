@@ -4,23 +4,15 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from src.application.authz import AuthorizationService
+from src.application.auth.authz import AuthorizationService
 from src.application.chats.llm_service import LLMChatsService
 from src.application.chats.prompt_service import PromptService
-from src.application.ports import (
-	UserMessageDTO,
-	LLMModelType,
-	LLMResponse,
-	IGatewayFactory,
-	ICharacterGateway,
-	IChatEventGateway,
-	IChatGateway,
-	IChatSettingsGateway,
-	ILLMChatGateway,
-	IMessageService,
-	ISceneGateway,
-	Page,
-)
+from src.application.ports.llm import UserMessageDTO, LLMModelType, LLMResponse, IGatewayFactory, ILLMChatGateway
+from src.application.ports.characters import ICharacterGateway
+from src.application.ports.chats import IChatEventGateway, IChatGateway, IChatSettingsGateway
+from src.application.ports.messages import IMessageService
+from src.application.ports.scenes import ISceneGateway
+from src.application.ports.common import Page
 from src.application.chats.settings import (
 	ChatSettings,
 	ControlBehavior,

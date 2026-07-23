@@ -2,11 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
-from src.application.ports import (
-	LLMModelType,
-	LLMRequest,
-	UserMessageDTO,
-)
+from src.application.ports.llm import LLMModelType, LLMRequest, UserMessageDTO
 from src.domain.models import ChatRoles
 from src.infrastructure.exceptions import LLMGatewayException
 from src.infrastructure.gateways.scripulya_agent_gateway import (

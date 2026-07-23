@@ -7,7 +7,9 @@ from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 
 from src.application.chats.schemas import ChatFilterDTO
-from src.application.ports import ApiResponse, Page, IChatService, ICharacterService
+from src.application.ports.common import ApiResponse, Page
+from src.application.ports.chats import IChatService
+from src.application.ports.characters import ICharacterService
 from src.domain.models import Chat, User
 from src.controllers.api.v1.auth_dependencies import get_current_user
 
@@ -25,11 +27,9 @@ async def create_chat(
 	chat: Chat = Body(),
 	current_user: User = Depends(get_current_user),
 ) -> ApiResponse:
-	logger.info(f"Current user payload: {current_user}")
 	user_id = current_user.id
-	logger.info(f"Extracted user ID: {user_id}")
+	logger.debug("create_chat user=%s role=%s", current_user.id, current_user.role)
 
-	# Validate that the Chat's user_id matches the authenticated user
 	if chat.user_id != user_id:
 		logger.warning(f"User ID mismatch: chat.user_id={chat.user_id}, user_id={user_id}")
 		raise HTTPException(status_code=403, detail="Chat user_id must match authenticated user")
@@ -38,8 +38,6 @@ async def create_chat(
 	# set_persona: no pinning another user's private character to leak its prompt).
 	if chat.user_character_id is not None:
 		await character_service.get_one(chat.user_character_id, user_id)
-
-	logger.info(f"Chat object validation passed with user_id: {chat.user_id}")
 
 	chat_id = await chat_service.start_chat(chat)
 	return ApiResponse(result={"id": str(chat_id)}, correlation_id=correlation_id.get())

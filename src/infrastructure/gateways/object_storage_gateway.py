@@ -9,7 +9,7 @@ from minio import Minio
 from minio.error import S3Error
 
 from src.infrastructure.logging.logger import Logger
-from src.application.ports import IObjectStorageGateway
+from src.application.ports.media import IObjectStorageGateway
 
 # MinIO's default region. Preset on both clients so the minio SDK's region
 # lookup (triggered by presigned_get_object) short-circuits instead of making a

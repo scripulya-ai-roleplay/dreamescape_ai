@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from starlette import status
 
-from src.application.ports import IAuthorizationService
+from src.application.ports.authorization import IAuthorizationService
 
 
 @dataclass

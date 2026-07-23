@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
-from src.application.ports import IPasswordHasher
+from src.application.ports.auth import IPasswordHasher
 
 
 @dataclass(kw_only=True, frozen=True, slots=True)
