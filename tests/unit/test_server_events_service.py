@@ -126,6 +126,60 @@ class TestServerEventsServiceStreaming:
 		await iterator.aclose()
 
 
+class TestServerEventsServiceTokenStreaming:
+	"""Token/generation_* frames render with their dedicated SSE event names and carry
+	the request_id so a client can demux concurrent generations."""
+
+	async def _publish_once_subscribed_token(self, gateway, chat_id, request_id, text):
+		while chat_id not in gateway._listeners:
+			await asyncio.sleep(0)
+		gateway.publish_token(chat_id, request_id, text)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_published_token_is_token_event_with_request_id(self):
+		chat_id = uuid4()
+		request_id = uuid4()
+		gateway = ChatEventGateway()
+		service = ServerEventsService(_events=gateway, _container=MagicMock())
+
+		iterator = service._stream(chat_id, None)
+		task = asyncio.create_task(self._publish_once_subscribed_token(gateway, chat_id, request_id, "Hel"))
+
+		frame = await _next_frame(iterator)
+		await task
+
+		assert frame.startswith("event: token\n")
+		assert '"text": "Hel"' in frame
+		assert str(request_id) in frame
+
+		await iterator.aclose()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_generation_done_uses_dedicated_event_name(self):
+		chat_id = uuid4()
+		request_id = uuid4()
+		gateway = ChatEventGateway()
+		service = ServerEventsService(_events=gateway, _container=MagicMock())
+
+		iterator = service._stream(chat_id, None)
+
+		async def emit():
+			while chat_id not in gateway._listeners:
+				await asyncio.sleep(0)
+			gateway.publish_generation_done(chat_id, request_id)
+
+		task = asyncio.create_task(emit())
+		frame = await _next_frame(iterator)
+		await task
+
+		assert frame.startswith("event: generation_done\n")
+		assert str(request_id) in frame
+
+		await iterator.aclose()
+
+
 class TestServerEventsServiceOpenStream:
 	"""open_stream: ownership check + latest read run in a short-lived scope that
 	closes before the StreamingResponse is returned."""
