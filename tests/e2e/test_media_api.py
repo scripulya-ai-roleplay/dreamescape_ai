@@ -1,6 +1,5 @@
 import pytest
 
-
 # Auth headers authenticate as admin (5dbdc924-...), who owns these seeded entities.
 ADMIN_CHARACTER_ID = "43341001-4ea1-4f03-b315-811d3264b6a3"  # "Helpful Assistant"
 # A character owned by another user (Code Mentor, owner f5ac5447-...).

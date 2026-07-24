@@ -1,11 +1,11 @@
 import logging
 from dataclasses import dataclass
 
-from src.infrastructure.logging.logger import Logger
+from src.application.auth.errors import InvalidCredentialsError
 from src.application.ports.auth import IAuthService, IPasswordHasher
 from src.application.ports.user import IUserGateway
 from src.domain.models import User
-from src.application.auth.errors import InvalidCredentialsError
+from src.infrastructure.logging.logger import Logger
 
 # Substituted for a stored hash when the username is unknown, so a missing-user
 # login still pays the argon2 cost and matches a wrong-password attempt's timing

@@ -2,16 +2,17 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select, delete, func, and_, update
+from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.infrastructure.logging.logger import Logger
+from src.application.chats.schemas import ChatFilterDTO
 from src.application.ports.chats import IChatGateway
 from src.application.ports.common import Page
-from src.application.chats.schemas import ChatFilterDTO
 from src.domain.models import Chat
-from src.infrastructure.database.models import Chat as ChatModel, Character as CharacterModel
+from src.infrastructure.database.models import Character as CharacterModel
+from src.infrastructure.database.models import Chat as ChatModel
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass
@@ -135,6 +136,20 @@ class ChatGateway(IChatGateway):
 
 		return chat_uuid
 
+	async def set_initial_message(self, chat_uuid: UUID, initial_message_id: UUID) -> UUID:
+		self.logger.info(f"Setting initial message {initial_message_id} on chat {chat_uuid}")
+
+		result = await self._session.execute(
+			update(ChatModel)
+			.where(ChatModel.id == chat_uuid, ChatModel.initial_message_id.is_(None))
+			.values(initial_message_id=initial_message_id)
+		)
+		if result.rowcount == 0:
+			raise ValueError("Chat already has an initial message")
+
+		self.logger.info(f"Successfully set initial message on chat: {chat_uuid}")
+		return chat_uuid
+
 	def _to_domain_chat(self, chat_model: ChatModel) -> Chat:
 		return Chat(
 			id=chat_model.id,
@@ -142,4 +157,5 @@ class ChatGateway(IChatGateway):
 			user_id=chat_model.user_id,
 			scene_id=chat_model.scene_id,
 			user_character_id=chat_model.user_character_id,
+			initial_message_id=chat_model.initial_message_id,
 		)

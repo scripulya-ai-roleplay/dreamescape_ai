@@ -2,12 +2,12 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.infrastructure.logging.logger import Logger
-from src.application.ports.user import IUserService, IUserGateway
-from src.application.ports.common import Page, IUnitOfWork
 from src.application.ports.authorization import IAuthorizationService
-from src.domain.models import User
+from src.application.ports.common import IUnitOfWork, Page
+from src.application.ports.user import IUserGateway, IUserService
 from src.application.user.schemas import UserDTO
+from src.domain.models import User
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass

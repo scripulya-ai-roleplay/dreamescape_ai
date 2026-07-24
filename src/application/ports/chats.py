@@ -1,12 +1,10 @@
 import abc
 import asyncio
-from typing import Optional
 from uuid import UUID
 
 from src.application.chats.schemas import ChatFilterDTO
 from src.application.chats.settings import ChatSettings
 from src.application.ports.common import Page
-
 from src.application.ports.llm import UserMessageDTO
 from src.domain.models import Chat, Message
 
@@ -35,6 +33,9 @@ class IChatGateway(abc.ABC):
 	@abc.abstractmethod
 	async def set_persona(self, chat_uuid: UUID, user_character_id: UUID) -> UUID: ...
 
+	@abc.abstractmethod
+	async def set_initial_message(self, chat_uuid: UUID, initial_message_id: UUID) -> UUID: ...
+
 
 class IChatService(abc.ABC):
 	@abc.abstractmethod
@@ -55,10 +56,13 @@ class IChatService(abc.ABC):
 	@abc.abstractmethod
 	async def set_persona(self, chat_uuid: UUID, user_character_id: UUID, actor_id: UUID) -> UUID: ...
 
+	@abc.abstractmethod
+	async def choose_initial_message(self, chat_uuid: UUID, initial_message_uuid: UUID, actor_id: UUID) -> Message: ...
+
 
 class IChatSettingsGateway(abc.ABC):
 	@abc.abstractmethod
-	async def get_for_chat(self, chat_id: UUID) -> Optional[ChatSettings]: ...
+	async def get_for_chat(self, chat_id: UUID) -> ChatSettings | None: ...
 
 	@abc.abstractmethod
 	async def upsert(self, chat_id: UUID, settings: ChatSettings) -> ChatSettings: ...
@@ -66,7 +70,7 @@ class IChatSettingsGateway(abc.ABC):
 
 class IChatSettingsService(abc.ABC):
 	@abc.abstractmethod
-	async def get_for_chat(self, chat_id: UUID) -> Optional[ChatSettings]: ...
+	async def get_for_chat(self, chat_id: UUID) -> ChatSettings | None: ...
 
 	@abc.abstractmethod
 	async def upsert(self, chat_id: UUID, settings: ChatSettings) -> ChatSettings: ...

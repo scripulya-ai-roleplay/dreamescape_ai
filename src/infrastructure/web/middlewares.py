@@ -4,8 +4,8 @@ import time
 from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.conf import settings
 from src.application.auth.jwt_service import JWTService
+from src.conf import settings
 from src.domain.models import User
 from src.infrastructure.logging import trace
 

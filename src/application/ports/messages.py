@@ -1,5 +1,4 @@
 import abc
-from typing import Optional
 from uuid import UUID
 
 from starlette.responses import StreamingResponse
@@ -30,7 +29,7 @@ class IMessageGateway(abc.ABC):
 	async def delete(self, message_uuid: UUID) -> UUID: ...
 
 	@abc.abstractmethod
-	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]: ...
+	async def latest_model_message(self, chat_id: UUID) -> Message | None: ...
 
 
 class IGenerationHeartbeat(abc.ABC):
@@ -69,4 +68,4 @@ class IMessageService(abc.ABC):
 	async def record_failed_generation(self, chat_id: UUID, reason: str) -> Message: ...
 
 	@abc.abstractmethod
-	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]: ...
+	async def latest_model_message(self, chat_id: UUID) -> Message | None: ...

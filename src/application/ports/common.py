@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class Page[T](BaseModel):
 	model_config = ConfigDict(frozen=True)
 
-	items: List[T]
+	items: list[T]
 	count: int
 	offset: int
 	limit: int
@@ -39,4 +38,4 @@ class ApiResponse[T](BaseModel):
 	model_config = ConfigDict(frozen=True)
 
 	result: T
-	correlation_id: Optional[str] = None
+	correlation_id: str | None = None

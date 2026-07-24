@@ -1,62 +1,63 @@
 import logging
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import redis.asyncio
 from dishka import AsyncContainer, Provider, Scope, make_async_container, provide
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
-from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, create_async_engine, async_sessionmaker
-
-from src.application.streaming.llm_watchdog import GenerationWatchdog
-from src.conf import settings
-from src.controllers.rabbit.v1.broker import broker
-from src.infrastructure.database.postgresqluow import PostgresqlUOW
-from src.infrastructure.gateways.scripulya_agent_gateway import ScripulyaAgentClient, ScripulyaAgentGateway
-from src.infrastructure.gateways.mock_scripulya_agent_client import MockScripulyaAgentClient
-from src.infrastructure.logging.logger import Logger
-from src.application.ports.user import IUserService, IUserGateway
-from src.application.ports.auth import IJWTService, IAuthService, IPasswordHasher
-from src.application.ports.llm import IGatewayFactory, IPromptService, IScripulyaAgentClient, LLMModelType
-from src.application.ports.chats import (
-	IChatsService,
-	IChatService,
-	IChatGateway,
-	IChatEventGateway,
-	IChatSettingsGateway,
-	IChatSettingsService,
-)
-from src.application.ports.messages import IServerEventsService, IMessageService, IMessageGateway, IGenerationHeartbeat
-from src.application.ports.scenes import ISceneService, ISceneGateway
-from src.application.ports.characters import ICharacterService, ICharacterGateway
-from src.application.ports.media import IObjectStorageGateway, IMediaGateway, IMediaService, IImageReader
-from src.application.ports.authorization import IAuthorizationService, IVisibilityGateway
-from src.infrastructure.gateways.mock_gateway import MockGateway
-from src.infrastructure.gateways.gateway_factory import GatewayFactory
-from src.infrastructure.gateways.user_gateway import UserGateway
-from src.infrastructure.gateways.scenes_gateway import SceneGateway
-from src.infrastructure.gateways.character_gateway import CharacterGateway
-from src.infrastructure.gateways.chat_gateway import ChatGateway
-from src.infrastructure.gateways.chat_settings_gateway import ChatSettingsGateway
-from src.infrastructure.gateways.message_gateway import MessageGateway
-from src.infrastructure.gateways.chat_event_gateway import ChatEventGateway
-from src.infrastructure.gateways.object_storage_gateway import MinioObjectStorageGateway
-from src.infrastructure.gateways.redis_heartbeat import RedisGenerationHeartbeat
-from src.infrastructure.gateways.image_reader import ImageReader
-from src.infrastructure.gateways.media_gateway import MediaGateway
-from src.infrastructure.gateways.visibility import VisibilityGateway
-from src.application.events.server_events_service import ServerEventsService
-from src.application.user.user_service import UserService
-from src.application.scene.service import SceneService
-from src.application.character.service import CharacterService
-from src.application.chats.service import ChatService
-from src.application.chats.settings_service import ChatSettingsService
-from src.application.chats.llm_service import LLMChatsService
-from src.application.chats.prompt_service import PromptService
-from src.application.message.service import MessageService
-from src.application.media.service import MediaService
 from src.application.auth.authz import AuthorizationService
 from src.application.auth.jwt_service import JWTService
 from src.application.auth.password_hasher import Argon2PasswordHasher
 from src.application.auth.service import AuthService
+from src.application.character.service import CharacterService
+from src.application.chats.llm_service import LLMChatsService
+from src.application.chats.prompt_service import PromptService
+from src.application.chats.service import ChatService
+from src.application.chats.settings_service import ChatSettingsService
+from src.application.events.server_events_service import ServerEventsService
+from src.application.media.service import MediaService
+from src.application.message.service import MessageService
+from src.application.ports.auth import IAuthService, IJWTService, IPasswordHasher
+from src.application.ports.authorization import IAuthorizationService, IVisibilityGateway
+from src.application.ports.characters import ICharacterGateway, ICharacterService
+from src.application.ports.chats import (
+	IChatEventGateway,
+	IChatGateway,
+	IChatService,
+	IChatSettingsGateway,
+	IChatSettingsService,
+	IChatsService,
+)
+from src.application.ports.llm import IGatewayFactory, IPromptService, IScripulyaAgentClient, LLMModelType
+from src.application.ports.media import IImageReader, IMediaGateway, IMediaService, IObjectStorageGateway
+from src.application.ports.messages import IGenerationHeartbeat, IMessageGateway, IMessageService, IServerEventsService
+from src.application.ports.scenes import IInitialMessageGateway, IInitialMessageService, ISceneGateway, ISceneService
+from src.application.ports.user import IUserGateway, IUserService
+from src.application.scene.initial_message_service import InitialMessageService
+from src.application.scene.service import SceneService
+from src.application.streaming.llm_watchdog import GenerationWatchdog
+from src.application.user.user_service import UserService
+from src.conf import settings
+from src.controllers.rabbit.v1.broker import broker
+from src.infrastructure.database.postgresqluow import PostgresqlUOW
+from src.infrastructure.gateways.character_gateway import CharacterGateway
+from src.infrastructure.gateways.chat_event_gateway import ChatEventGateway
+from src.infrastructure.gateways.chat_gateway import ChatGateway
+from src.infrastructure.gateways.chat_settings_gateway import ChatSettingsGateway
+from src.infrastructure.gateways.gateway_factory import GatewayFactory
+from src.infrastructure.gateways.image_reader import ImageReader
+from src.infrastructure.gateways.initial_message_gateway import InitialMessageGateway
+from src.infrastructure.gateways.media_gateway import MediaGateway
+from src.infrastructure.gateways.message_gateway import MessageGateway
+from src.infrastructure.gateways.mock_gateway import MockGateway
+from src.infrastructure.gateways.mock_scripulya_agent_client import MockScripulyaAgentClient
+from src.infrastructure.gateways.object_storage_gateway import MinioObjectStorageGateway
+from src.infrastructure.gateways.redis_heartbeat import RedisGenerationHeartbeat
+from src.infrastructure.gateways.scenes_gateway import SceneGateway
+from src.infrastructure.gateways.scripulya_agent_gateway import ScripulyaAgentClient, ScripulyaAgentGateway
+from src.infrastructure.gateways.user_gateway import UserGateway
+from src.infrastructure.gateways.visibility import VisibilityGateway
+from src.infrastructure.logging.logger import Logger
 
 
 class GatewayProvider(Provider):
@@ -65,7 +66,7 @@ class GatewayProvider(Provider):
 		return logging.getLogger(Logger.LOGGER_NAME)
 
 	@provide(scope=Scope.APP)
-	async def provide_redis_client(self) -> AsyncGenerator[redis.asyncio.Redis, None]:
+	async def provide_redis_client(self) -> AsyncGenerator[redis.asyncio.Redis]:
 		# Yielded so dishka closes the connection pool on container shutdown.
 		client = redis.asyncio.from_url(settings.REDIS_URL, decode_responses=True)
 		try:
@@ -124,6 +125,10 @@ class GatewayProvider(Provider):
 		self, session: AsyncSession, visibility_gateway: IVisibilityGateway, logger: logging.Logger
 	) -> ISceneGateway:
 		return SceneGateway(session, visibility=visibility_gateway, logger=logger)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_initial_message_gateway(self, session: AsyncSession, logger: logging.Logger) -> IInitialMessageGateway:
+		return InitialMessageGateway(session, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_character_gateway(
@@ -257,11 +262,20 @@ class ServiceProvider(Provider):
 	def provide_chat_service(
 		self,
 		chat_gateway: IChatGateway,
+		initial_message_gateway: IInitialMessageGateway,
+		message_gateway: IMessageGateway,
 		uow: PostgresqlUOW,
 		authorization_service: IAuthorizationService,
 		logger: logging.Logger,
 	) -> IChatService:
-		return ChatService(chat_gateway=chat_gateway, uow=uow, authz=authorization_service, logger=logger)
+		return ChatService(
+			chat_gateway=chat_gateway,
+			initial_message_gateway=initial_message_gateway,
+			message_gateway=message_gateway,
+			uow=uow,
+			authz=authorization_service,
+			logger=logger,
+		)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_message_service(
@@ -291,11 +305,35 @@ class ServiceProvider(Provider):
 	def provide_scene_service(
 		self,
 		scene_gateway: ISceneGateway,
+		initial_message_gateway: IInitialMessageGateway,
 		uow: PostgresqlUOW,
 		authorization_service: IAuthorizationService,
 		logger: logging.Logger,
 	) -> ISceneService:
-		return SceneService(uow=uow, gateway=scene_gateway, authz=authorization_service, logger=logger)
+		return SceneService(
+			uow=uow,
+			gateway=scene_gateway,
+			initial_message_gateway=initial_message_gateway,
+			authz=authorization_service,
+			logger=logger,
+		)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_initial_message_service(
+		self,
+		initial_message_gateway: IInitialMessageGateway,
+		scene_gateway: ISceneGateway,
+		uow: PostgresqlUOW,
+		authorization_service: IAuthorizationService,
+		logger: logging.Logger,
+	) -> IInitialMessageService:
+		return InitialMessageService(
+			initial_message_gateway=initial_message_gateway,
+			scene_gateway=scene_gateway,
+			uow=uow,
+			authz=authorization_service,
+			logger=logger,
+		)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_character_service(
@@ -328,7 +366,7 @@ class DatabaseProvider(Provider):
 	@provide(scope=Scope.REQUEST)
 	async def provide_async_session(
 		self, session_maker: async_sessionmaker[AsyncSession]
-	) -> AsyncGenerator[AsyncSession, None]:
+	) -> AsyncGenerator[AsyncSession]:
 		async with session_maker() as session:
 			yield session
 

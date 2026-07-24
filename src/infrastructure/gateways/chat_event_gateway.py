@@ -4,9 +4,9 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
-from src.infrastructure.logging.logger import Logger
 from src.application.ports.chats import IChatEventGateway
 from src.domain.models import Message
+from src.infrastructure.logging.logger import Logger
 
 # Bounded so a slow/stalled SSE client can't accumulate unbounded memory.
 _LISTENER_MAXSIZE = 32

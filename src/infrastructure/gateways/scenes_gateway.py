@@ -2,26 +2,34 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select, delete, func, and_, update, asc, desc, exists
+from sqlalchemy import and_, asc, delete, desc, exists, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.infrastructure.logging.logger import Logger
-from src.application.ports.scenes import ISceneGateway
 from src.application.ports.authorization import IVisibilityGateway
 from src.application.ports.common import Page
+from src.application.ports.scenes import ISceneGateway
 from src.application.scene.schemas import SceneFilterDTO, SceneSortBy, SortOrder
 from src.domain.models import Scene
 from src.infrastructure.database.models import (
-	Scene as SceneModel,
 	Character as CharacterModel,
-	Chat as ChatModel,
-	Message as MessageModel,
-	scene_likes,
-	scene_bookmarks,
-	character_scene,
 )
+from src.infrastructure.database.models import (
+	Chat as ChatModel,
+)
+from src.infrastructure.database.models import (
+	Message as MessageModel,
+)
+from src.infrastructure.database.models import (
+	Scene as SceneModel,
+)
+from src.infrastructure.database.models import (
+	character_scene,
+	scene_bookmarks,
+	scene_likes,
+)
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass
@@ -54,7 +62,6 @@ class SceneGateway(ISceneGateway):
 			"title": new_scene_data.title,
 			"description": new_scene_data.description,
 			"background_prompt": new_scene_data.background_prompt,
-			"initial_message_text": new_scene_data.initial_message_text,
 			"is_public": new_scene_data.is_public,
 		}
 
@@ -159,7 +166,6 @@ class SceneGateway(ISceneGateway):
 			description=scene.description,
 			background_prompt=scene.background_prompt,
 			owner_id=scene.owner_id,
-			initial_message_text=scene.initial_message_text,
 			is_public=scene.is_public,
 		)
 
@@ -219,7 +225,6 @@ class SceneGateway(ISceneGateway):
 			description=scene_model.description,
 			background_prompt=scene_model.background_prompt,
 			owner_id=scene_model.owner_id,
-			initial_message_text=scene_model.initial_message_text,
 			is_public=scene_model.is_public,
 			chats_count=chats_count,
 			messages_count=messages_count,

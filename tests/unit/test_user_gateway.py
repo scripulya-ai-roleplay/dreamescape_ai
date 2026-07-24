@@ -1,13 +1,14 @@
-import pytest
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
+
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infrastructure.gateways.user_gateway import UserGateway
-from src.domain.models import User, UserRole
 from src.application.ports.common import Page
 from src.application.user.schemas import UserDTO
+from src.domain.models import User, UserRole
 from src.infrastructure.database.models import User as UserModel
+from src.infrastructure.gateways.user_gateway import UserGateway
 
 
 @pytest.mark.unit
@@ -289,7 +290,6 @@ class TestUserGateway:
 		scene_model.owner_id = sample_user_model.id
 		scene_model.title = "Test Scene"
 		scene_model.background_prompt = "Test background"
-		scene_model.initial_message_text = "initial message"
 
 		chat_model = Mock()
 		chat_model.id = uuid4()

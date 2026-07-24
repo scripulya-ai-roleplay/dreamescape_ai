@@ -4,14 +4,14 @@ from uuid import UUID
 from asgi_correlation_id import correlation_id
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 
 from src.application.chats.schemas import ChatFilterDTO
-from src.application.ports.common import ApiResponse, Page
-from src.application.ports.chats import IChatService
 from src.application.ports.characters import ICharacterService
-from src.domain.models import Chat, User
+from src.application.ports.chats import IChatService
+from src.application.ports.common import ApiResponse, Page
 from src.controllers.api.v1.auth_dependencies import get_current_user
+from src.domain.models import Chat, User
 
 logger = logging.getLogger(__name__)
 
@@ -103,3 +103,15 @@ async def set_chat_persona(
 	await character_service.get_one(user_character_id, user_id)
 	await chat_service.set_persona(chat_id, user_character_id, user_id)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())
+
+
+@router.post("/{chat_id}/initial-message")
+@inject
+async def choose_chat_initial_message(
+	chat_service: FromDishka[IChatService],
+	chat_id: UUID = Path(),
+	initial_message_id: UUID = Body(embed=True),
+	current_user: User = Depends(get_current_user),
+) -> ApiResponse:
+	seeded = await chat_service.choose_initial_message(chat_id, initial_message_id, current_user.id)
+	return ApiResponse(result=seeded, correlation_id=correlation_id.get())

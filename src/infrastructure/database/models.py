@@ -1,10 +1,11 @@
 import uuid
 from datetime import datetime
-from typing import List, Optional
-from sqlalchemy import String, Text, Boolean, Integer, BigInteger, ForeignKey, CheckConstraint, Index, Table, Column
+from typing import Optional
+
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, ForeignKey, Index, Integer, String, Table, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 
 class Base(DeclarativeBase):
@@ -51,15 +52,15 @@ class User(Base):
 	id: Mapped[uuid.UUID] = mapped_column(
 		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
 	)
-	username: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
-	password_hash: Mapped[Optional[str]] = mapped_column(Text)
-	google_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
+	username: Mapped[str | None] = mapped_column(String(100), unique=True)
+	password_hash: Mapped[str | None] = mapped_column(Text)
+	google_id: Mapped[str | None] = mapped_column(String(255), unique=True)
 	role: Mapped[str] = mapped_column(String(20), nullable=False, server_default="api", default="api")
 	crystal_balance: Mapped[int] = mapped_column(Integer, server_default="1000", default=1000)
 
-	characters: Mapped[List["Character"]] = relationship(back_populates="owner")
-	scenes: Mapped[List["Scene"]] = relationship(back_populates="owner")
-	chats: Mapped[List["Chat"]] = relationship(back_populates="user")
+	characters: Mapped[list["Character"]] = relationship(back_populates="owner")
+	scenes: Mapped[list["Scene"]] = relationship(back_populates="owner")
+	chats: Mapped[list["Chat"]] = relationship(back_populates="user")
 
 
 class Character(Base):
@@ -74,7 +75,7 @@ class Character(Base):
 	is_public: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
 
 	owner: Mapped["User"] = relationship(back_populates="characters")
-	scenes: Mapped[List["Scene"]] = relationship(back_populates="characters", secondary="character_scene")
+	scenes: Mapped[list["Scene"]] = relationship(back_populates="characters", secondary="character_scene")
 
 
 class Scene(Base):
@@ -86,13 +87,29 @@ class Scene(Base):
 	owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
 	title: Mapped[str] = mapped_column(Text)
 	description: Mapped[str] = mapped_column(Text)
-	initial_message_text: Mapped[str] = mapped_column(Text)
 	background_prompt: Mapped[str] = mapped_column(Text)
 	is_public: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
 
 	owner: Mapped["User"] = relationship(back_populates="scenes")
-	chats: Mapped[List["Chat"]] = relationship(back_populates="scene")
-	characters: Mapped[List["Character"]] = relationship(back_populates="scenes", secondary="character_scene")
+	chats: Mapped[list["Chat"]] = relationship(back_populates="scene")
+	characters: Mapped[list["Character"]] = relationship(back_populates="scenes", secondary="character_scene")
+	initial_messages: Mapped[list["SceneInitialMessage"]] = relationship(
+		back_populates="scene", cascade="all, delete-orphan", order_by="SceneInitialMessage.created_at"
+	)
+
+
+class SceneInitialMessage(Base):
+	__tablename__ = "scene_initial_messages"
+
+	id: Mapped[uuid.UUID] = mapped_column(
+		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+	)
+	scene_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scenes.id", ondelete="CASCADE"), index=True)
+	text: Mapped[str] = mapped_column(Text)
+	created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+	updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+	scene: Mapped["Scene"] = relationship(back_populates="initial_messages")
 
 
 class Chat(Base):
@@ -103,15 +120,18 @@ class Chat(Base):
 	)
 	name: Mapped[str] = mapped_column(Text)
 	user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-	scene_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("scenes.id", ondelete="SET NULL"), index=True)
-	user_character_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+	scene_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("scenes.id", ondelete="SET NULL"), index=True)
+	user_character_id: Mapped[uuid.UUID | None] = mapped_column(
 		ForeignKey("characters.id", ondelete="SET NULL"), index=True
+	)
+	initial_message_id: Mapped[uuid.UUID | None] = mapped_column(
+		ForeignKey("scene_initial_messages.id", ondelete="SET NULL"), index=True
 	)
 	created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 	user: Mapped["User"] = relationship(back_populates="chats")
 	scene: Mapped[Optional["Scene"]] = relationship(back_populates="chats")
-	messages: Mapped[List["Message"]] = relationship(back_populates="chat")
+	messages: Mapped[list["Message"]] = relationship(back_populates="chat")
 	settings: Mapped[Optional["ChatSettings"]] = relationship(
 		back_populates="chat", uselist=False, cascade="all, delete-orphan"
 	)
@@ -160,13 +180,13 @@ class MediaAsset(Base):
 	id: Mapped[uuid.UUID] = mapped_column(
 		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
 	)
-	object_key: Mapped[Optional[str]] = mapped_column(Text)
-	bucket: Mapped[Optional[str]] = mapped_column(String(63))
-	file_url: Mapped[Optional[str]] = mapped_column(Text)
+	object_key: Mapped[str | None] = mapped_column(Text)
+	bucket: Mapped[str | None] = mapped_column(String(63))
+	file_url: Mapped[str | None] = mapped_column(Text)
 	content_type: Mapped[str] = mapped_column(String(100), server_default="image/png", default="image/png")
 	size_bytes: Mapped[int] = mapped_column(BigInteger, server_default="0", default=0)
 	entity_type: Mapped[str] = mapped_column(String(100))
 	entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
 	is_public: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
-	owner_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+	owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 	created_at: Mapped[datetime] = mapped_column(server_default=func.now())

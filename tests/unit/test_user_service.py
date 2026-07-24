@@ -1,14 +1,14 @@
-import pytest
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import pytest
 from fastapi import HTTPException
 
-from src.application.user.user_service import UserService
 from src.application.auth.authz import AuthorizationService
-from src.domain.models import User, UserRole
 from src.application.ports.common import Page
 from src.application.user.schemas import UserDTO
+from src.application.user.user_service import UserService
+from src.domain.models import User, UserRole
 
 
 @pytest.mark.unit

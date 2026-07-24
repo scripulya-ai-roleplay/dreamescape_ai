@@ -2,10 +2,10 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.infrastructure.logging.logger import Logger
 from src.application.chats.settings import ChatSettings
 from src.application.ports.chats import IChatSettingsGateway, IChatSettingsService
 from src.application.ports.common import IUnitOfWork
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass

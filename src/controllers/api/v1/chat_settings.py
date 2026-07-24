@@ -4,11 +4,11 @@ from uuid import UUID
 from asgi_correlation_id import correlation_id
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Path, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Path
 
 from src.application.chats.settings import ChatSettings
-from src.application.ports.common import ApiResponse
 from src.application.ports.chats import IChatService, IChatSettingsService
+from src.application.ports.common import ApiResponse
 from src.controllers.api.v1.auth_dependencies import get_current_user
 from src.domain.models import User
 

@@ -2,21 +2,27 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select, delete, func, and_
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infrastructure.logging.logger import Logger
 from src.application.media.schemas import MediaFilterDTO
-from src.application.ports.media import IMediaGateway
 from src.application.ports.authorization import IVisibilityGateway
 from src.application.ports.common import Page
+from src.application.ports.media import IMediaGateway
 from src.domain.models import MediaAsset, MediaEntityType
 from src.infrastructure.database.models import (
-	MediaAsset as MediaAssetModel,
 	Character as CharacterModel,
+)
+from src.infrastructure.database.models import (
+	MediaAsset as MediaAssetModel,
+)
+from src.infrastructure.database.models import (
 	Scene as SceneModel,
+)
+from src.infrastructure.database.models import (
 	User as UserModel,
 )
+from src.infrastructure.logging.logger import Logger
 
 # Maps an entity kind to (table, owner-column) for ownership checks. Characters
 # and scenes are owned via owner_id; a user "owns" itself (its own id).

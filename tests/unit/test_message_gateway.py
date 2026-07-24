@@ -1,14 +1,15 @@
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
+
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infrastructure.gateways.message_gateway import MessageGateway
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports.common import Page
-from src.domain.models import Message, ChatRoles, MessageStatus
+from src.domain.models import ChatRoles, Message, MessageStatus
 from src.infrastructure.database.models import Message as MessageModel
+from src.infrastructure.gateways.message_gateway import MessageGateway
 
 
 class TestMessageGateway:
@@ -36,8 +37,8 @@ class TestMessageGateway:
 		model.content = "Test message content"
 		model.status = "completed"
 		model.cost_crystals = 0
-		model.created_at = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-		model.updated_at = datetime(2024, 1, 2, 15, 30, 0, tzinfo=timezone.utc)
+		model.created_at = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+		model.updated_at = datetime(2024, 1, 2, 15, 30, 0, tzinfo=UTC)
 		return model
 
 	@pytest.fixture
@@ -62,8 +63,8 @@ class TestMessageGateway:
 		row.content = content
 		row.status = status
 		row.cost_crystals = 0
-		row.created_at = datetime(2024, 3, 10, 8, 0, 0, tzinfo=timezone.utc)
-		row.updated_at = datetime(2024, 3, 11, 9, 0, 0, tzinfo=timezone.utc)
+		row.created_at = datetime(2024, 3, 10, 8, 0, 0, tzinfo=UTC)
+		row.updated_at = datetime(2024, 3, 11, 9, 0, 0, tzinfo=UTC)
 		return row
 
 	@pytest.mark.unit
@@ -315,8 +316,8 @@ class TestMessageGateway:
 		message_model.role = "model"
 		message_model.content = "AI response"
 		message_model.status = "completed"
-		message_model.created_at = datetime(2024, 3, 10, 8, 0, 0, tzinfo=timezone.utc)
-		message_model.updated_at = datetime(2024, 3, 11, 9, 0, 0, tzinfo=timezone.utc)
+		message_model.created_at = datetime(2024, 3, 10, 8, 0, 0, tzinfo=UTC)
+		message_model.updated_at = datetime(2024, 3, 11, 9, 0, 0, tzinfo=UTC)
 
 		# Act
 		result = message_gateway._to_domain_message(message_model)

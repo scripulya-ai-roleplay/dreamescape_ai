@@ -3,17 +3,18 @@ Mock Google API service for testing purposes.
 This service mimics the Google Generative AI API responses.
 """
 
+import logging
+from typing import Any
+
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import List, Dict, Any
-import logging
 
 app = FastAPI()
 logging.basicConfig(level=logging.INFO)
 
 
 class GenerateRequest(BaseModel):
-	contents: List[Dict[str, Any]]
+	contents: list[dict[str, Any]]
 
 
 @app.post("/v1beta/models/gemini-1.5-flash-latest:generateContent")

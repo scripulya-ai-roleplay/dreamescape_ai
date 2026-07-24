@@ -4,13 +4,13 @@ from uuid import UUID
 from asgi_correlation_id import correlation_id
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 
 from src.application.character.schemas import CharacterFilterDTO
-from src.application.ports.common import ApiResponse, Page, LikeState, BookmarkState
 from src.application.ports.characters import ICharacterService
-from src.domain.models import Character, User
+from src.application.ports.common import ApiResponse, BookmarkState, LikeState, Page
 from src.controllers.api.v1.auth_dependencies import get_current_user, get_optional_user
+from src.domain.models import Character, User
 
 logger = logging.getLogger(__name__)
 

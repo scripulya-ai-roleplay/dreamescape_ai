@@ -3,8 +3,8 @@ import logging
 from dishka.integrations.faststream import FromDishka
 
 from src.application.ports.chats import IChatEventGateway
-from src.application.ports.messages import IMessageService
 from src.application.ports.llm import LLMResult
+from src.application.ports.messages import IMessageService
 from src.conf import settings
 from src.controllers.rabbit.v1.broker import broker
 from src.infrastructure.logging.logger import Logger

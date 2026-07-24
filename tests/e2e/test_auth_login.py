@@ -70,7 +70,7 @@ class TestAuthLogin:
 				"sub": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 				"user_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
 				"role": "api",
-				"exp": dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=1),
+				"exp": dt.datetime.now(dt.UTC) - dt.timedelta(minutes=1),
 			},
 			settings.JWT_SECRET_KEY,
 			algorithm=settings.JWT_ALGORITHM,

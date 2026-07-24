@@ -66,3 +66,13 @@ class PersonaRequiredException(BaseAPIException):
 			error_code="PERSONA_REQUIRED",
 			**kwargs,
 		)
+
+
+class InitialMessageRequiredException(BaseAPIException):
+	def __init__(self, message: str = "Choose an initial message to start the chat", **kwargs):
+		super().__init__(
+			message=message,
+			status_code=status.HTTP_400_BAD_REQUEST,
+			error_code="INITIAL_MESSAGE_REQUIRED",
+			**kwargs,
+		)

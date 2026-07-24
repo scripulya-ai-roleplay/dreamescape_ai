@@ -1,9 +1,8 @@
-from typing import Dict
-from src.application.ports.llm import ILLMChatGateway, IGatewayFactory
+from src.application.ports.llm import IGatewayFactory, ILLMChatGateway
 
 
 class GatewayFactory(IGatewayFactory):
-	def __init__(self, gateways: Dict[str, ILLMChatGateway]):
+	def __init__(self, gateways: dict[str, ILLMChatGateway]):
 		self._gateways = gateways
 
 	def create_gateway(self, gateway_type: str) -> ILLMChatGateway:

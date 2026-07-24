@@ -1,15 +1,15 @@
-import pytest
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import pytest
 from fastapi import HTTPException
 from sqlalchemy.exc import NoResultFound
 
 from src.application.auth.authz import AuthorizationService
-from src.application.character.service import CharacterService
-from src.domain.models import Character
-from src.application.ports.common import Page, LikeState, BookmarkState
 from src.application.character.schemas import CharacterFilterDTO
+from src.application.character.service import CharacterService
+from src.application.ports.common import BookmarkState, LikeState, Page
+from src.domain.models import Character
 
 
 @pytest.mark.unit

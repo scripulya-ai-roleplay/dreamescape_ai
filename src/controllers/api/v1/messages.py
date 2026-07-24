@@ -4,16 +4,16 @@ from uuid import UUID
 from asgi_correlation_id import correlation_id
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Query, Path, Body, Depends, status
+from fastapi import APIRouter, Body, Depends, Path, Query, status
 from pydantic import BaseModel, ConfigDict
 
-from src.application.ports.llm import LLMModelType, UserMessageDTO
 from src.application.message.schemas import MessagesFilterDto
-from src.application.ports.common import ApiResponse, Page
-from src.application.ports.messages import IMessageService
 from src.application.ports.chats import IChatsService
-from src.domain.models import ChatRoles, Message, User
+from src.application.ports.common import ApiResponse, Page
+from src.application.ports.llm import LLMModelType, UserMessageDTO
+from src.application.ports.messages import IMessageService
 from src.controllers.api.v1.auth_dependencies import get_current_user
+from src.domain.models import ChatRoles, Message, User
 
 logger = logging.getLogger(__name__)
 

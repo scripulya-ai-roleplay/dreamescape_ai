@@ -1,7 +1,7 @@
 import io
+from unittest.mock import Mock
 
 import pytest
-from unittest.mock import Mock
 
 from src.infrastructure.gateways.object_storage_gateway import MinioObjectStorageGateway, _parse_endpoint
 

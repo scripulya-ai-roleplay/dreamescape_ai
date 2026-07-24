@@ -1,14 +1,15 @@
-import pytest
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
+
+import pytest
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infrastructure.gateways.scenes_gateway import SceneGateway
-from src.infrastructure.gateways.visibility import VisibilityGateway
-from src.domain.models import Scene
 from src.application.ports.common import Page
 from src.application.scene.schemas import SceneFilterDTO, SceneSortBy, SortOrder
-from sqlalchemy.dialects import postgresql
+from src.domain.models import Scene
+from src.infrastructure.gateways.scenes_gateway import SceneGateway
+from src.infrastructure.gateways.visibility import VisibilityGateway
 
 
 @pytest.mark.unit
@@ -40,7 +41,6 @@ class TestSceneGateway:
 		scene_model.background_prompt = "Test background prompt"
 		scene_model.owner_id = uuid4()
 		scene_model.characters = []
-		scene_model.initial_message_text = "Welcome to the test scene!"
 		scene_model.is_public = True
 		return scene_model
 
@@ -58,7 +58,6 @@ class TestSceneGateway:
 			description="Test scene description",
 			background_prompt="Test background prompt",
 			owner_id=uuid4(),
-			initial_message_text="Welcome to the test scene!",
 			is_public=True,
 		)
 

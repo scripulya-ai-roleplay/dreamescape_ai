@@ -11,7 +11,6 @@ from src.controllers.rabbit.v1.broker import broker
 from src.infrastructure.di import create_container
 from src.infrastructure.logging.logger import Logger
 
-
 logger = logging.getLogger(__name__)
 
 

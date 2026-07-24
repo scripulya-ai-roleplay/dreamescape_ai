@@ -2,7 +2,7 @@ import abc
 from uuid import UUID
 
 from src.application.character.schemas import CharacterFilterDTO
-from src.application.ports.common import Page, LikeState, BookmarkState
+from src.application.ports.common import BookmarkState, LikeState, Page
 from src.domain.models import Character
 
 
