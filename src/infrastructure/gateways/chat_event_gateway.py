@@ -9,7 +9,7 @@ from src.domain.models import Message
 from src.infrastructure.logging.logger import Logger
 
 # Bounded so a slow/stalled SSE client can't accumulate unbounded memory.
-_LISTENER_MAXSIZE = 32
+_LISTENER_MAXSIZE = 256
 
 
 @dataclass
@@ -43,3 +43,15 @@ class ChatEventGateway(IChatEventGateway):
 
 	def publish_message(self, chat_id: UUID, message: Message) -> None:
 		self.publish(chat_id, {"message": message.model_dump(mode="json")})
+
+	def publish_token(self, chat_id: UUID, request_id: UUID, text: str) -> None:
+		self.publish(
+			chat_id,
+			{"_sse_event": "token", "request_id": str(request_id), "text": text},
+		)
+
+	def publish_generation_start(self, chat_id: UUID, request_id: UUID) -> None:
+		self.publish(chat_id, {"_sse_event": "generation_start", "request_id": str(request_id)})
+
+	def publish_generation_done(self, chat_id: UUID, request_id: UUID) -> None:
+		self.publish(chat_id, {"_sse_event": "generation_done", "request_id": str(request_id)})

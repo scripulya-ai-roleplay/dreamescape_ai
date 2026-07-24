@@ -28,6 +28,10 @@ def _done_key(request_id: str) -> str:
 	return f"gen:{request_id}:done"
 
 
+def tokens_key(request_id: str) -> str:
+	return f"gen:{request_id}:tokens"
+
+
 @dataclass
 class RedisGenerationHeartbeat(IGenerationHeartbeat):
 	"""Best-effort: every Redis op is swallowed + logged, so a Redis outage only
