@@ -296,6 +296,40 @@ class TestChatGateway:
 		mock_session.commit.assert_not_called()
 
 	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_set_initial_message_success(self, chat_gateway, mock_session):
+		# Arrange
+		chat_id = uuid4()
+		initial_message_id = uuid4()
+		mock_result = AsyncMock()
+		mock_result.rowcount = 1  # claimed the slot (was NULL)
+		mock_session.execute.return_value = mock_result
+		mock_session.commit = AsyncMock()
+
+		# Act
+		result = await chat_gateway.set_initial_message(chat_id, initial_message_id)
+
+		# Assert
+		assert result == chat_id
+		mock_session.execute.assert_called_once()
+		# The gateway must not commit; the UOW owns the transaction boundary.
+		mock_session.commit.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_set_initial_message_already_chosen(self, chat_gateway, mock_session):
+		# A rowcount of 0 means a concurrent request already claimed the slot: the
+		# conditional UPDATE only matches chats whose initial_message_id IS NULL.
+		chat_id = uuid4()
+		initial_message_id = uuid4()
+		mock_result = AsyncMock()
+		mock_result.rowcount = 0
+		mock_session.execute.return_value = mock_result
+
+		with pytest.raises(ValueError, match="already has an initial message"):
+			await chat_gateway.set_initial_message(chat_id, initial_message_id)
+
+	@pytest.mark.unit
 	def test_to_domain_chat_conversion(self, chat_gateway, sample_chat_model):
 		# Act
 		result = chat_gateway._to_domain_chat(sample_chat_model)

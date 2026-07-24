@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.ports.scenes import IInitialMessageGateway
 from src.domain.models import InitialMessage
+from src.infrastructure.database.models import Chat as ChatModel
 from src.infrastructure.database.models import SceneInitialMessage as InitialMessageModel
 from src.infrastructure.logging.logger import Logger
 
@@ -80,6 +81,14 @@ class InitialMessageGateway(IInitialMessageGateway):
 
 		self.logger.info(f"Successfully deleted initial message: {uuid}")
 		return uuid
+
+	async def count_referencing_chats(self, uuid: UUID) -> int:
+		self.logger.info(f"Counting chats referencing initial message: {uuid}")
+
+		count = await self._session.scalar(
+			select(func.count()).select_from(ChatModel).where(ChatModel.initial_message_id == uuid)
+		)
+		return count or 0
 
 	def _to_domain(self, message_model: InitialMessageModel) -> InitialMessage:
 		return InitialMessage(

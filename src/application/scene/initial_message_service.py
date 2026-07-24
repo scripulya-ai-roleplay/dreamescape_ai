@@ -37,8 +37,12 @@ class InitialMessageService(IInitialMessageService):
 	async def delete(self, initial_message_uuid: UUID, actor_id: UUID) -> UUID:
 		self.logger.info(f"Deleting initial message: {initial_message_uuid}")
 
-		await self._require_owned(initial_message_uuid, actor_id)
+		initial_message = await self._require_owned(initial_message_uuid, actor_id)
 		async with self.uow:
+			if await self.initial_message_gateway.count_referencing_chats(initial_message_uuid) > 0:
+				raise ValueError("Initial message is in use by existing chats and cannot be deleted")
+			if len(await self.initial_message_gateway.list_for_scene(initial_message.scene_id)) <= 1:
+				raise ValueError("Scene must keep at least one initial message")
 			return await self.initial_message_gateway.delete(initial_message_uuid)
 
 	async def _require_owned(self, initial_message_uuid: UUID, actor_id: UUID) -> InitialMessage:

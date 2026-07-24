@@ -95,8 +95,53 @@ class TestInitialMessageService:
 			id=scene_id, title="Mine", owner_id=owner, background_prompt="b", is_public=False
 		)
 		mock_initial_message_gateway.delete.return_value = im_id
+		mock_initial_message_gateway.count_referencing_chats.return_value = 0
+		mock_initial_message_gateway.list_for_scene.return_value = [
+			InitialMessage(id=im_id, scene_id=scene_id, text="hi"),
+			InitialMessage(id=uuid4(), scene_id=scene_id, text="second"),
+		]
 
 		result = await service.delete(im_id, owner)
 
 		assert result == im_id
 		mock_initial_message_gateway.delete.assert_called_once_with(im_id)
+
+	@pytest.mark.asyncio
+	async def test_delete_last_initial_message_blocked(self, service, mock_initial_message_gateway, mock_scene_gateway):
+		# A scene's only initial message cannot be deleted: new chats started from
+		# it could then never satisfy the greeting gate, and there is no endpoint
+		# to add one to an existing scene.
+		scene_id = uuid4()
+		owner = uuid4()
+		im_id = uuid4()
+		mock_initial_message_gateway.get_one.return_value = InitialMessage(id=im_id, scene_id=scene_id, text="hi")
+		mock_scene_gateway.get_one.return_value = Scene(
+			id=scene_id, title="Mine", owner_id=owner, background_prompt="b", is_public=False
+		)
+		mock_initial_message_gateway.count_referencing_chats.return_value = 0
+		mock_initial_message_gateway.list_for_scene.return_value = [
+			InitialMessage(id=im_id, scene_id=scene_id, text="hi")
+		]
+
+		with pytest.raises(ValueError, match="keep at least one initial message"):
+			await service.delete(im_id, owner)
+
+		mock_initial_message_gateway.delete.assert_not_called()
+
+	@pytest.mark.asyncio
+	async def test_delete_blocked_when_referenced(self, service, mock_initial_message_gateway, mock_scene_gateway):
+		# An initial message referenced by any chat cannot be deleted: nulling the
+		# pointer would re-arm the greeting gate for active conversations.
+		scene_id = uuid4()
+		owner = uuid4()
+		im_id = uuid4()
+		mock_initial_message_gateway.get_one.return_value = InitialMessage(id=im_id, scene_id=scene_id, text="hi")
+		mock_scene_gateway.get_one.return_value = Scene(
+			id=scene_id, title="Mine", owner_id=owner, background_prompt="b", is_public=False
+		)
+		mock_initial_message_gateway.count_referencing_chats.return_value = 1
+
+		with pytest.raises(ValueError, match="in use by existing chats"):
+			await service.delete(im_id, owner)
+
+		mock_initial_message_gateway.delete.assert_not_called()

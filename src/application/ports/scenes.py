@@ -71,6 +71,9 @@ class IInitialMessageGateway(abc.ABC):
 	@abc.abstractmethod
 	async def delete(self, uuid: UUID) -> UUID: ...
 
+	@abc.abstractmethod
+	async def count_referencing_chats(self, uuid: UUID) -> int: ...
+
 
 class ISceneGateway(abc.ABC):
 	@abc.abstractmethod

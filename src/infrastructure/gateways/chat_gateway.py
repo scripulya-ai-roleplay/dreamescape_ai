@@ -140,10 +140,12 @@ class ChatGateway(IChatGateway):
 		self.logger.info(f"Setting initial message {initial_message_id} on chat {chat_uuid}")
 
 		result = await self._session.execute(
-			update(ChatModel).where(ChatModel.id == chat_uuid).values(initial_message_id=initial_message_id)
+			update(ChatModel)
+			.where(ChatModel.id == chat_uuid, ChatModel.initial_message_id.is_(None))
+			.values(initial_message_id=initial_message_id)
 		)
 		if result.rowcount == 0:
-			raise ValueError(f"Chat with ID {chat_uuid} not found")
+			raise ValueError("Chat already has an initial message")
 
 		self.logger.info(f"Successfully set initial message on chat: {chat_uuid}")
 		return chat_uuid
