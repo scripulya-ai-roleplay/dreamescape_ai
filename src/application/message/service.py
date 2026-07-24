@@ -1,16 +1,14 @@
 import logging
 from dataclasses import dataclass
-from typing import Optional
 from uuid import UUID
 
-from src.infrastructure.logging.logger import Logger
-from src.application.ports.common import IUnitOfWork
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports.authorization import IAuthorizationService
-from src.application.ports.messages import IMessageService, IMessageGateway
-from src.application.ports.common import Page
+from src.application.ports.common import IUnitOfWork, Page
 from src.application.ports.llm import LLMResult
+from src.application.ports.messages import IMessageGateway, IMessageService
 from src.domain.models import ChatRoles, Message, MessageStatus
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass
@@ -88,5 +86,5 @@ class MessageService(IMessageService):
 				)
 			)
 
-	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]:
+	async def latest_model_message(self, chat_id: UUID) -> Message | None:
 		return await self.message_gateway.latest_model_message(chat_id)

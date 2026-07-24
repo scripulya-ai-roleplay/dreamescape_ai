@@ -1,20 +1,18 @@
 import logging
 from dataclasses import dataclass
-from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select, delete, func, and_
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.infrastructure.logging.logger import Logger
-from src.application.ports.user import IUserGateway
-from src.application.ports.common import Page
-from src.domain.models import User, UserRole
 from src.application.auth.schemas import UserAuthRecord
+from src.application.ports.common import Page
+from src.application.ports.user import IUserGateway
 from src.application.user.schemas import UserDTO
+from src.domain.models import Character, Chat, Scene, User, UserRole
 from src.infrastructure.database.models import User as UserModel
-from src.domain.models import Character, Scene, Chat
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass
@@ -94,7 +92,7 @@ class UserGateway(IUserGateway):
 
 		self.logger.info(f"Successfully deleted user: {user_id}")
 
-	async def get_user_by_id(self, user_id: UUID) -> Optional[User]:
+	async def get_user_by_id(self, user_id: UUID) -> User | None:
 		self.logger.info(f"Getting user by ID: {user_id}")
 
 		query = (
@@ -111,7 +109,7 @@ class UserGateway(IUserGateway):
 
 		return self._to_domain_user(user_model)
 
-	async def get_user_auth(self, username: str) -> Optional[UserAuthRecord]:
+	async def get_user_auth(self, username: str) -> UserAuthRecord | None:
 		self.logger.info("Fetching auth record for username login")
 
 		query = select(UserModel.id, UserModel.username, UserModel.role, UserModel.password_hash).where(

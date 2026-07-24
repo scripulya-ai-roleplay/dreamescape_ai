@@ -2,23 +2,27 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select, delete, func, and_, update, exists
+from sqlalchemy import and_, delete, exists, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.infrastructure.logging.logger import Logger
 from src.application.character.schemas import CharacterFilterDTO
-from src.application.ports.characters import ICharacterGateway
 from src.application.ports.authorization import IVisibilityGateway
+from src.application.ports.characters import ICharacterGateway
 from src.application.ports.common import Page
 from src.domain.models import Character
 from src.infrastructure.database.models import (
 	Character as CharacterModel,
-	Scene as SceneModel,
-	character_likes,
-	character_bookmarks,
 )
+from src.infrastructure.database.models import (
+	Scene as SceneModel,
+)
+from src.infrastructure.database.models import (
+	character_bookmarks,
+	character_likes,
+)
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass

@@ -1,16 +1,15 @@
 import json
 import logging
-from typing import Optional, Dict, Any
+from typing import Any
 
 from fastapi import HTTPException
 from fastapi.exception_handlers import http_exception_handler
-from sqlalchemy.exc import NoResultFound, MultipleResultsFound, IntegrityError
-
-from src.application.auth.errors import InvalidCredentialsError
-
+from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from starlette import status
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+
+from src.application.auth.errors import InvalidCredentialsError
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +21,8 @@ class BaseAPIException(Exception):
 		self,
 		message: str,
 		status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
-		error_code: Optional[str] = None,
-		details: Optional[Dict[str, Any]] = None,
+		error_code: str | None = None,
+		details: dict[str, Any] | None = None,
 	):
 		self.message = message
 		self.status_code = status_code

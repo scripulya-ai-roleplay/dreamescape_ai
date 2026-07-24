@@ -5,13 +5,13 @@ from uuid import UUID
 from asgi_correlation_id import correlation_id
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Query, Path, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Path, Query, UploadFile
 
 from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadDTO
 from src.application.ports.common import ApiResponse, Page
 from src.application.ports.media import IMediaService
-from src.domain.models import MediaEntityType, User
 from src.controllers.api.v1.auth_dependencies import get_current_user, get_optional_user
+from src.domain.models import MediaEntityType, User
 
 logger = logging.getLogger(__name__)
 

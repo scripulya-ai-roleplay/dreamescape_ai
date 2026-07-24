@@ -2,12 +2,12 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.infrastructure.logging.logger import Logger
 from src.application.character.schemas import CharacterFilterDTO
 from src.application.ports.authorization import IAuthorizationService
-from src.application.ports.characters import ICharacterService, ICharacterGateway
-from src.application.ports.common import IUnitOfWork, Page, LikeState, BookmarkState
+from src.application.ports.characters import ICharacterGateway, ICharacterService
+from src.application.ports.common import BookmarkState, IUnitOfWork, LikeState, Page
 from src.domain.models import Character
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass

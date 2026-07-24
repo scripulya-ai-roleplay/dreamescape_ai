@@ -1,12 +1,10 @@
 import abc
 import asyncio
-from typing import Optional
 from uuid import UUID
 
 from src.application.chats.schemas import ChatFilterDTO
 from src.application.chats.settings import ChatSettings
 from src.application.ports.common import Page
-
 from src.application.ports.llm import UserMessageDTO
 from src.domain.models import Chat, Message
 
@@ -64,7 +62,7 @@ class IChatService(abc.ABC):
 
 class IChatSettingsGateway(abc.ABC):
 	@abc.abstractmethod
-	async def get_for_chat(self, chat_id: UUID) -> Optional[ChatSettings]: ...
+	async def get_for_chat(self, chat_id: UUID) -> ChatSettings | None: ...
 
 	@abc.abstractmethod
 	async def upsert(self, chat_id: UUID, settings: ChatSettings) -> ChatSettings: ...
@@ -72,7 +70,7 @@ class IChatSettingsGateway(abc.ABC):
 
 class IChatSettingsService(abc.ABC):
 	@abc.abstractmethod
-	async def get_for_chat(self, chat_id: UUID) -> Optional[ChatSettings]: ...
+	async def get_for_chat(self, chat_id: UUID) -> ChatSettings | None: ...
 
 	@abc.abstractmethod
 	async def upsert(self, chat_id: UUID, settings: ChatSettings) -> ChatSettings: ...

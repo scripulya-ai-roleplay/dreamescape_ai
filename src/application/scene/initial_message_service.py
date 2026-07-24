@@ -2,11 +2,11 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.infrastructure.logging.logger import Logger
 from src.application.ports.authorization import IAuthorizationService
 from src.application.ports.common import IUnitOfWork
-from src.application.ports.scenes import IInitialMessageService, IInitialMessageGateway, ISceneGateway
+from src.application.ports.scenes import IInitialMessageGateway, IInitialMessageService, ISceneGateway
 from src.domain.models import InitialMessage
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass

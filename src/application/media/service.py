@@ -6,12 +6,12 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 from starlette import status
 
-from src.infrastructure.logging.logger import Logger
 from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadDTO
 from src.application.ports.authorization import IAuthorizationService
-from src.application.ports.media import IImageReader, IObjectStorageGateway, IMediaGateway, IMediaService
 from src.application.ports.common import IUnitOfWork, Page
+from src.application.ports.media import IImageReader, IMediaGateway, IMediaService, IObjectStorageGateway
 from src.domain.models import MediaAsset
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass

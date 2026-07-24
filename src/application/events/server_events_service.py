@@ -1,7 +1,7 @@
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 from uuid import UUID
 
 from dishka import AsyncContainer, Scope
@@ -26,7 +26,7 @@ class ServerEventsService(IServerEventsService):
 	_events: IChatEventGateway
 	_container: AsyncContainer
 
-	def _sse_frame(self, payload: Dict[str, Any]) -> str:
+	def _sse_frame(self, payload: dict[str, Any]) -> str:
 		# Always emit on the standard "message" channel. A failed generation still
 		# arrives as a chat message (status=failed is in the payload), so the client
 		# can render it. Using the SSE event name "error" collided with EventSource's
@@ -51,7 +51,7 @@ class ServerEventsService(IServerEventsService):
 			headers=_SSE_HEADERS,
 		)
 
-	async def _stream(self, chat_id: UUID, latest: Optional[Message]):
+	async def _stream(self, chat_id: UUID, latest: Message | None):
 		queue = self._events.subscribe(chat_id)
 		try:
 			if latest is not None:
@@ -59,7 +59,7 @@ class ServerEventsService(IServerEventsService):
 			while True:
 				try:
 					event = await asyncio.wait_for(queue.get(), timeout=_KEEPALIVE_SECONDS)
-				except asyncio.TimeoutError:
+				except TimeoutError:
 					yield ": keepalive\n\n"
 					continue
 				yield self._sse_frame(event)

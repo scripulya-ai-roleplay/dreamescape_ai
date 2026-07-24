@@ -2,14 +2,14 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.infrastructure.logging.logger import Logger
+from src.application.chats.schemas import ChatFilterDTO
 from src.application.ports.authorization import IAuthorizationService
-from src.application.ports.chats import IChatService, IChatGateway
+from src.application.ports.chats import IChatGateway, IChatService
+from src.application.ports.common import IUnitOfWork, Page
 from src.application.ports.messages import IMessageGateway
 from src.application.ports.scenes import IInitialMessageGateway
-from src.application.ports.common import IUnitOfWork, Page
-from src.application.chats.schemas import ChatFilterDTO
-from src.domain.models import Chat, Message, ChatRoles, MessageStatus
+from src.domain.models import Chat, ChatRoles, Message, MessageStatus
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass

@@ -3,10 +3,10 @@ from uuid import UUID
 
 import pytest
 
-from src.application.auth.service import AuthService, _DUMMY_HASH
-from src.application.auth.schemas import UserAuthRecord
-from src.domain.models import UserRole
 from src.application.auth.errors import InvalidCredentialsError
+from src.application.auth.schemas import UserAuthRecord
+from src.application.auth.service import _DUMMY_HASH, AuthService
+from src.domain.models import UserRole
 
 
 @pytest.mark.unit

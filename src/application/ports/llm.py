@@ -1,13 +1,12 @@
 import abc
 from abc import ABC, abstractmethod
 from enum import StrEnum
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel
 
 from src.application.chats.settings import ChatSettings
-from src.domain.models import ChatRoles, Scene, Character
+from src.domain.models import Character, ChatRoles, Scene
 
 
 class LLMModelType(StrEnum):
@@ -27,7 +26,7 @@ class LLMModelType(StrEnum):
 class LLMResponse(BaseModel):
 	text: str
 	model: LLMModelType
-	usage: Optional[dict] = None
+	usage: dict | None = None
 	provider: str
 
 
@@ -68,7 +67,7 @@ class ILLMChatGateway(abc.ABC):
 		history: list[UserMessageDTO],
 		chat_settings: ChatSettings | None = None,
 		system_prompt: str = "",
-	) -> Optional[LLMResponse]: ...
+	) -> LLMResponse | None: ...
 
 
 class IScripulyaAgentClient(abc.ABC):

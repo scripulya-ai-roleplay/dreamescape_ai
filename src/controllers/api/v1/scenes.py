@@ -1,18 +1,17 @@
 import logging
 from uuid import UUID
-from typing import List
 
 from asgi_correlation_id import correlation_id
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 
-from src.application.ports.scenes import ISceneService, IInitialMessageService
 from src.application.ports.characters import ICharacterService
-from src.application.ports.common import ApiResponse, Page, LikeState, BookmarkState
-from src.application.scene.schemas import SceneFilterDTO, AttachCharactersDTO
-from src.domain.models import Scene, Character, InitialMessage, User
+from src.application.ports.common import ApiResponse, BookmarkState, LikeState, Page
+from src.application.ports.scenes import IInitialMessageService, ISceneService
+from src.application.scene.schemas import AttachCharactersDTO, SceneFilterDTO
 from src.controllers.api.v1.auth_dependencies import get_current_user, get_optional_user
+from src.domain.models import Character, InitialMessage, Scene, User
 from src.infrastructure.logging.redact import preview
 
 logger = logging.getLogger(__name__)
@@ -198,7 +197,7 @@ async def get_scene_characters(
 	character_service: FromDishka[ICharacterService],
 	scene_id: UUID = Path(),
 	current_user: User = Depends(get_current_user),
-) -> ApiResponse[List[Character]]:
+) -> ApiResponse[list[Character]]:
 	user_id = current_user.id
 	await scene_service.get_one(scene_id, user_id)
 	characters = await character_service.get_for_scene(scene_id, actor_id=user_id)
@@ -211,7 +210,7 @@ async def get_scene_initial_messages(
 	initial_message_service: FromDishka[IInitialMessageService],
 	scene_id: UUID = Path(),
 	current_user: User | None = Depends(get_optional_user),
-) -> ApiResponse[List[InitialMessage]]:
+) -> ApiResponse[list[InitialMessage]]:
 	actor_id = current_user.id if current_user else None
 	result = await initial_message_service.list_for_scene(scene_id, actor_id)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())

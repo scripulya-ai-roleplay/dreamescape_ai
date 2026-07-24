@@ -3,9 +3,9 @@ from dataclasses import dataclass
 
 from fastapi import UploadFile
 
-from src.infrastructure.logging.logger import Logger
 from src.application.ports.media import IImageReader, UploadedImage
 from src.infrastructure.exceptions import ImageTooLargeException, UnsupportedImageTypeException
+from src.infrastructure.logging.logger import Logger
 
 # Image content types accepted on upload. The extension is derived from the
 # sniffed type (not the client-supplied filename) and doubles as the allowlist.

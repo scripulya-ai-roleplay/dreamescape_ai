@@ -1,6 +1,7 @@
-import pytest
 from unittest.mock import Mock
 from uuid import uuid4
+
+import pytest
 
 from src.application.ports.llm import LLMModelType, UserMessageDTO
 from src.domain.models import ChatRoles

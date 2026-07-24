@@ -142,7 +142,7 @@ def fetch_scene_targets(settings: Settings) -> list[MediaTarget]:
 		SELECT s.title, s.background_prompt, m.object_key, m.id::text
 		FROM scenes s
 		JOIN media_assets m
-		  ON m.entity_id = s.id AND m.entity_type = 'scene'
+			ON m.entity_id = s.id AND m.entity_type = 'scene'
 		WHERE m.object_key IS NOT NULL
 		ORDER BY s.title
 	"""
@@ -169,7 +169,7 @@ def fetch_character_targets(settings: Settings) -> list[MediaTarget]:
 		SELECT c.name, c.system_prompt, m.object_key, m.id::text
 		FROM characters c
 		JOIN media_assets m
-		  ON m.entity_id = c.id AND m.entity_type = 'character'
+			ON m.entity_id = c.id AND m.entity_type = 'character'
 		WHERE m.object_key IS NOT NULL
 		ORDER BY c.name
 	"""

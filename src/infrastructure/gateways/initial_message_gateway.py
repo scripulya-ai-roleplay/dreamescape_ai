@@ -2,13 +2,13 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select, delete, func, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infrastructure.logging.logger import Logger
 from src.application.ports.scenes import IInitialMessageGateway
 from src.domain.models import InitialMessage
 from src.infrastructure.database.models import SceneInitialMessage as InitialMessageModel
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass

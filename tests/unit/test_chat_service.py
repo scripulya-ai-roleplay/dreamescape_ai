@@ -1,17 +1,17 @@
-import pytest
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import pytest
 from fastapi import HTTPException
 
 from src.application.auth.authz import AuthorizationService
-from src.application.chats.service import ChatService
 from src.application.chats.schemas import ChatFilterDTO
+from src.application.chats.service import ChatService
 from src.application.ports.chats import IChatGateway
+from src.application.ports.common import IUnitOfWork, Page
 from src.application.ports.messages import IMessageGateway
 from src.application.ports.scenes import IInitialMessageGateway
-from src.application.ports.common import IUnitOfWork, Page
-from src.domain.models import Chat, ChatRoles, Message, MessageStatus, InitialMessage
+from src.domain.models import Chat, ChatRoles, InitialMessage, Message, MessageStatus
 
 
 class TestChatService:

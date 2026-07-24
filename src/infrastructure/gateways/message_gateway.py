@@ -1,17 +1,17 @@
 import logging
 from dataclasses import dataclass
-from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select, delete, func, and_, update, exists
+from sqlalchemy import and_, delete, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infrastructure.logging.logger import Logger
-from src.application.ports.messages import IMessageGateway
-from src.application.ports.common import Page
 from src.application.message.schemas import MessagesFilterDto
-from src.domain.models import Message, ChatRoles, MessageStatus
-from src.infrastructure.database.models import Message as MessageModel, Chat as ChatModel
+from src.application.ports.common import Page
+from src.application.ports.messages import IMessageGateway
+from src.domain.models import ChatRoles, Message, MessageStatus
+from src.infrastructure.database.models import Chat as ChatModel
+from src.infrastructure.database.models import Message as MessageModel
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass
@@ -135,7 +135,7 @@ class MessageGateway(IMessageGateway):
 
 		return message_uuid
 
-	async def latest_model_message(self, chat_id: UUID) -> Optional[Message]:
+	async def latest_model_message(self, chat_id: UUID) -> Message | None:
 		self.logger.info(f"Getting latest model message for chat: {chat_id}")
 		query = (
 			select(MessageModel)

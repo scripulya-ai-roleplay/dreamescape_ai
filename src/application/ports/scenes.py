@@ -1,9 +1,9 @@
 import abc
 from uuid import UUID
 
-from src.application.ports.common import Page, LikeState, BookmarkState
+from src.application.ports.common import BookmarkState, LikeState, Page
 from src.application.scene.schemas import SceneFilterDTO
-from src.domain.models import Scene, InitialMessage
+from src.domain.models import InitialMessage, Scene
 
 
 class ISceneService(abc.ABC):

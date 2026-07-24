@@ -5,8 +5,8 @@ from uuid import uuid4
 from faststream.rabbit import RabbitBroker
 
 from src.application.chats.settings import ChatSettings
-from src.application.ports.messages import IGenerationHeartbeat
 from src.application.ports.llm import ILLMChatGateway, IScripulyaAgentClient, LLMRequest, LLMResponse, UserMessageDTO
+from src.application.ports.messages import IGenerationHeartbeat
 from src.infrastructure.exceptions import LLMGatewayException
 
 

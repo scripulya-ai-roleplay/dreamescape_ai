@@ -1,8 +1,8 @@
 import uuid
-
-import pytest
-import jwt
 from unittest.mock import Mock
+
+import jwt
+import pytest
 from jwt import InvalidTokenError
 
 from src.application.auth.jwt_service import JWTService

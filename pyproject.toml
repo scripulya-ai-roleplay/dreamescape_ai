@@ -37,7 +37,11 @@ dependencies = [
 
 [tool.ruff]
 line-length = 120
-extend-exclude = ["venv", ".venv"]
+extend-exclude = ["venv", ".venv", ".claude"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501", "UP042"]
 
 [tool.ruff.format]
 quote-style = "double"

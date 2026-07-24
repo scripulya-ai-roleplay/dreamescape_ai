@@ -2,16 +2,17 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select, delete, func, and_, update
+from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.infrastructure.logging.logger import Logger
+from src.application.chats.schemas import ChatFilterDTO
 from src.application.ports.chats import IChatGateway
 from src.application.ports.common import Page
-from src.application.chats.schemas import ChatFilterDTO
 from src.domain.models import Chat
-from src.infrastructure.database.models import Chat as ChatModel, Character as CharacterModel
+from src.infrastructure.database.models import Character as CharacterModel
+from src.infrastructure.database.models import Chat as ChatModel
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass

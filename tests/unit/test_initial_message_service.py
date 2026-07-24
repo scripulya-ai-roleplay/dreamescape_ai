@@ -1,12 +1,12 @@
-import pytest
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import pytest
 from fastapi import HTTPException
 
 from src.application.auth.authz import AuthorizationService
 from src.application.scene.initial_message_service import InitialMessageService
-from src.domain.models import Scene, InitialMessage
+from src.domain.models import InitialMessage, Scene
 
 
 @pytest.mark.unit

@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -65,7 +64,7 @@ class ChatSettings(BaseModel):
 	reasoning: Toggle
 	reasoningEffort: ReasoningEffort
 	aiMediaPicker: Toggle
-	contextLimitOverride: Optional[int] = Field(
+	contextLimitOverride: int | None = Field(
 		default=None,
 		ge=1,
 		le=1048576,

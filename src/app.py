@@ -2,25 +2,25 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends
 from asgi_correlation_id import CorrelationIdMiddleware
+from fastapi import Depends, FastAPI
 
+from src.application.ports.media import IObjectStorageGateway
 from src.application.streaming.llm_watchdog import GenerationWatchdog
 from src.conf import settings
 from src.controllers.api.v1.auth import router as auth_router
 from src.controllers.api.v1.auth_dependencies import set_token_to_request_state
-from src.controllers.api.v1.health import router as health_router
-from src.controllers.rabbit.v1 import llm as rabbit_llm  # noqa: F401  registers the result subscriber
-from src.controllers.rabbit.v1.broker import broker
 from src.controllers.api.v1.characters import router as characters_router
-from src.controllers.api.v1.messages import router as message_router
 from src.controllers.api.v1.chat_events import router as chat_events_router
-from src.controllers.api.v1.chats import router as chat_router
 from src.controllers.api.v1.chat_settings import router as chat_settings_router
+from src.controllers.api.v1.chats import router as chat_router
+from src.controllers.api.v1.health import router as health_router
+from src.controllers.api.v1.media import router as media_router
+from src.controllers.api.v1.messages import router as message_router
 from src.controllers.api.v1.scenes import router as scenes_router
 from src.controllers.api.v1.users import router as users_router
-from src.controllers.api.v1.media import router as media_router
-from src.application.ports.media import IObjectStorageGateway
+from src.controllers.rabbit.v1 import llm as rabbit_llm  # noqa: F401  registers the result subscriber
+from src.controllers.rabbit.v1.broker import broker
 from src.infrastructure.web.global_exceptions_handler import register_exception_handlers
 from src.infrastructure.web.middlewares import TraceAndLogRequestsMiddleware
 

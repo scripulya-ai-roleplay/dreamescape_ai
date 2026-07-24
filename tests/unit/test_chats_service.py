@@ -1,18 +1,12 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
+import pytest
 from fastapi import HTTPException
 
 from src.application.auth.authz import AuthorizationService
 from src.application.chats.llm_service import LLMChatsService
 from src.application.chats.prompt_service import PromptService
-from src.application.ports.llm import UserMessageDTO, LLMModelType, LLMResponse, IGatewayFactory, ILLMChatGateway
-from src.application.ports.characters import ICharacterGateway
-from src.application.ports.chats import IChatEventGateway, IChatGateway, IChatSettingsGateway
-from src.application.ports.messages import IMessageService
-from src.application.ports.scenes import ISceneGateway
-from src.application.ports.common import Page
 from src.application.chats.settings import (
 	ChatSettings,
 	ControlBehavior,
@@ -22,12 +16,18 @@ from src.application.chats.settings import (
 	ReasoningEffort,
 	ResponseLength,
 	TemperatureSettings,
-	TokenLimit,
 	Toggle,
+	TokenLimit,
 )
+from src.application.ports.characters import ICharacterGateway
+from src.application.ports.chats import IChatEventGateway, IChatGateway, IChatSettingsGateway
+from src.application.ports.common import Page
+from src.application.ports.llm import IGatewayFactory, ILLMChatGateway, LLMModelType, LLMResponse, UserMessageDTO
+from src.application.ports.messages import IMessageService
+from src.application.ports.scenes import ISceneGateway
 from src.conf import settings
 from src.domain.models import Character, Chat, ChatRoles, Message, MessageStatus, Scene
-from src.infrastructure.exceptions import LLMGatewayException, PersonaRequiredException, InitialMessageRequiredException
+from src.infrastructure.exceptions import InitialMessageRequiredException, LLMGatewayException, PersonaRequiredException
 
 
 def _persist(message: Message) -> Message:

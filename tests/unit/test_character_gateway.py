@@ -1,14 +1,15 @@
-import pytest
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects import postgresql
 
+import pytest
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.application.character.schemas import CharacterFilterDTO
+from src.application.ports.common import Page
+from src.domain.models import Character
 from src.infrastructure.gateways.character_gateway import CharacterGateway
 from src.infrastructure.gateways.visibility import VisibilityGateway
-from src.domain.models import Character
-from src.application.ports.common import Page
-from src.application.character.schemas import CharacterFilterDTO
 
 
 @pytest.mark.unit

@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
-from typing import TypeVar, List
+from typing import TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -38,9 +38,9 @@ class User(BaseModel):
 	google_id: None | str = None
 	role: UserRole
 	crystal_balance: int = 1000
-	characters: None | List["Character"] = None
-	scenes: None | List["Scene"] = None
-	chats: None | List["Chat"] = None
+	characters: None | list["Character"] = None
+	scenes: None | list["Scene"] = None
+	chats: None | list["Chat"] = None
 
 
 class Character(BaseModel):
@@ -71,7 +71,7 @@ class Scene(BaseModel):
 	owner_id: UUID  # Required - scenes must have an owner
 	title: str
 	background_prompt: str
-	initial_messages: List["InitialMessage"] = []
+	initial_messages: list["InitialMessage"] = []
 	is_public: bool = False
 	chats_count: int = 0
 	messages_count: int = 0

@@ -4,14 +4,14 @@ from uuid import UUID
 from asgi_correlation_id import correlation_id
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 
 from src.application.chats.schemas import ChatFilterDTO
-from src.application.ports.common import ApiResponse, Page
-from src.application.ports.chats import IChatService
 from src.application.ports.characters import ICharacterService
-from src.domain.models import Chat, User
+from src.application.ports.chats import IChatService
+from src.application.ports.common import ApiResponse, Page
 from src.controllers.api.v1.auth_dependencies import get_current_user
+from src.domain.models import Chat, User
 
 logger = logging.getLogger(__name__)
 

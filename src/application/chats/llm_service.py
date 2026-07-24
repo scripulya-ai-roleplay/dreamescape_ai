@@ -2,17 +2,17 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.conf import settings
-from src.infrastructure.logging.logger import Logger
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports.authorization import IAuthorizationService
 from src.application.ports.characters import ICharacterGateway
-from src.application.ports.chats import IChatsService, IChatEventGateway, IChatGateway, IChatSettingsGateway
+from src.application.ports.chats import IChatEventGateway, IChatGateway, IChatSettingsGateway, IChatsService
 from src.application.ports.llm import IGatewayFactory, IPromptService, LLMErrorResponse, LLMResult, UserMessageDTO
 from src.application.ports.messages import IMessageService
 from src.application.ports.scenes import ISceneGateway
+from src.conf import settings
 from src.domain.models import ChatRoles, Message, MessageStatus
-from src.infrastructure.exceptions import BaseAPIException, PersonaRequiredException, InitialMessageRequiredException
+from src.infrastructure.exceptions import BaseAPIException, InitialMessageRequiredException, PersonaRequiredException
+from src.infrastructure.logging.logger import Logger
 
 
 @dataclass

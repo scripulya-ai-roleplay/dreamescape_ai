@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -33,7 +33,7 @@ class JWTService(IJWTService):
 			"sub": str(user.id),
 			"user_id": str(user.id),
 			"role": user.role.value,
-			"exp": datetime.now(timezone.utc) + timedelta(minutes=self.access_token_expire_minutes),
+			"exp": datetime.now(UTC) + timedelta(minutes=self.access_token_expire_minutes),
 		}
 
 		# Use private_key as the secret key for HS256, or actual private key for ES256
