@@ -72,6 +72,56 @@ class TestChatsAPI:
 		assert response.status_code == 200
 		return response.json()["result"]["id"]
 
+	# Seeded "E2E Test Scene" owned by the auth_headers user; it offers one initial message.
+	SCENE_ID = "5c194d75-401f-4fa2-808c-7092153135b7"
+
+	def test_initial_message_choose_flow(self, client, auth_headers, cleanup_test_chats):
+		"""A fresh chat must choose an initial message before messaging; choosing seeds a
+		real greeting that then appears in the chat's message history."""
+		chat_id = self._create_persona_less_chat(client, auth_headers, "Initial Message Flow Chat")
+
+		# 1. Sending before choosing is rejected with INITIAL_MESSAGE_REQUIRED.
+		blocked = client.post(
+			"/api/v1/messages/",
+			json={"chat_id": chat_id, "message": "hi", "llm_model": "testing_mock"},
+			headers=auth_headers,
+		)
+		assert blocked.status_code == 400
+		assert blocked.json()["error"]["code"] == "INITIAL_MESSAGE_REQUIRED"
+
+		# 2. The scene exposes its swipeable list of initial messages.
+		listing = client.get(f"/api/v1/scenes/{self.SCENE_ID}/initial-messages", headers=auth_headers)
+		assert listing.status_code == 200
+		initial_messages = listing.json()["result"]
+		assert isinstance(initial_messages, list)
+		assert len(initial_messages) >= 1
+		initial_message_id = initial_messages[0]["id"]
+
+		# 3. Choosing seeds the greeting as a model message.
+		chosen = client.post(
+			f"/api/v1/chats/{chat_id}/initial-message",
+			json={"initial_message_id": initial_message_id},
+			headers=auth_headers,
+		)
+		assert chosen.status_code == 200
+		seeded = chosen.json()["result"]
+		assert seeded["role"] == "model"
+		assert seeded["message"] == initial_messages[0]["text"]
+
+		# 4. The greeting is now part of the chat's message history.
+		history = client.get(f"/api/v1/messages/?chats_ids={chat_id}", headers=auth_headers)
+		assert history.status_code == 200
+		texts = [m["message"] for m in history.json()["result"]["items"]]
+		assert initial_messages[0]["text"] in texts
+
+		# 5. Choosing again is rejected (a chat keeps a single initial message).
+		again = client.post(
+			f"/api/v1/chats/{chat_id}/initial-message",
+			json={"initial_message_id": initial_message_id},
+			headers=auth_headers,
+		)
+		assert again.status_code == 400
+
 	def test_set_persona_makes_persona_less_chat_messagable(self, client, auth_headers, cleanup_test_chats):
 		"""A chat created without a persona can have one set afterwards via the persona endpoint."""
 		chat_id = self._create_persona_less_chat(client, auth_headers, "Persona-Less Chat")
@@ -297,6 +347,20 @@ class TestChatsAPI:
 
 		# If we have a chat ID, create messages for it
 		if chat_id:
+			# A chat must have an initial message chosen before it accepts messages,
+			# so pick the scene's first greeting (the recreated chat is scene-based).
+			initial_messages = client.get(
+				f"/api/v1/scenes/{chat_payload['scene_id']}/initial-messages", headers=auth_headers
+			)
+			assert initial_messages.status_code == 200
+			initial_message_id = initial_messages.json()["result"][0]["id"]
+			choose_response = client.post(
+				f"/api/v1/chats/{chat_id}/initial-message",
+				json={"initial_message_id": initial_message_id},
+				headers=auth_headers,
+			)
+			assert choose_response.status_code == 200
+
 			# Clients can only author user messages (role is server-set), so a
 			# single user message exercises the recreated chat.
 			user_message_payload = {
@@ -378,6 +442,7 @@ def cleanup_test_chats(client, auth_headers):
 		"Persona-Less Chat",
 		"Persona Bad Target Chat",
 		"Updated Chat Name",
+		"Initial Message Flow Chat",
 	]
 
 	try:

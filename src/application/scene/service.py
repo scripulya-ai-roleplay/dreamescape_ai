@@ -4,7 +4,7 @@ from uuid import UUID
 
 from src.infrastructure.logging.logger import Logger
 from src.application.ports.authorization import IAuthorizationService
-from src.application.ports.scenes import ISceneService, ISceneGateway
+from src.application.ports.scenes import ISceneService, ISceneGateway, IInitialMessageGateway
 from src.application.ports.common import IUnitOfWork, Page, LikeState, BookmarkState
 from src.application.scene.schemas import SceneFilterDTO
 from src.domain.models import Scene
@@ -14,15 +14,22 @@ from src.domain.models import Scene
 class SceneService(ISceneService):
 	uow: IUnitOfWork
 	gateway: ISceneGateway
+	initial_message_gateway: IInitialMessageGateway
 	authz: IAuthorizationService
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def create_scene(self, scene: Scene) -> UUID:
 		self.logger.info(f"Creating scene: {scene.title}")
 
+		if not scene.initial_messages:
+			# A scene must offer at least one initial message — otherwise a chat
+			# started from it could never satisfy the "choose before first message" gate.
+			raise ValueError("Scene must have at least one initial message")
+
 		async with self.uow:
 			try:
 				scene_id = await self.gateway.create(scene)
+				await self.initial_message_gateway.bulk_create(scene_id, scene.initial_messages)
 				self.logger.info(f"Successfully created scene with ID: {scene_id}")
 				return scene_id
 			except Exception as e:

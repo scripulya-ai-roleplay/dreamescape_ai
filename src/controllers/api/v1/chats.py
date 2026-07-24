@@ -103,3 +103,15 @@ async def set_chat_persona(
 	await character_service.get_one(user_character_id, user_id)
 	await chat_service.set_persona(chat_id, user_character_id, user_id)
 	return ApiResponse(result=[], correlation_id=correlation_id.get())
+
+
+@router.post("/{chat_id}/initial-message")
+@inject
+async def choose_chat_initial_message(
+	chat_service: FromDishka[IChatService],
+	chat_id: UUID = Path(),
+	initial_message_id: UUID = Body(embed=True),
+	current_user: User = Depends(get_current_user),
+) -> ApiResponse:
+	seeded = await chat_service.choose_initial_message(chat_id, initial_message_id, current_user.id)
+	return ApiResponse(result=seeded, correlation_id=correlation_id.get())

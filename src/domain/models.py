@@ -53,6 +53,16 @@ class Character(BaseModel):
 	is_public: bool = False
 
 
+class InitialMessage(BaseModel):
+	model_config = ConfigDict(frozen=True)
+
+	id: None | UUID = None
+	scene_id: None | UUID = None
+	text: str
+	date_created: None | datetime = None
+	date_edited: None | datetime = None
+
+
 class Scene(BaseModel):
 	model_config = ConfigDict(frozen=True)
 
@@ -61,7 +71,7 @@ class Scene(BaseModel):
 	owner_id: UUID  # Required - scenes must have an owner
 	title: str
 	background_prompt: str
-	initial_message_text: str
+	initial_messages: List["InitialMessage"] = []
 	is_public: bool = False
 	chats_count: int = 0
 	messages_count: int = 0
@@ -75,6 +85,7 @@ class Chat(BaseModel):
 	user_id: UUID
 	scene_id: UUID
 	user_character_id: None | UUID = None
+	initial_message_id: None | UUID = None
 
 
 class Message(BaseModel):

@@ -86,13 +86,29 @@ class Scene(Base):
 	owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
 	title: Mapped[str] = mapped_column(Text)
 	description: Mapped[str] = mapped_column(Text)
-	initial_message_text: Mapped[str] = mapped_column(Text)
 	background_prompt: Mapped[str] = mapped_column(Text)
 	is_public: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
 
 	owner: Mapped["User"] = relationship(back_populates="scenes")
 	chats: Mapped[List["Chat"]] = relationship(back_populates="scene")
 	characters: Mapped[List["Character"]] = relationship(back_populates="scenes", secondary="character_scene")
+	initial_messages: Mapped[List["SceneInitialMessage"]] = relationship(
+		back_populates="scene", cascade="all, delete-orphan", order_by="SceneInitialMessage.created_at"
+	)
+
+
+class SceneInitialMessage(Base):
+	__tablename__ = "scene_initial_messages"
+
+	id: Mapped[uuid.UUID] = mapped_column(
+		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+	)
+	scene_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scenes.id", ondelete="CASCADE"), index=True)
+	text: Mapped[str] = mapped_column(Text)
+	created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+	updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+	scene: Mapped["Scene"] = relationship(back_populates="initial_messages")
 
 
 class Chat(Base):
@@ -106,6 +122,9 @@ class Chat(Base):
 	scene_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("scenes.id", ondelete="SET NULL"), index=True)
 	user_character_id: Mapped[Optional[uuid.UUID]] = mapped_column(
 		ForeignKey("characters.id", ondelete="SET NULL"), index=True
+	)
+	initial_message_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+		ForeignKey("scene_initial_messages.id", ondelete="SET NULL"), index=True
 	)
 	created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 

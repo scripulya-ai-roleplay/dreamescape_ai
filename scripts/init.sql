@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS media_assets CASCADE;
 DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS chat_settings CASCADE;
 DROP TABLE IF EXISTS chats CASCADE;
+DROP TABLE IF EXISTS scene_initial_messages CASCADE;
 DROP TABLE IF EXISTS scene_bookmarks CASCADE;
 DROP TABLE IF EXISTS character_bookmarks CASCADE;
 DROP TABLE IF EXISTS scene_likes CASCADE;
@@ -36,9 +37,18 @@ CREATE TABLE scenes (
     title TEXT NOT NULL,
     description TEXT,
     background_prompt TEXT NOT NULL,
-    initial_message_text TEXT NOT NULL,
     is_public BOOLEAN NOT NULL DEFAULT false
 );
+
+CREATE TABLE scene_initial_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scene_id UUID NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_scene_initial_messages_scene_id ON scene_initial_messages(scene_id);
 
 CREATE TABLE character_scene (
     character_id UUID NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
@@ -73,6 +83,7 @@ CREATE TABLE chats (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     scene_id UUID REFERENCES scenes(id) ON DELETE SET NULL,
     user_character_id UUID REFERENCES characters(id) ON DELETE SET NULL,  -- persona the user plays as in this chat
+    initial_message_id UUID REFERENCES scene_initial_messages(id) ON DELETE SET NULL,  -- chosen greeting, set when the user picks one inside the chat
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -81,6 +92,8 @@ CREATE INDEX idx_chats_user_id ON chats(user_id);
 CREATE INDEX idx_chats_scene_id ON chats(scene_id);
 
 CREATE INDEX idx_chats_user_character_id ON chats(user_character_id);
+
+CREATE INDEX idx_chats_initial_message_id ON chats(initial_message_id);
 
 CREATE TABLE chat_settings (
     chat_id UUID PRIMARY KEY REFERENCES chats(id) ON DELETE CASCADE,
@@ -149,17 +162,31 @@ INSERT INTO characters (id, owner_id, name, system_prompt, is_public) VALUES
     ('83855bba-0735-4f4c-93c2-00c253b5d43c', '00000000-0000-0000-0000-000000000001', 'Alizee', 'Alizee is a professional witch. She is whimsical and unpredictable, weaving mischief and arcane wisdom in equal measure.', false),
     ('1590de4d-c0e1-4ca1-aa98-a15312aadf41', '00000000-0000-0000-0000-000000000001', 'Olegus', 'Olegus is a loud, good-natured but dim-witted tavern drunkard. He speaks in boisterous broken sentences, loves cheap ale above all else, and dispenses confident but nonsensical advice. Easily confused by big words, quick to laugh, and fiercely loyal to anyone who buys him a drink.', false);
 
-INSERT INTO scenes (id, owner_id, title, description, background_prompt, initial_message_text) VALUES
-    ('5c194d75-401f-4fa2-808c-7092153135b7', '5dbdc924-968a-4c50-94a8-44cdd165e460', 'E2E Test Scene', 'A test scene specifically for e2e tests', 'This is a test scene for e2e testing purposes.', 'Welcome to the e2e test scene!'),
-    ('e971d123-2f76-4022-87e6-79fc372cbbf3', '5dbdc924-968a-4c50-94a8-44cdd165e460', 'Office Environment', 'A professional workspace designed for productive conversations and collaborative work sessions.', 'You are in a modern office setting with computers, whiteboards, and a collaborative atmosphere. The conversation takes place during work hours.', 'Welcome to our professional workspace! I''m here to help you with any business-related questions or collaborative projects. What can I assist you with today?'),
-    ('641e5f5d-73ea-4ef0-864c-2cb19f311b11', 'f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'Cozy Coffee Shop', 'A warm and inviting café atmosphere perfect for relaxed, informal conversations over coffee.', 'You are sitting in a warm, cozy coffee shop with soft lighting, the aroma of fresh coffee, and gentle background music. Perfect for casual conversations.', 'Welcome to our cozy corner of the coffee shop! The aroma of freshly brewed coffee fills the air. What would you like to chat about while we enjoy this peaceful atmosphere?'),
-    ('414e2a88-2376-46bd-bde7-06c7a514e0d4', '4954ef15-b75b-4f92-b32c-ded5e80ce802', 'Library Study Room', 'A quiet academic environment ideal for focused learning and educational discussions.', 'You are in a quiet library study room surrounded by books and academic resources. The atmosphere is focused and conducive to learning.', 'Welcome to our quiet study sanctuary! I''m here to help you explore knowledge and dive deep into learning. What subject would you like to discuss today?'),
-    ('7a587ee5-d55f-4d09-9ced-927ecc059ff0', '4e50271e-2b64-46e4-b312-580782ea6549', 'Virtual Reality Space', 'An immersive digital environment where imagination and technology merge for limitless possibilities.', 'You are in a futuristic virtual reality environment where anything is possible. The digital landscape can change based on the conversation.', 'Welcome to the infinite possibilities of virtual reality! Here, we can explore any concept, simulate any scenario, or create anything you can imagine. What digital adventure shall we embark on?'),
-    ('f08f390a-1237-4bfa-9e53-6980dbb5aa0d', 'e5fd1874-a299-4c22-b6b5-af4e00b796a7', 'Minimalist Scene', NULL, 'Simple background.', 'Hello.'),
-    ('c7e7899e-ac69-4024-a79c-252531920cd2', 'c23dc540-a0ba-4d83-ac7b-d0f8eab9d463', 'Epic Fantasy Adventure Scene With Extremely Long Title That Tests The Maximum Length Limits', 'This is an extremely detailed and comprehensive scene description that goes on for a very long time to test the database storage capabilities and API handling of large text fields. The scene depicts a vast fantasy realm filled with magical creatures, ancient castles, mystical forests, flowing rivers, towering mountains, and endless adventures waiting to be discovered. Heroes from all walks of life gather here to embark on epic quests, forge legendary weapons, learn powerful spells, and create lasting friendships. The atmosphere is rich with magic, wonder, and endless possibilities for storytelling and character development.', 'You find yourself in a breathtaking fantasy realm where magic flows through every blade of grass, every stone, and every breath of wind. Ancient dragons soar overhead, their scales glinting in the eternal twilight. Mystical forests whisper secrets of ages past, while crystal-clear streams carry the songs of woodland spirits. Here, time moves differently, and every choice you make shapes the very fabric of this magical world.', 'Greetings, brave adventurer! You have crossed the mystical threshold into our enchanted realm, where ancient magic still flows through the very air you breathe. The great library of spells awaits your discovery, legendary quests call out for heroes, and mythical creatures seek worthy companions. Your epic journey begins now - what path will you choose to walk in this realm of infinite wonder and boundless adventure?'),
-    ('2f263740-29f7-4622-b4ce-fd7ac29d04d5', 'f3ba11a5-4026-4c16-9aed-061f0d490ade', 'Beach Resort Paradise', 'Tropical paradise with white sand beaches, crystal clear waters, and endless sunshine.', 'You are relaxing on a pristine tropical beach with gentle waves lapping at the shore, palm trees swaying in the warm breeze, and the sound of seagulls in the distance.', 'Welcome to paradise! Feel the warm sand between your toes and breathe in the fresh ocean air. This tropical haven is the perfect place to unwind and let your worries drift away with the waves. What brings you to our peaceful shore today?'),
-    ('5277db85-10c6-4f12-ab23-810f289ca6df', '7edb0c2c-8dcd-402a-a979-cc7853d9b627', 'Space Station Alpha', 'Advanced space station orbiting Earth with cutting-edge technology and stunning views.', 'You are aboard a sophisticated space station with panoramic views of Earth below, advanced control systems, and the vastness of space surrounding you.', 'Welcome aboard Space Station Alpha! From our orbital vantage point, Earth appears as a beautiful blue marble suspended in the cosmic void. Our advanced systems are at your disposal for any space-related inquiries or cosmic conversations. What aspects of space exploration interest you most?'),
-    ('e1daa2c4-3c0b-4ac5-9937-c9540f80c85e', '53c41979-a116-4bb7-8281-57fadfd89a13', 'Underground Laboratory', 'Secret research facility beneath the city for conducting advanced experiments.', 'You are in a high-tech underground laboratory filled with mysterious equipment, glowing screens, and the hum of advanced machinery.', 'Welcome to Laboratory Complex Omega! You''ve gained access to our most advanced research facility. The equipment around us represents the cutting edge of scientific innovation. What experiments or research topics would you like to explore in our secure environment?');
+INSERT INTO scenes (id, owner_id, title, description, background_prompt) VALUES
+    ('5c194d75-401f-4fa2-808c-7092153135b7', '5dbdc924-968a-4c50-94a8-44cdd165e460', 'E2E Test Scene', 'A test scene specifically for e2e tests', 'This is a test scene for e2e testing purposes.'),
+    ('e971d123-2f76-4022-87e6-79fc372cbbf3', '5dbdc924-968a-4c50-94a8-44cdd165e460', 'Office Environment', 'A professional workspace designed for productive conversations and collaborative work sessions.', 'You are in a modern office setting with computers, whiteboards, and a collaborative atmosphere. The conversation takes place during work hours.'),
+    ('641e5f5d-73ea-4ef0-864c-2cb19f311b11', 'f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'Cozy Coffee Shop', 'A warm and inviting café atmosphere perfect for relaxed, informal conversations over coffee.', 'You are sitting in a warm, cozy coffee shop with soft lighting, the aroma of fresh coffee, and gentle background music. Perfect for casual conversations.'),
+    ('414e2a88-2376-46bd-bde7-06c7a514e0d4', '4954ef15-b75b-4f92-b32c-ded5e80ce802', 'Library Study Room', 'A quiet academic environment ideal for focused learning and educational discussions.', 'You are in a quiet library study room surrounded by books and academic resources. The atmosphere is focused and conducive to learning.'),
+    ('7a587ee5-d55f-4d09-9ced-927ecc059ff0', '4e50271e-2b64-46e4-b312-580782ea6549', 'Virtual Reality Space', 'An immersive digital environment where imagination and technology merge for limitless possibilities.', 'You are in a futuristic virtual reality environment where anything is possible. The digital landscape can change based on the conversation.'),
+    ('f08f390a-1237-4bfa-9e53-6980dbb5aa0d', 'e5fd1874-a299-4c22-b6b5-af4e00b796a7', 'Minimalist Scene', NULL, 'Simple background.'),
+    ('c7e7899e-ac69-4024-a79c-252531920cd2', 'c23dc540-a0ba-4d83-ac7b-d0f8eab9d463', 'Epic Fantasy Adventure Scene With Extremely Long Title That Tests The Maximum Length Limits', 'This is an extremely detailed and comprehensive scene description that goes on for a very long time to test the database storage capabilities and API handling of large text fields. The scene depicts a vast fantasy realm filled with magical creatures, ancient castles, mystical forests, flowing rivers, towering mountains, and endless adventures waiting to be discovered. Heroes from all walks of life gather here to embark on epic quests, forge legendary weapons, learn powerful spells, and create lasting friendships. The atmosphere is rich with magic, wonder, and endless possibilities for storytelling and character development.', 'You find yourself in a breathtaking fantasy realm where magic flows through every blade of grass, every stone, and every breath of wind. Ancient dragons soar overhead, their scales glinting in the eternal twilight. Mystical forests whisper secrets of ages past, while crystal-clear streams carry the songs of woodland spirits. Here, time moves differently, and every choice you make shapes the very fabric of this magical world.'),
+    ('2f263740-29f7-4622-b4ce-fd7ac29d04d5', 'f3ba11a5-4026-4c16-9aed-061f0d490ade', 'Beach Resort Paradise', 'Tropical paradise with white sand beaches, crystal clear waters, and endless sunshine.', 'You are relaxing on a pristine tropical beach with gentle waves lapping at the shore, palm trees swaying in the warm breeze, and the sound of seagulls in the distance.'),
+    ('5277db85-10c6-4f12-ab23-810f289ca6df', '7edb0c2c-8dcd-402a-a979-cc7853d9b627', 'Space Station Alpha', 'Advanced space station orbiting Earth with cutting-edge technology and stunning views.', 'You are aboard a sophisticated space station with panoramic views of Earth below, advanced control systems, and the vastness of space surrounding you.'),
+    ('e1daa2c4-3c0b-4ac5-9937-c9540f80c85e', '53c41979-a116-4bb7-8281-57fadfd89a13', 'Underground Laboratory', 'Secret research facility beneath the city for conducting advanced experiments.', 'You are in a high-tech underground laboratory filled with mysterious equipment, glowing screens, and the hum of advanced machinery.');
+
+-- One initial message per scene (the former initial_message_text), with fixed UUIDs so
+-- seeded chats can reference them below. Each scene here offers exactly one greeting.
+INSERT INTO scene_initial_messages (id, scene_id, text) VALUES
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001', '5c194d75-401f-4fa2-808c-7092153135b7', 'Welcome to the e2e test scene!'),
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0002', 'e971d123-2f76-4022-87e6-79fc372cbbf3', 'Welcome to our professional workspace! I''m here to help you with any business-related questions or collaborative projects. What can I assist you with today?'),
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0003', '641e5f5d-73ea-4ef0-864c-2cb19f311b11', 'Welcome to our cozy corner of the coffee shop! The aroma of freshly brewed coffee fills the air. What would you like to chat about while we enjoy this peaceful atmosphere?'),
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0004', '414e2a88-2376-46bd-bde7-06c7a514e0d4', 'Welcome to our quiet study sanctuary! I''m here to help you explore knowledge and dive deep into learning. What subject would you like to discuss today?'),
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0005', '7a587ee5-d55f-4d09-9ced-927ecc059ff0', 'Welcome to the infinite possibilities of virtual reality! Here, we can explore any concept, simulate any scenario, or create anything you can imagine. What digital adventure shall we embark on?'),
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0006', 'f08f390a-1237-4bfa-9e53-6980dbb5aa0d', 'Hello.'),
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0007', 'c7e7899e-ac69-4024-a79c-252531920cd2', 'Greetings, brave adventurer! You have crossed the mystical threshold into our enchanted realm, where ancient magic still flows through the very air you breathe. The great library of spells awaits your discovery, legendary quests call out for heroes, and mythical creatures seek worthy companions. Your epic journey begins now - what path will you choose to walk in this realm of infinite wonder and boundless adventure?'),
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0008', '2f263740-29f7-4622-b4ce-fd7ac29d04d5', 'Welcome to paradise! Feel the warm sand between your toes and breathe in the fresh ocean air. This tropical haven is the perfect place to unwind and let your worries drift away with the waves. What brings you to our peaceful shore today?'),
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0009', '5277db85-10c6-4f12-ab23-810f289ca6df', 'Welcome aboard Space Station Alpha! From our orbital vantage point, Earth appears as a beautiful blue marble suspended in the cosmic void. Our advanced systems are at your disposal for any space-related inquiries or cosmic conversations. What aspects of space exploration interest you most?'),
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa000a', 'e1daa2c4-3c0b-4ac5-9937-c9540f80c85e', 'Welcome to Laboratory Complex Omega! You''ve gained access to our most advanced research facility. The equipment around us represents the cutting edge of scientific innovation. What experiments or research topics would you like to explore in our secure environment?');
 
 UPDATE scenes SET is_public = true WHERE title IN ('Cozy Coffee Shop', 'Beach Resort Paradise', 'Space Station Alpha');
 
@@ -215,6 +242,15 @@ WHERE id = '048a7fe5-f4c2-40ef-9745-7d85d7c4c5fb';  -- Project Help Chat
 
 UPDATE chats SET user_character_id = '43341001-4ea1-4f03-b315-811d3264b6a3'
 WHERE id = '82dc4309-0ab2-4a9d-86c9-a49f8931494a';  -- E2E Test Chat
+
+-- Mark every seeded chat as already past the "choose an initial message" step, so the
+-- send-message gate (chat.initial_message_id IS NOT NULL) holds for existing seed data.
+-- Each scene offers exactly one initial message above, so this pairs every chat with its
+-- scene's greeting in one statement.
+UPDATE chats c
+SET initial_message_id = im.id
+FROM scene_initial_messages im
+WHERE im.scene_id = c.scene_id;
 
 INSERT INTO messages (id, chat_id, role, content, cost_crystals, created_at) VALUES
     -- Chat 1 messages
@@ -312,6 +348,8 @@ UNION ALL
 SELECT 'characters', COUNT(*) FROM characters
 UNION ALL  
 SELECT 'scenes', COUNT(*) FROM scenes
+UNION ALL
+SELECT 'scene_initial_messages', COUNT(*) FROM scene_initial_messages
 UNION ALL
 SELECT 'character_scene', COUNT(*) FROM character_scene
 UNION ALL

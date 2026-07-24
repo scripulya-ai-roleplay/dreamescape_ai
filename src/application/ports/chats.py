@@ -35,6 +35,9 @@ class IChatGateway(abc.ABC):
 	@abc.abstractmethod
 	async def set_persona(self, chat_uuid: UUID, user_character_id: UUID) -> UUID: ...
 
+	@abc.abstractmethod
+	async def set_initial_message(self, chat_uuid: UUID, initial_message_id: UUID) -> UUID: ...
+
 
 class IChatService(abc.ABC):
 	@abc.abstractmethod
@@ -54,6 +57,9 @@ class IChatService(abc.ABC):
 
 	@abc.abstractmethod
 	async def set_persona(self, chat_uuid: UUID, user_character_id: UUID, actor_id: UUID) -> UUID: ...
+
+	@abc.abstractmethod
+	async def choose_initial_message(self, chat_uuid: UUID, initial_message_uuid: UUID, actor_id: UUID) -> Message: ...
 
 
 class IChatSettingsGateway(abc.ABC):

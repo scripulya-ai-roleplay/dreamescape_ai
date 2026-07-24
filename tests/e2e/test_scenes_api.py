@@ -13,7 +13,7 @@ class TestScenesAPI:
 			"background_prompt": "A beautiful fantasy world with magic",
 			"description": "A test scene for e2e testing",
 			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
-			"initial_message_text": "Welcome to this magical world! What adventure awaits you today?",
+			"initial_messages": [{"text": "Welcome to this magical world! What adventure awaits you today?"}],
 			"is_public": True,
 		}
 
@@ -36,7 +36,7 @@ class TestScenesAPI:
 			"title": "Minimal Scene",
 			"background_prompt": "Simple background",
 			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
-			"initial_message_text": "Hello! Let's begin our conversation.",
+			"initial_messages": [{"text": "Hello! Let's begin our conversation."}],
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
@@ -75,7 +75,7 @@ class TestScenesAPI:
 			"title": "",
 			"background_prompt": "Background with empty title",
 			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
-			"initial_message_text": "Welcome! Ready to start our conversation?",
+			"initial_messages": [{"text": "Welcome! Ready to start our conversation?"}],
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
@@ -90,7 +90,7 @@ class TestScenesAPI:
 			"background_prompt": "Very long background prompt " * 200,
 			"description": "Very long description " * 150,
 			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
-			"initial_message_text": "Very long initial message " * 100,
+			"initial_messages": [{"text": "Very long initial message " * 100}],
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
@@ -104,7 +104,7 @@ class TestScenesAPI:
 			"background_prompt": "A beautiful fantasy world with magic",
 			"description": "A test scene for e2e testing",
 			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
-			"initial_message_text": "Welcome to this magical world! What adventure awaits you today?",
+			"initial_messages": [{"text": "Welcome to this magical world! What adventure awaits you today?"}],
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload)
@@ -352,7 +352,6 @@ class TestScenesAPI:
 			"background_prompt": "Updated background prompt",
 			"description": "Updated description",
 			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
-			"initial_message_text": "Welcome to the updated scene! How can I help you today?",
 		}
 
 		response = client.post(f"/api/v1/scenes/update/{test_uuid}", json=payload, headers=auth_headers)
@@ -372,7 +371,6 @@ class TestScenesAPI:
 		payload = {
 			"title": "Updated Title",
 			"background_prompt": "Updated prompt",
-			"initial_message_text": "Welcome to the updated scene!",
 		}
 
 		response = client.post(f"/api/v1/scenes/update/{invalid_uuid}", json=payload, headers=auth_headers)
@@ -405,7 +403,7 @@ class TestScenesAPI:
 			"title": "Scene with wrong owner",
 			"background_prompt": "Test scene with mismatched owner",
 			"owner_id": "11111111-2222-3333-4444-555555555555",  # not the auth_headers user
-			"initial_message_text": "Welcome!",
+			"initial_messages": [{"text": "Welcome!"}],
 		}
 
 		response = client.post("/api/v1/scenes/", json=payload, headers=auth_headers)
@@ -425,7 +423,6 @@ class TestScenesAPI:
 			"title": "Hijacked Scene Title",
 			"background_prompt": "Hijacked background prompt",
 			"owner_id": "5dbdc924-968a-4c50-94a8-44cdd165e460",
-			"initial_message_text": "Hijacked initial message",
 		}
 
 		response = client.post(f"/api/v1/scenes/update/{self.SCENE_ID}", json=payload, headers=other_auth_headers)

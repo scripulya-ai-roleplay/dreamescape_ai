@@ -12,7 +12,7 @@ from src.application.ports.llm import IGatewayFactory, IPromptService, LLMErrorR
 from src.application.ports.messages import IMessageService
 from src.application.ports.scenes import ISceneGateway
 from src.domain.models import ChatRoles, Message, MessageStatus
-from src.infrastructure.exceptions import BaseAPIException, PersonaRequiredException
+from src.infrastructure.exceptions import BaseAPIException, PersonaRequiredException, InitialMessageRequiredException
 
 
 @dataclass
@@ -34,6 +34,10 @@ class LLMChatsService(IChatsService):
 
 		chat = await self.chat_gateway.get_one(chat_dto.chat_id)
 		self.authz.require_owned(owner_id=chat.user_id, actor_id=actor_id, noun="chat")
+		# A chat must have an initial message chosen before the user can write
+		# their first message — otherwise the conversation has no opening greeting.
+		if chat.initial_message_id is None:
+			raise InitialMessageRequiredException()
 		history_page = await self.message_service.search(MessagesFilterDto(chats_ids=[chat_dto.chat_id]), chat.user_id)
 		history = [
 			UserMessageDTO(message=m.message, chat_id=chat_dto.chat_id, llm_model=chat_dto.llm_model, role=m.role)

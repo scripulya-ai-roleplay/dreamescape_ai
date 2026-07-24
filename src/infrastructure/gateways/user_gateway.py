@@ -149,7 +149,6 @@ class UserGateway(IUserGateway):
 					owner_id=scene_model.owner_id,
 					title=scene_model.title,
 					background_prompt=scene_model.background_prompt,
-					initial_message_text=scene_model.initial_message_text,
 				)
 			)
 

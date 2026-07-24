@@ -289,7 +289,6 @@ class TestUserGateway:
 		scene_model.owner_id = sample_user_model.id
 		scene_model.title = "Test Scene"
 		scene_model.background_prompt = "Test background"
-		scene_model.initial_message_text = "initial message"
 
 		chat_model = Mock()
 		chat_model.id = uuid4()

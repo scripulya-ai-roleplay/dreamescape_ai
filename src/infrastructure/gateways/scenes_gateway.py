@@ -54,7 +54,6 @@ class SceneGateway(ISceneGateway):
 			"title": new_scene_data.title,
 			"description": new_scene_data.description,
 			"background_prompt": new_scene_data.background_prompt,
-			"initial_message_text": new_scene_data.initial_message_text,
 			"is_public": new_scene_data.is_public,
 		}
 
@@ -159,7 +158,6 @@ class SceneGateway(ISceneGateway):
 			description=scene.description,
 			background_prompt=scene.background_prompt,
 			owner_id=scene.owner_id,
-			initial_message_text=scene.initial_message_text,
 			is_public=scene.is_public,
 		)
 
@@ -219,7 +217,6 @@ class SceneGateway(ISceneGateway):
 			description=scene_model.description,
 			background_prompt=scene_model.background_prompt,
 			owner_id=scene_model.owner_id,
-			initial_message_text=scene_model.initial_message_text,
 			is_public=scene_model.is_public,
 			chats_count=chats_count,
 			messages_count=messages_count,

@@ -29,6 +29,7 @@ class TestChatGateway:
 		model.user_id = uuid4()
 		model.scene_id = uuid4()
 		model.user_character_id = uuid4()
+		model.initial_message_id = None
 		model.messages = []
 		return model
 

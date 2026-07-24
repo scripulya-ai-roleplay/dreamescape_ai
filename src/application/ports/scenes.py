@@ -3,7 +3,7 @@ from uuid import UUID
 
 from src.application.ports.common import Page, LikeState, BookmarkState
 from src.application.scene.schemas import SceneFilterDTO
-from src.domain.models import Scene
+from src.domain.models import Scene, InitialMessage
 
 
 class ISceneService(abc.ABC):
@@ -42,6 +42,34 @@ class ISceneService(abc.ABC):
 
 	@abc.abstractmethod
 	async def attach_characters(self, scene_uuid: UUID, character_ids: list[UUID]) -> None: ...
+
+
+class IInitialMessageService(abc.ABC):
+	@abc.abstractmethod
+	async def list_for_scene(self, scene_uuid: UUID, actor_id: UUID | None) -> list[InitialMessage]: ...
+
+	@abc.abstractmethod
+	async def update(self, initial_message_uuid: UUID, updated_text: str, actor_id: UUID) -> UUID: ...
+
+	@abc.abstractmethod
+	async def delete(self, initial_message_uuid: UUID, actor_id: UUID) -> UUID: ...
+
+
+class IInitialMessageGateway(abc.ABC):
+	@abc.abstractmethod
+	async def get_one(self, uuid: UUID) -> InitialMessage: ...
+
+	@abc.abstractmethod
+	async def list_for_scene(self, scene_id: UUID) -> list[InitialMessage]: ...
+
+	@abc.abstractmethod
+	async def bulk_create(self, scene_id: UUID, items: list[InitialMessage]) -> list[InitialMessage]: ...
+
+	@abc.abstractmethod
+	async def update(self, uuid: UUID, updated_text: str) -> UUID: ...
+
+	@abc.abstractmethod
+	async def delete(self, uuid: UUID) -> UUID: ...
 
 
 class ISceneGateway(abc.ABC):

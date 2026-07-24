@@ -7,7 +7,7 @@ from sqlalchemy.exc import NoResultFound
 
 from src.application.auth.authz import AuthorizationService
 from src.application.scene.service import SceneService
-from src.domain.models import Scene
+from src.domain.models import Scene, InitialMessage
 from src.application.ports.common import Page, LikeState, BookmarkState
 from src.application.scene.schemas import SceneFilterDTO
 
@@ -26,6 +26,11 @@ class TestSceneService:
 		return AsyncMock()
 
 	@pytest.fixture
+	def mock_initial_message_gateway(self):
+		"""Mock initial message gateway for testing"""
+		return AsyncMock()
+
+	@pytest.fixture
 	def mock_uow(self):
 		"""Mock Unit of Work for testing"""
 		mock = AsyncMock()
@@ -35,9 +40,14 @@ class TestSceneService:
 		return mock
 
 	@pytest.fixture
-	def scene_service(self, mock_scene_gateway, mock_uow, authz):
+	def scene_service(self, mock_scene_gateway, mock_initial_message_gateway, mock_uow, authz):
 		"""SceneService instance with mocked dependencies"""
-		return SceneService(mock_uow, mock_scene_gateway, authz)
+		return SceneService(
+			uow=mock_uow,
+			gateway=mock_scene_gateway,
+			initial_message_gateway=mock_initial_message_gateway,
+			authz=authz,
+		)
 
 	@pytest.fixture
 	def sample_scene(self):
@@ -48,7 +58,7 @@ class TestSceneService:
 			description="Test scene description",
 			background_prompt="Test background prompt",
 			owner_id=uuid4(),
-			initial_message_text="Welcome to the test scene!",
+			initial_messages=[InitialMessage(text="Welcome to the test scene!")],
 		)
 
 	@pytest.fixture
@@ -57,7 +67,9 @@ class TestSceneService:
 		return SceneFilterDTO(ids=[uuid4()], title=["Test Scene"], owner=[uuid4()], characters=[uuid4()])
 
 	@pytest.mark.asyncio
-	async def test_create_scene_success(self, scene_service, mock_scene_gateway, sample_scene):
+	async def test_create_scene_success(
+		self, scene_service, mock_scene_gateway, mock_initial_message_gateway, sample_scene
+	):
 		"""Test successful scene creation"""
 		# Arrange
 		expected_id = uuid4()
@@ -69,6 +81,24 @@ class TestSceneService:
 		# Assert
 		assert result == expected_id
 		mock_scene_gateway.create.assert_called_once_with(sample_scene)
+		mock_initial_message_gateway.bulk_create.assert_called_once_with(expected_id, sample_scene.initial_messages)
+
+	@pytest.mark.asyncio
+	async def test_create_scene_without_initial_messages_rejected(self, scene_service, mock_scene_gateway):
+		"""A scene with no initial messages is rejected before any write."""
+		scene = Scene(
+			id=uuid4(),
+			title="No greeting",
+			description="d",
+			background_prompt="b",
+			owner_id=uuid4(),
+			initial_messages=[],
+		)
+
+		with pytest.raises(ValueError, match="at least one initial message"):
+			await scene_service.create_scene(scene)
+
+		mock_scene_gateway.create.assert_not_called()
 
 	@pytest.mark.asyncio
 	async def test_create_scene_gateway_error(self, scene_service, mock_scene_gateway, sample_scene):
@@ -105,7 +135,6 @@ class TestSceneService:
 			description="d",
 			background_prompt="b",
 			owner_id=uuid4(),
-			initial_message_text="i",
 			is_public=True,
 		)
 		mock_scene_gateway.get_one.return_value = scene
@@ -372,7 +401,6 @@ class TestSceneService:
 			description="d",
 			background_prompt="b",
 			owner_id=uuid4(),
-			initial_message_text="i",
 			is_public=False,
 		)
 
@@ -391,7 +419,6 @@ class TestSceneService:
 			description="d",
 			background_prompt="b",
 			owner_id=uuid4(),
-			initial_message_text="i",
 			is_public=False,
 		)
 

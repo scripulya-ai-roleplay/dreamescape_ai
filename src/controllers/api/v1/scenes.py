@@ -7,11 +7,11 @@ from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
 
-from src.application.ports.scenes import ISceneService
+from src.application.ports.scenes import ISceneService, IInitialMessageService
 from src.application.ports.characters import ICharacterService
 from src.application.ports.common import ApiResponse, Page, LikeState, BookmarkState
 from src.application.scene.schemas import SceneFilterDTO, AttachCharactersDTO
-from src.domain.models import Scene, Character, User
+from src.domain.models import Scene, Character, InitialMessage, User
 from src.controllers.api.v1.auth_dependencies import get_current_user, get_optional_user
 from src.infrastructure.logging.redact import preview
 
@@ -32,12 +32,12 @@ async def create_scene(
 
 	if logger.isEnabledFor(logging.DEBUG):
 		logger.debug(
-			"create_scene user=%s role=%s title=%r background_prompt=%r initial_message_text=%r",
+			"create_scene user=%s role=%s title=%r background_prompt=%r initial_messages=%d",
 			current_user.id,
 			current_user.role,
 			preview(scene.title),
 			preview(scene.background_prompt),
-			preview(scene.initial_message_text),
+			len(scene.initial_messages),
 		)
 
 	# Validate that the Scene's owner_id matches the authenticated user
@@ -203,3 +203,40 @@ async def get_scene_characters(
 	await scene_service.get_one(scene_id, user_id)
 	characters = await character_service.get_for_scene(scene_id, actor_id=user_id)
 	return ApiResponse(result=characters, correlation_id=correlation_id.get())
+
+
+@router.get("/{scene_id}/initial-messages")
+@inject
+async def get_scene_initial_messages(
+	initial_message_service: FromDishka[IInitialMessageService],
+	scene_id: UUID = Path(),
+	current_user: User | None = Depends(get_optional_user),
+) -> ApiResponse[List[InitialMessage]]:
+	actor_id = current_user.id if current_user else None
+	result = await initial_message_service.list_for_scene(scene_id, actor_id)
+	return ApiResponse(result=result, correlation_id=correlation_id.get())
+
+
+@router.put("/{scene_id}/initial-messages/{initial_message_id}")
+@inject
+async def update_scene_initial_message(
+	initial_message_service: FromDishka[IInitialMessageService],
+	scene_id: UUID = Path(),
+	initial_message_id: UUID = Path(),
+	updated_text: str = Body(embed=True),
+	current_user: User = Depends(get_current_user),
+) -> ApiResponse:
+	await initial_message_service.update(initial_message_id, updated_text, current_user.id)
+	return ApiResponse(result=[], correlation_id=correlation_id.get())
+
+
+@router.delete("/{scene_id}/initial-messages/{initial_message_id}")
+@inject
+async def delete_scene_initial_message(
+	initial_message_service: FromDishka[IInitialMessageService],
+	scene_id: UUID = Path(),
+	initial_message_id: UUID = Path(),
+	current_user: User = Depends(get_current_user),
+) -> ApiResponse:
+	await initial_message_service.delete(initial_message_id, current_user.id)
+	return ApiResponse(result=[], correlation_id=correlation_id.get())

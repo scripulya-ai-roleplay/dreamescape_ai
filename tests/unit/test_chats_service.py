@@ -27,7 +27,7 @@ from src.application.chats.settings import (
 )
 from src.conf import settings
 from src.domain.models import Character, Chat, ChatRoles, Message, MessageStatus, Scene
-from src.infrastructure.exceptions import LLMGatewayException, PersonaRequiredException
+from src.infrastructure.exceptions import LLMGatewayException, PersonaRequiredException, InitialMessageRequiredException
 
 
 def _persist(message: Message) -> Message:
@@ -81,16 +81,18 @@ class TestChatsService:
 	def mock_chat_gateway(self, sample_user_id):
 		gateway = AsyncMock(spec=IChatGateway)
 		gateway.get_one.return_value = Chat(
-			title="chat", user_id=sample_user_id, scene_id=uuid4(), user_character_id=uuid4()
+			title="chat",
+			user_id=sample_user_id,
+			scene_id=uuid4(),
+			user_character_id=uuid4(),
+			initial_message_id=uuid4(),
 		)
 		return gateway
 
 	@pytest.fixture
 	def mock_scene_gateway(self):
 		gateway = AsyncMock(spec=ISceneGateway)
-		gateway.get_one.return_value = Scene(
-			title="scene", owner_id=uuid4(), background_prompt="bg", initial_message_text="init"
-		)
+		gateway.get_one.return_value = Scene(title="scene", owner_id=uuid4(), background_prompt="bg")
 		return gateway
 
 	@pytest.fixture
@@ -261,6 +263,38 @@ class TestChatsService:
 		with pytest.raises(HTTPException) as exc:
 			await service.send_message(sample_user_message_dto, uuid4())
 		assert exc.value.status_code == 403
+
+		mock_message_service.send_message.assert_not_called()
+		mock_gateway.submit.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_send_message_requires_chosen_initial_message(
+		self, mock_chat_gateway, mock_message_service, mock_gateway, sample_user_message_dto, sample_user_id
+	):
+		"""Until the user picks an initial message inside the chat, sending is rejected
+		with INITIAL_MESSAGE_REQUIRED before any persistence or LLM call."""
+		mock_chat_gateway.get_one.return_value = Chat(
+			title="fresh chat",
+			user_id=sample_user_id,
+			scene_id=uuid4(),
+			user_character_id=uuid4(),
+			initial_message_id=None,
+		)
+		service = LLMChatsService(
+			gateway_factory=MagicMock(spec=IGatewayFactory, create_gateway=Mock(return_value=mock_gateway)),
+			message_service=mock_message_service,
+			chat_settings_gateway=AsyncMock(spec=IChatSettingsGateway),
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=AsyncMock(spec=ISceneGateway),
+			character_gateway=AsyncMock(spec=ICharacterGateway),
+			prompt_service=PromptService(),
+			authz=AuthorizationService(),
+			_events=Mock(spec=IChatEventGateway),
+		)
+
+		with pytest.raises(InitialMessageRequiredException):
+			await service.send_message(sample_user_message_dto, sample_user_id)
 
 		mock_message_service.send_message.assert_not_called()
 		mock_gateway.submit.assert_not_called()
@@ -457,7 +491,6 @@ class TestChatsService:
 			title="Dark Forest",
 			owner_id=uuid4(),
 			background_prompt="A misty woodland at dusk.",
-			initial_message_text="init",
 		)
 
 		await chats_service.send_message(sample_user_message_dto, sample_user_id)
@@ -485,7 +518,11 @@ class TestChatsService:
 		persona_id = uuid4()
 		persona = Character(name="Kael", system_prompt="A wandering bard with a silver tongue.")
 		mock_chat_gateway.get_one.return_value = Chat(
-			title="chat", user_id=sample_user_id, scene_id=uuid4(), user_character_id=persona_id
+			title="chat",
+			user_id=sample_user_id,
+			scene_id=uuid4(),
+			user_character_id=persona_id,
+			initial_message_id=uuid4(),
 		)
 		mock_character_gateway.get_one.return_value = persona
 
@@ -505,7 +542,11 @@ class TestChatsService:
 		"""A chat without a chosen play-as character is rejected with a graceful error
 		before the user message is persisted or the LLM is called."""
 		mock_chat_gateway.get_one.return_value = Chat(
-			title="chat", user_id=sample_user_id, scene_id=uuid4(), user_character_id=None
+			title="chat",
+			user_id=sample_user_id,
+			scene_id=uuid4(),
+			user_character_id=None,
+			initial_message_id=uuid4(),
 		)
 
 		with pytest.raises(PersonaRequiredException):

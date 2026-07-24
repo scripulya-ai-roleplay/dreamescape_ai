@@ -12,7 +12,6 @@ def _scene(title: str = "Forest", background: str = "A dark wood.", description:
 		title=title,
 		owner_id=uuid4(),
 		background_prompt=background,
-		initial_message_text="init",
 		description=description,
 	)
 

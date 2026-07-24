@@ -25,7 +25,7 @@ from src.application.ports.chats import (
 	IChatSettingsService,
 )
 from src.application.ports.messages import IServerEventsService, IMessageService, IMessageGateway, IGenerationHeartbeat
-from src.application.ports.scenes import ISceneService, ISceneGateway
+from src.application.ports.scenes import ISceneService, ISceneGateway, IInitialMessageService, IInitialMessageGateway
 from src.application.ports.characters import ICharacterService, ICharacterGateway
 from src.application.ports.media import IObjectStorageGateway, IMediaGateway, IMediaService, IImageReader
 from src.application.ports.authorization import IAuthorizationService, IVisibilityGateway
@@ -33,6 +33,7 @@ from src.infrastructure.gateways.mock_gateway import MockGateway
 from src.infrastructure.gateways.gateway_factory import GatewayFactory
 from src.infrastructure.gateways.user_gateway import UserGateway
 from src.infrastructure.gateways.scenes_gateway import SceneGateway
+from src.infrastructure.gateways.initial_message_gateway import InitialMessageGateway
 from src.infrastructure.gateways.character_gateway import CharacterGateway
 from src.infrastructure.gateways.chat_gateway import ChatGateway
 from src.infrastructure.gateways.chat_settings_gateway import ChatSettingsGateway
@@ -46,6 +47,7 @@ from src.infrastructure.gateways.visibility import VisibilityGateway
 from src.application.events.server_events_service import ServerEventsService
 from src.application.user.user_service import UserService
 from src.application.scene.service import SceneService
+from src.application.scene.initial_message_service import InitialMessageService
 from src.application.character.service import CharacterService
 from src.application.chats.service import ChatService
 from src.application.chats.settings_service import ChatSettingsService
@@ -124,6 +126,10 @@ class GatewayProvider(Provider):
 		self, session: AsyncSession, visibility_gateway: IVisibilityGateway, logger: logging.Logger
 	) -> ISceneGateway:
 		return SceneGateway(session, visibility=visibility_gateway, logger=logger)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_initial_message_gateway(self, session: AsyncSession, logger: logging.Logger) -> IInitialMessageGateway:
+		return InitialMessageGateway(session, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_character_gateway(
@@ -257,11 +263,20 @@ class ServiceProvider(Provider):
 	def provide_chat_service(
 		self,
 		chat_gateway: IChatGateway,
+		initial_message_gateway: IInitialMessageGateway,
+		message_gateway: IMessageGateway,
 		uow: PostgresqlUOW,
 		authorization_service: IAuthorizationService,
 		logger: logging.Logger,
 	) -> IChatService:
-		return ChatService(chat_gateway=chat_gateway, uow=uow, authz=authorization_service, logger=logger)
+		return ChatService(
+			chat_gateway=chat_gateway,
+			initial_message_gateway=initial_message_gateway,
+			message_gateway=message_gateway,
+			uow=uow,
+			authz=authorization_service,
+			logger=logger,
+		)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_message_service(
@@ -291,11 +306,35 @@ class ServiceProvider(Provider):
 	def provide_scene_service(
 		self,
 		scene_gateway: ISceneGateway,
+		initial_message_gateway: IInitialMessageGateway,
 		uow: PostgresqlUOW,
 		authorization_service: IAuthorizationService,
 		logger: logging.Logger,
 	) -> ISceneService:
-		return SceneService(uow=uow, gateway=scene_gateway, authz=authorization_service, logger=logger)
+		return SceneService(
+			uow=uow,
+			gateway=scene_gateway,
+			initial_message_gateway=initial_message_gateway,
+			authz=authorization_service,
+			logger=logger,
+		)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_initial_message_service(
+		self,
+		initial_message_gateway: IInitialMessageGateway,
+		scene_gateway: ISceneGateway,
+		uow: PostgresqlUOW,
+		authorization_service: IAuthorizationService,
+		logger: logging.Logger,
+	) -> IInitialMessageService:
+		return InitialMessageService(
+			initial_message_gateway=initial_message_gateway,
+			scene_gateway=scene_gateway,
+			uow=uow,
+			authz=authorization_service,
+			logger=logger,
+		)
 
 	@provide(scope=Scope.REQUEST)
 	def provide_character_service(

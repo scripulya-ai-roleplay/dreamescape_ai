@@ -5,14 +5,18 @@ from uuid import UUID
 from src.infrastructure.logging.logger import Logger
 from src.application.ports.authorization import IAuthorizationService
 from src.application.ports.chats import IChatService, IChatGateway
+from src.application.ports.messages import IMessageGateway
+from src.application.ports.scenes import IInitialMessageGateway
 from src.application.ports.common import IUnitOfWork, Page
 from src.application.chats.schemas import ChatFilterDTO
-from src.domain.models import Chat
+from src.domain.models import Chat, Message, ChatRoles, MessageStatus
 
 
 @dataclass
 class ChatService(IChatService):
 	chat_gateway: IChatGateway
+	initial_message_gateway: IInitialMessageGateway
+	message_gateway: IMessageGateway
 	uow: IUnitOfWork
 	authz: IAuthorizationService
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
@@ -55,3 +59,34 @@ class ChatService(IChatService):
 		await self._require_owned(chat_uuid, actor_id)
 		async with self.uow:
 			return await self.chat_gateway.set_persona(chat_uuid, user_character_id)
+
+	async def choose_initial_message(self, chat_uuid: UUID, initial_message_uuid: UUID, actor_id: UUID) -> Message:
+		self.logger.info(f"Choosing initial message {initial_message_uuid} for chat {chat_uuid}")
+
+		chat = await self.chat_gateway.get_one(chat_uuid)
+		self.authz.require_owned(owner_id=chat.user_id, actor_id=actor_id, noun="chat")
+
+		initial_message = await self.initial_message_gateway.get_one(initial_message_uuid)
+		# The chosen initial message must belong to the scene the chat was started
+		# from, otherwise a user could seed an arbitrary scene's greeting into a chat.
+		if initial_message.scene_id != chat.scene_id:
+			raise ValueError("Initial message does not belong to this chat's scene")
+
+		if chat.initial_message_id is not None:
+			raise ValueError("Chat already has an initial message")
+
+		# Seed the greeting as a real model message and record the choice on the
+		# chat in one transaction; the message then behaves like any other
+		# (editable/deletable) and flows through to the LLM as history.
+		async with self.uow:
+			await self.chat_gateway.set_initial_message(chat_uuid, initial_message_uuid)
+			seeded = await self.message_gateway.create(
+				Message(
+					message=initial_message.text,
+					chat_id=chat_uuid,
+					role=ChatRoles.MODEL,
+					status=MessageStatus.COMPLETED,
+				)
+			)
+		self.logger.info(f"Successfully seeded initial message for chat: {chat_uuid}")
+		return seeded
