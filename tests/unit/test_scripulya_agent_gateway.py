@@ -1,4 +1,5 @@
-from unittest.mock import AsyncMock, Mock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import UUID, uuid4
 
 import pytest
@@ -125,7 +126,10 @@ class TestTokenRelay:
 	"""Per-token streaming relay: subscribe on publish, drain Redis frames into SSE events."""
 
 	@pytest.mark.asyncio
-	async def test_publish_starts_relay_when_redis_and_events_present(self, monkeypatch):
+	async def test_publish_subscribes_before_publishing_and_spawns_drain(self, monkeypatch):
+		# Guards the race that split relay setup: Redis Pub/Sub has no replay for late
+		# joiners, so the subscribe must complete before the request is published, else
+		# the opening tokens — and a missed done frame — are lost.
 		fixed_rid = UUID("11111111-2222-3333-4444-555555555555")
 		monkeypatch.setattr("src.infrastructure.gateways.scripulya_agent_gateway.uuid4", lambda: fixed_rid)
 
@@ -138,12 +142,57 @@ class TestTokenRelay:
 			redis=Mock(),
 			events=Mock(spec=IChatEventGateway),
 		)
-		client._start_token_relay = AsyncMock()
 
-		msg = _user_message()
-		await client.publish(LLMRequest(message=msg, history=[]))
+		order: list[str] = []
+		fake_pubsub = MagicMock()
 
-		client._start_token_relay.assert_awaited_once_with(str(fixed_rid), msg.chat_id)
+		async def subscribe(rid):
+			order.append("subscribe")
+			return fake_pubsub
+
+		async def publish(*args, **kwargs):
+			order.append("publish")
+			return None
+
+		client._subscribe_tokens = subscribe
+		client._drain_tokens = AsyncMock()
+		client.broker.publish = publish
+
+		await client.publish(LLMRequest(message=_user_message(), history=[]))
+		await asyncio.sleep(0)  # let the create_task'd drain run
+
+		assert order == ["subscribe", "publish"]
+		client._drain_tokens.assert_awaited_once()
+		assert client._drain_tokens.await_args.args[0] is fake_pubsub
+		assert client._drain_tokens.await_args.args[1] == str(fixed_rid)
+
+	@pytest.mark.asyncio
+	async def test_publish_closes_pubsub_and_skips_drain_when_publish_fails(self, monkeypatch):
+		fixed_rid = UUID("11111111-2222-3333-4444-555555555555")
+		monkeypatch.setattr("src.infrastructure.gateways.scripulya_agent_gateway.uuid4", lambda: fixed_rid)
+
+		client = ScripulyaAgentClient(
+			broker=AsyncMock(),
+			request_queue="llm.agent.request",
+			timeout=5.0,
+			logger=Mock(),
+			heartbeat=AsyncMock(),
+			redis=Mock(),
+			events=Mock(spec=IChatEventGateway),
+		)
+		fake_pubsub = MagicMock()
+		fake_pubsub.aclose = AsyncMock()
+
+		client._subscribe_tokens = AsyncMock(return_value=fake_pubsub)
+		client._drain_tokens = AsyncMock()
+		client.broker.publish = AsyncMock(side_effect=RuntimeError("broker down"))
+
+		with pytest.raises(LLMGatewayException):
+			await client.publish(LLMRequest(message=_user_message(), history=[]))
+
+		fake_pubsub.aclose.assert_awaited_once()
+		client._drain_tokens.assert_not_awaited()
+		client.heartbeat.register_inflight.assert_not_awaited()
 
 	@pytest.mark.asyncio
 	async def test_publish_skips_relay_without_redis(self, monkeypatch):
@@ -190,6 +239,7 @@ class TestTokenRelay:
 			assert call.args[0] == chat_id
 			assert call.args[1] == request_id
 		events.publish_generation_done.assert_called_once_with(chat_id, request_id)
+		events.publish_generation_error.assert_not_called()
 		assert pubsub.closed is True
 
 	@pytest.mark.asyncio
@@ -213,7 +263,67 @@ class TestTokenRelay:
 
 		delivered = "".join(call.args[2] for call in events.publish_token.call_args_list)
 		assert delivered == "partial"
-		events.publish_generation_done.assert_called_once()
+		events.publish_generation_error.assert_called_once()
+		events.publish_generation_done.assert_not_called()
+
+	@pytest.mark.asyncio
+	async def test_drain_emits_generation_error_on_deadline_timeout(self, monkeypatch):
+		# No terminal frame at all (agent crashed / frame lost): the relay must not claim
+		# success — it emits generation_error, not generation_done.
+		monkeypatch.setattr("src.conf.settings.LLM_HEARTBEAT_HARD_DEADLINE_SECONDS", 0)
+		events = Mock(spec=IChatEventGateway)
+		client = ScripulyaAgentClient(
+			broker=AsyncMock(),
+			request_queue="llm.agent.request",
+			timeout=5.0,
+			logger=Mock(),
+			heartbeat=AsyncMock(),
+			events=events,
+		)
+		pubsub = _FakePubSub([])  # yields None forever — never sends done/error
+		await client._drain_tokens(pubsub, str(uuid4()), uuid4())
+
+		events.publish_generation_error.assert_called_once()
+		events.publish_generation_done.assert_not_called()
+		assert pubsub.closed is True
+
+	@pytest.mark.asyncio
+	async def test_subscribe_tokens_closes_pubsub_when_subscribe_raises(self):
+		# A failed subscribe must release the Pub/Sub object redis.pubsub() created (and any
+		# connection it acquired) instead of leaving it for GC.
+		client = ScripulyaAgentClient(
+			broker=AsyncMock(),
+			request_queue="llm.agent.request",
+			timeout=5.0,
+			logger=Mock(),
+			heartbeat=AsyncMock(),
+			redis=Mock(),
+			events=Mock(spec=IChatEventGateway),
+		)
+		fake_pubsub = MagicMock()
+		fake_pubsub.subscribe = AsyncMock(side_effect=RuntimeError("subscribe boom"))
+		fake_pubsub.aclose = AsyncMock()
+		client.redis.pubsub = Mock(return_value=fake_pubsub)
+
+		assert await client._subscribe_tokens(str(uuid4())) is None
+		fake_pubsub.aclose.assert_awaited_once()
+
+	@pytest.mark.asyncio
+	async def test_subscribe_tokens_returns_none_when_pubsub_factory_raises(self):
+		# If redis.pubsub() itself raises, nothing was assigned — must not crash (no
+		# NameError) and must return None.
+		client = ScripulyaAgentClient(
+			broker=AsyncMock(),
+			request_queue="llm.agent.request",
+			timeout=5.0,
+			logger=Mock(),
+			heartbeat=AsyncMock(),
+			redis=Mock(),
+			events=Mock(spec=IChatEventGateway),
+		)
+		client.redis.pubsub = Mock(side_effect=RuntimeError("pubsub factory boom"))
+
+		assert await client._subscribe_tokens(str(uuid4())) is None
 
 
 class _FakePubSub:

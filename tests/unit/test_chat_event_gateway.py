@@ -26,7 +26,7 @@ class TestChatEventGatewayTokenFanout:
 		gateway.unsubscribe(chat_id, q2)
 
 	@pytest.mark.asyncio
-	async def test_generation_start_and_done_are_tagged(self):
+	async def test_generation_start_done_and_error_are_tagged(self):
 		gateway = ChatEventGateway()
 		chat_id = uuid4()
 		request_id = uuid4()
@@ -34,12 +34,15 @@ class TestChatEventGatewayTokenFanout:
 
 		gateway.publish_generation_start(chat_id, request_id)
 		gateway.publish_generation_done(chat_id, request_id)
+		gateway.publish_generation_error(chat_id, request_id)
 
 		start = await asyncio.wait_for(q.get(), timeout=1.0)
 		done = await asyncio.wait_for(q.get(), timeout=1.0)
+		error = await asyncio.wait_for(q.get(), timeout=1.0)
 		assert start["_sse_event"] == "generation_start"
 		assert done["_sse_event"] == "generation_done"
-		assert start["request_id"] == done["request_id"] == str(request_id)
+		assert error["_sse_event"] == "generation_error"
+		assert start["request_id"] == done["request_id"] == error["request_id"] == str(request_id)
 
 		gateway.unsubscribe(chat_id, q)
 

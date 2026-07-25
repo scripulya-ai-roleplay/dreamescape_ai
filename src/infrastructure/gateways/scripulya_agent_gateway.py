@@ -36,15 +36,25 @@ class ScripulyaAgentClient(IScripulyaAgentClient):
 
 	async def publish(self, req: LLMRequest) -> None:
 		chat_id = req.message.chat_id
-		request_id = uuid4()
+		rid = str(uuid4())
+		# Subscribe to the token channel BEFORE publishing the request. Redis Pub/Sub
+		# delivers a frame only to clients subscribed at the instant of PUBLISH — there
+		# is no replay for late joiners — and the agent can emit its first token the
+		# moment it receives the request. Subscribing first closes that window, so we
+		# never miss the opening tokens or, worse, the done/error frame (whose loss
+		# would pin this relay open until LLM_HEARTBEAT_HARD_DEADLINE_SECONDS). Frames
+		# that arrive before the drain task starts land in the connection's TCP buffer
+		# and are read on the first get_message.
+		pubsub = await self._subscribe_tokens(rid)
 		try:
 			await self.broker.publish(
 				req.model_dump(mode="json"),
 				self.request_queue,
-				correlation_id=str(request_id),
+				correlation_id=rid,
 				timeout=self.timeout,
 			)
 		except Exception as exc:  # broker down / publish confirm timeout
+			await self._close_pubsub(pubsub)  # release the subscription opened pre-publish
 			self.logger.warning("scripulya_agent publish failed chat_id=%s: %s", chat_id, exc)
 			raise LLMGatewayException(
 				message=f"failed to publish request to scripulya_agent: {exc}",
@@ -52,21 +62,40 @@ class ScripulyaAgentClient(IScripulyaAgentClient):
 			)
 		# Register only after publish succeeds — a failed publish is already surfaced by
 		# send_message, and a leftover entry here would be FAILed again by the watchdog.
-		await self.heartbeat.register_inflight(str(request_id), chat_id)
-		await self._start_token_relay(str(request_id), chat_id)
-
-	async def _start_token_relay(self, request_id: str, chat_id: UUID) -> None:
-		if self.redis is None or self.events is None:
+		await self.heartbeat.register_inflight(rid, chat_id)
+		if pubsub is None:
 			return
+		task = asyncio.create_task(self._drain_tokens(pubsub, rid, chat_id))
+		self._relays.add(task)
+		task.add_done_callback(self._relays.discard)
+
+	async def _subscribe_tokens(self, request_id: str):
+		# Returns the subscribed pubsub, or None when streaming is off (no redis/events
+		# wired, e.g. mock mode) or the subscribe itself failed — generation proceeds
+		# either way; only the live progress indicator is lost.
+		if self.redis is None or self.events is None:
+			return None
+		pubsub = None
 		try:
 			pubsub = self.redis.pubsub()
 			await pubsub.subscribe(tokens_key(request_id))
+			return pubsub
 		except Exception:
 			self.logger.warning("token relay subscribe failed rid=%s", request_id, exc_info=True)
+			# self.redis.pubsub() may have acquired a connection; release the Pub/Sub object
+			# so it (and any connection it holds) doesn't linger until GC. No-op if pubsub()
+			# itself raised before assignment.
+			await self._close_pubsub(pubsub)
+			return None
+
+	@staticmethod
+	async def _close_pubsub(pubsub) -> None:
+		if pubsub is None:
 			return
-		task = asyncio.create_task(self._drain_tokens(pubsub, request_id, chat_id))
-		self._relays.add(task)
-		task.add_done_callback(self._relays.discard)
+		try:
+			await pubsub.aclose()
+		except Exception:
+			pass
 
 	async def _drain_tokens(self, pubsub, request_id: str, chat_id: UUID) -> None:
 		loop = asyncio.get_running_loop()
@@ -75,8 +104,14 @@ class ScripulyaAgentClient(IScripulyaAgentClient):
 		self.events.publish_generation_start(chat_id, UUID(request_id))
 		buffer: list[str] = []
 		last_flush = loop.time()
+		# None until a done/error frame arrives; "done" is the only clean outcome. An error
+		# frame, a deadline expiry (no terminal frame — agent crashed or the frame was lost),
+		# or a relay crash all surface as generation_error, so a client can tell a completed
+		# stream from a mid-stream failure. Only a real "done" frame earns generation_done.
+		# The authoritative outcome still arrives later as a `message` event; these stream
+		# events are best-effort signaling, not the source of truth.
+		terminal: str | None = None
 		try:
-			timed_out = True
 			while loop.time() <= deadline:
 				msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=_FLUSH_INTERVAL_SECONDS)
 				if msg is None:
@@ -100,20 +135,20 @@ class ScripulyaAgentClient(IScripulyaAgentClient):
 						buffer = []
 						last_flush = loop.time()
 				elif kind in ("done", "error"):
-					timed_out = False
+					terminal = kind
 					break
-			if timed_out:
+			if terminal is None:
 				self.logger.warning("token relay deadline exceeded rid=%s", request_id)
 		except Exception:
 			self.logger.warning("token relay failed rid=%s", request_id, exc_info=True)
 		finally:
 			if buffer:
 				self._flush(buffer, request_id, chat_id)
-			self.events.publish_generation_done(chat_id, UUID(request_id))
-			try:
-				await pubsub.aclose()
-			except Exception:
-				pass
+			if terminal == "done":
+				self.events.publish_generation_done(chat_id, UUID(request_id))
+			else:
+				self.events.publish_generation_error(chat_id, UUID(request_id))
+			await self._close_pubsub(pubsub)
 
 	def _flush(self, buffer: list[str], request_id: str, chat_id: UUID) -> None:
 		text = "".join(buffer)

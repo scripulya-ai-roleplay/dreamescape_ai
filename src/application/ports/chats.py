@@ -94,3 +94,6 @@ class IChatEventGateway(abc.ABC):
 
 	@abc.abstractmethod
 	def publish_generation_done(self, chat_id: UUID, request_id: UUID) -> None: ...
+
+	@abc.abstractmethod
+	def publish_generation_error(self, chat_id: UUID, request_id: UUID) -> None: ...

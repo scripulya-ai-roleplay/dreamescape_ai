@@ -55,3 +55,6 @@ class ChatEventGateway(IChatEventGateway):
 
 	def publish_generation_done(self, chat_id: UUID, request_id: UUID) -> None:
 		self.publish(chat_id, {"_sse_event": "generation_done", "request_id": str(request_id)})
+
+	def publish_generation_error(self, chat_id: UUID, request_id: UUID) -> None:
+		self.publish(chat_id, {"_sse_event": "generation_error", "request_id": str(request_id)})

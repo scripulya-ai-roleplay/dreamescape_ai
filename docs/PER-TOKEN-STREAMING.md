@@ -34,6 +34,17 @@ event: generation_done         ◄── "the model finished talking"
 event: message  { full reply }  ◄── the persisted, authoritative reply
 ```
 
+A mid-stream failure ends the stream with a **different** terminal event, so the client can
+tell the two apart *during* streaming — not only once the `message` arrives:
+
+```
+event: generation_start
+event: token   { "Hel"   }
+event: token   { "lo"    }
+event: generation_error        ◄── "the stream failed before completing"
+event: message  { FAILED/error reply }  ◄── the authoritative outcome (still arrives)
+```
+
 The crucial detail — and the whole design rests on it — is that **the token stream and the
 final `message` are two independent channels.** The token stream is *decorative*: it is a
 progress animation and nothing more. The `message` event is *authoritative*: it is the real,
@@ -153,7 +164,8 @@ the `request_id` so the client can attribute each token batch.
 ## 5. The frame contract (Redis pub/sub on `gen:{rid}:tokens`)
 
 This is the wire format on the Redis channel — a **contract shared with the agent**, like
-the heartbeat keys. The agent `PUBLISH`es JSON strings; the backend parses them.
+the heartbeat keys. The agent `PUBLISH`es JSON strings; the backend parses them. (Why a
+Pub/Sub channel rather than a Stream or List is a deliberate choice — see §14.)
 
 ```jsonc
 {"type": "token", "text": "<delta>"}   // one per generated text chunk
@@ -162,7 +174,9 @@ the heartbeat keys. The agent `PUBLISH`es JSON strings; the backend parses them.
 ```
 
 Only three frame types. `text` is present only on `token`. A terminal frame (`done`/`error`)
-is what tells the backend relay to stop draining.
+is what tells the backend relay to stop draining. The two terminals are **not** symmetric on
+the wire: `done` maps to an SSE `generation_done`; `error` (or any end that isn't a clean
+`done`) maps to `generation_error` — see §6e and §8.
 
 ---
 
@@ -172,21 +186,26 @@ is what tells the backend relay to stop draining.
 
 `ScripulyaAgentGateway.submit` is fire-and-forget — it returns `None` so the caller leaves
 the placeholder message `PENDING`. The real reply comes back later via RabbitMQ. Inside
-`submit`, it calls `ScripulyaAgentClient.publish`, which does three things **in order**:
+`submit`, it calls `ScripulyaAgentClient.publish`, which runs four steps **in order**:
 
-```python
-await self.broker.publish(..., correlation_id=str(request_id), ...)   # 1. send the request
-await self.heartbeat.register_inflight(str(request_id), chat_id)      # 2. arm liveness
-await self._start_token_relay(str(request_id), chat_id)               # 3. open the relay
-```
+1. **subscribe** — `await self._subscribe_tokens(rid)` opens and awaits the Redis subscription
+   to `gen:{rid}:tokens` **before** the request is published.
+2. **publish** — `broker.publish(..., correlation_id=rid)`; if it raises, the subscription
+   from step 1 is closed and the error propagates (no relay spawned, no liveness armed).
+3. **arm liveness** — `heartbeat.register_inflight(rid, chat_id)`, only after publish succeeds
+   (a failed publish is already surfaced by `send_message`, and a leftover entry here would be
+   FAILed again by the watchdog).
+4. **drain** — `create_task(self._drain_tokens(pubsub, rid, chat_id))`, only if step 1 returned
+   a real pubsub; the task is tracked in `self._relays` and auto-discarded on completion.
 
-Ordering is deliberate: if the publish fails, `send_message` already surfaces the error and
-we skip the heartbeat and relay — no orphaned chalkboard entry or dangling subscriber.
-
-`_start_token_relay` subscribes a Redis pubsub to `gen:{rid}:tokens` **before** the agent can
-possibly emit (the agent hasn't even received the message yet), then spawns `_drain_tokens`
-as a background task tracked in `self._relays` (auto-discarded on completion). If `redis` or
-`events` isn't wired (e.g. mock mode), it returns early — streaming silently off.
+The **subscribe-before-publish** order is load-bearing: Pub/Sub delivers only to clients
+subscribed at the instant of `PUBLISH`, and the agent can emit its first token the moment it
+receives the request — so subscribing first is the only way to guarantee no opening frame (or
+the terminal `done`/`error` frame) is missed. Frames that arrive between subscribe-completion
+and the drain task starting are buffered in the connection's TCP socket and read on the first
+`get_message`. (The transport choice itself — Pub/Sub over Stream/List — is deliberate; see
+§14.) If `redis`/`events` aren't wired (e.g. mock mode), `_subscribe_tokens` returns `None` and
+steps 2–3 still run — streaming silently off, generation unaffected.
 
 ### 6b. Agent generates and emits deltas
 
@@ -257,6 +276,7 @@ a hard deadline elapses:
 self.events.publish_generation_start(chat_id, UUID(request_id))   # immediately
 deadline = loop.time() + settings.LLM_HEARTBEAT_HARD_DEADLINE_SECONDS   # 1800s backstop
 buffer, last_flush = [], loop.time()
+terminal = None                                     # "done" is the only clean outcome
 while loop.time() <= deadline:
     msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=_FLUSH_INTERVAL_SECONDS)  # 25ms
     if msg is None:                                  # no frame this tick
@@ -269,17 +289,26 @@ while loop.time() <= deadline:
         if len(buffer) >= _FLUSH_TOKEN_BATCH or loop.time()-last_flush >= _FLUSH_INTERVAL_SECONDS:
             self._flush(buffer, ...); buffer=[]; last_flush=loop.time()
     elif frame["type"] in ("done","error"):
-        break
+        terminal = frame["type"]; break
 # finally: flush any tail, then
-self.events.publish_generation_done(chat_id, UUID(request_id))
+if terminal == "done":
+    self.events.publish_generation_done(chat_id, UUID(request_id))
+else:                                               # "error" frame, deadline expiry, or relay crash
+    self.events.publish_generation_error(chat_id, UUID(request_id))
 ```
 
 `_flush` joins the buffered strings and calls `events.publish_token(chat_id, request_id, text)`
 (no-op if empty). So the client gets, per generation:
 
 ```
-generation_start → token → token → … → token → generation_done
+success:  generation_start → token → … → token → generation_done
+failure:  generation_start → token → … → token → generation_error
 ```
+
+A clean `done` is the *only* thing that earns `generation_done`. An `error` frame, a deadline
+expiry (no terminal frame — the agent crashed or the frame was lost), or a relay crash all
+yield `generation_error`. The partial text is flushed either way; the terminal event tells the
+client what to make of it.
 
 ### 6f. Backend fans out to the SSE stream
 
@@ -328,7 +357,7 @@ def _sse_frame(self, payload):
     return f"event: {event_name}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
 ```
 
-So a generation produces, on the wire:
+So a **successful** generation produces, on the wire:
 
 ```
 event: generation_start
@@ -344,15 +373,34 @@ event: message
 data: {"message": { …full persisted model message… }}
 ```
 
+A **failed** generation is identical up to the terminal event, which is `generation_error`
+instead of `generation_done`:
+
+```
+event: generation_start
+data: {"request_id": "11111111-2222-3333-4444-555555555555"}
+
+event: token
+data: {"request_id": "11111111-2222-3333-4444-555555555555", "text": "Hel"}
+
+event: generation_error
+data: {"request_id": "11111111-2222-3333-4444-555555555555"}
+
+event: message
+data: {"message": { …FAILED / error reply… }}
+```
+
 Notes for a client implementer:
 
 - **Attribute tokens by `request_id`.** If the user fires two messages quickly, two
   generations' token frames can interleave on the same chat stream; `request_id` separates
   them.
-- **`generation_done` ≠ the reply.** It only means "the model stopped emitting; stop your
-  spinner." The authoritative reply is the later `message` event. Don't render the streamed
-  tokens as final text — wait for `message`, which carries the persisted, post-processed
-  reply.
+- **The terminal event tells you success vs failure.** `generation_done` means the stream
+  completed cleanly; `generation_error` means it ended abnormally (provider error, timeout, or
+  the relay/agent dying). They are mutually exclusive — a generation emits exactly one. Either
+  way the authoritative outcome is the later `message` event; the terminal events are
+  best-effort stream signals, not the reply. Don't render the streamed tokens as final text —
+  wait for `message`.
 - **Reconnect replays state, not tokens.** On connect, `_stream` emits the latest persisted
   model message first (so a reconnecting client isn't blank). Tokens are ephemeral — a
   reconnect mid-generation will *not* replay the deltas already streamed; the client just
@@ -368,9 +416,9 @@ Every component on the token path treats Redis as best-effort and isolates failu
 
 | Failure | Agent side | Backend side | Net effect |
 |---|---|---|---|
-| Redis down at publish | `emit_token` swallows the error; generation continues | `_start_token_relay` never starts (or subscribe fails → logs + returns) | no live tokens, but reply still arrives via RabbitMQ |
-| Redis dies mid-stream | `_close_token_stream` swallows the publish error | `get_message`/`json.loads` errors are caught per-frame; loop continues until deadline | tokens stop early; `generation_done` still fires at the deadline |
-| Agent crashes (no `done`) | — | deadline (`LLM_HEARTBEAT_HARD_DEADLINE_SECONDS`, 1800s) elapses → `timed_out` → `generation_done` in `finally` | spinner stops; watchdog writes the FAILED reply (see §10) |
+| Redis down at publish | `emit_token` swallows the error; generation continues | `_subscribe_tokens` returns `None` (or subscribe fails → logs + returns) | no live tokens, but reply still arrives via RabbitMQ |
+| Redis dies mid-stream | `_close_token_stream` swallows the publish error | `get_message`/`json.loads` errors are caught per-frame; loop continues until deadline | tokens stop early; `generation_error` fires at the deadline |
+| Agent crashes (no `done`) | — | deadline (`LLM_HEARTBEAT_HARD_DEADLINE_SECONDS`, 1800s) elapses with no terminal → `generation_error` in `finally` | spinner stops; watchdog writes the FAILED reply (see §10) |
 | No SSE listener / queue full | — | `publish` no-ops or drops on `QueueFull` (logged) | tokens silently dropped; generation unaffected |
 | Mock mode (`LLM_AGENT_ENABLED=false`) | n/a | `MockScripulyaAgentClient` — no broker, no relay | no streaming; `testing_mock` still works offline |
 
@@ -398,7 +446,7 @@ Streaming reuses two pieces of the heartbeat/watchdog machinery from
 2. **The same hard-deadline backstop.** The relay's deadline is
    `settings.LLM_HEARTBEAT_HARD_DEADLINE_SECONDS` (1800s) — the very value the heartbeat uses
    as the TTL on `gen:{rid}:chat`. So if the agent dies and never sends `done`/`error`, the
-   relay self-terminates after the backstop and emits `generation_done`, so the client's
+   relay self-terminates after the backstop and emits `generation_error`, so the client's
    spinner can't spin forever *on its own*.
 
 But note the two systems act on **different outcomes**:
@@ -407,8 +455,8 @@ But note the two systems act on **different outcomes**:
 dead agent  ─►  heartbeat :alive expires  ─►  watchdog writes FAILED message   (≤ ~40s)
                                                 + SSE event: message (FAILED)
 
-dead agent  ─►  relay deadline elapses      ─►  SSE event: generation_done       (≤ 1800s)
-                                                (spinner stops; says nothing about success)
+dead agent  ─►  relay deadline elapses      ─►  SSE event: generation_error      (≤ 1800s)
+                                                (stream ended abnormally; spinner stops)
 ```
 
 The watchdog owns the *authoritative* failure (a real `FAILED` row + `message` event). The
@@ -422,13 +470,13 @@ either can fire without the other, and neither duplicates the other's job.
 | Case | Behavior |
 |---|---|
 | **Redis unavailable** | Relay never starts (or dies silently); agent `emit_token` swallows errors. Reply still arrives via RabbitMQ. |
-| **Terminal frame never sent** (agent crash) | Relay runs to the 1800s deadline, then flushes tail + emits `generation_done`. Watchdog separately FAILs the generation. |
-| **`error` terminal** | Relay flushes any buffered tokens first (so partial output isn't lost), then emits `generation_done`. The provider error itself reaches the user as a `FAILED`/error `message` via the result queue. |
+| **Terminal frame never sent** (agent crash) | Relay runs to the 1800s deadline, then flushes tail + emits `generation_error`. Watchdog separately FAILs the generation. |
+| **`error` terminal** | Relay flushes any buffered tokens first (so partial output isn't lost), then emits `generation_error`. The provider error itself reaches the user as a `FAILED`/error `message` via the result queue. |
 | **Client reconnects mid-generation** | Latest persisted message is replayed; in-flight tokens are *not* replayed. Client sees the eventual `message`. |
 | **Slow/stalled SSE client** | Per-listener queue capped at 256; overflow drops token events (logged). Generation unaffected. `message` events can also be dropped — a stalled client may miss the reply over SSE and must refetch. |
 | **Multiple generations on one chat** | Each has its own `request_id`; frames are distinguishable. The client is expected to bucket by `request_id`. |
 | **Relay task lifetime** | Tracked in `_relays` and auto-discarded on completion; not awaited on shutdown (best-effort). |
-| **`generation_done` ordering vs `message`** | Normally `generation_done` precedes `message` (the result round-trips through RabbitMQ + a DB write after generation). They are decoupled channels, so do not assume strict ordering in client logic — key off the `message` event for "done for real." |
+| **Terminal (`generation_done`/`generation_error`) vs `message`** | Normally the terminal event precedes `message` (the result round-trips through RabbitMQ + a DB write after generation). They are decoupled channels — key off `message` for the authoritative outcome. Rare mismatch: if the relay itself crashes mid-stream it emits `generation_error` even though the agent may still succeed and deliver a normal `message` — trust the `message`. |
 
 ---
 
@@ -483,7 +531,7 @@ src/controllers/rabbit/v1/llm.py                         handle_agent_result: au
 src/infrastructure/gateways/redis_heartbeat.py           tokens_key(rid) = "gen:{rid}:tokens"  (shared contract)
 src/infrastructure/di.py                                 wires redis + events into ScripulyaAgentClient (both APP-scoped)
 tests/unit/test_scripulya_agent_gateway.py               TestTokenRelay: start/skip relay, drain+batch, error-terminal flush
-tests/unit/test_chat_event_gateway.py                    publish_token / generation_start / generation_done
+tests/unit/test_chat_event_gateway.py                    publish_token / generation_start / generation_done / generation_error
 ```
 
 **Agent — `scripulya_agent`**
@@ -500,7 +548,62 @@ src/infrastructure/heartbeat.py                          tokens_key(rid)  (share
 
 ---
 
-## 14. The principle
+## 14. Why Redis Pub/Sub (and not Streams or Lists)
+
+The token channel is a Redis **Pub/Sub** channel, not a Stream or a List. That is deliberate,
+and it follows directly from §9: the token stream is *decorative and ephemeral*, so the right
+transport is one that retains **nothing**.
+
+Pub/Sub is pure fan-out with zero retained state. A `PUBLISH` reaches only clients subscribed
+at that instant; Redis holds the message only in the live output buffers of connected
+subscribers, and the channel key is never materialized. When the generation ends there is
+nothing to clean up — no key, no entries, no TTL to set. For a fire-and-forget progress signal
+that is *supposed* to vanish, that is the ideal property, not a limitation.
+
+The persistence that Streams (`XADD`/`XREAD`) or Lists (`RPUSH`/`BLPOP`) add is only worth
+paying for if the design *uses* it. This one deliberately does not:
+
+| Capability persistence buys | Used here? | Why |
+|---|---|---|
+| Replay/resume after the relay restarts mid-generation | No | Tokens are decorative; the authoritative reply still arrives via RabbitMQ → DB → `message` (§9). A lost prefix is invisible. |
+| Client reconnect resuming the in-flight stream | No, by design | Reconnect replays the latest persisted `message`, not ephemeral deltas (§8, §11). |
+| Multi-consumer fan-out / per-consumer ack | No | Exactly one relay consumer per generation. |
+
+and it comes with real costs:
+
+|  | Pub/Sub | List | Stream |
+|---|---|---|---|
+| Retained state | none | grows until trimmed | bounded via `MAXLEN` |
+| Cleanup per generation | none | must `DEL` / `EXPIRE` | must `DEL` / `EXPIRE` the key |
+| Multi-consumer fan-out | all subscribers | one consumer per frame (queue) | consumer groups / N readers |
+| Replay / resume | none | manual cursor | native (`XREAD` from an ID) |
+| Per-frame overhead | lowest | `RPUSH` | `XADD` (heaviest) |
+
+So Stream/List would add cleanup bookkeeping and heavier writes for a retention capability
+that is unused. **A List is a poor fit in either world** — no clean fan-out, awkward replay,
+manual trimming — so if persistence ever *were* wanted, it would be Stream, not List.
+
+### The one constraint Pub/Sub imposes (and how it's met)
+
+"Deliver only to subscribers present at PUBLISH time" means the relay must be subscribed before
+the agent can emit. Since the agent can emit only after it receives the RabbitMQ message,
+`publish` subscribes before publishing (§6a) — the race is closed by **ordering**, not by
+retention.
+
+### When this choice would change
+
+Pub/Sub stays correct as long as the relay and the SSE client are co-located in one backend
+process. Note there are **two hops**: the agent→relay channel (hop 1, Redis) is separate from
+the relay→SSE fan-out (hop 2, the in-memory `ChatEventGateway`, which is per-process — §4). The
+day the backend runs **multiple replicas**, hop 2 breaks token delivery regardless of hop 1's
+transport: the SSE request lands on a different replica than the relay task, and the in-memory
+queue never crosses the process boundary. Fixing *that* means backing hop 2 with Redis too —
+and then a **Stream** (fan-out + resume + auto-trim) is the right tool where Pub/Sub (fan-out
+only) sufficed for one replica. That is a future requirement; today it is premature.
+
+---
+
+## 15. The principle
 
 Streaming is a **second, decorative channel layered over an unchanged authoritative one.**
 
@@ -517,7 +620,8 @@ Three properties make that safe:
   `_close_token_stream`; backend subscribe, `get_message`, `json.loads`, flush) swallows its
   own errors. A failure anywhere only degrades the animation.
 - **The relay never holds truth.** It emits only `generation_start` / `token` /
-  `generation_done`. The persisted reply comes solely from the RabbitMQ result consumer. The
+  `generation_done` / `generation_error`. The persisted reply comes solely from the RabbitMQ
+  result consumer. The
   agent's authoritative text comes solely from its own gateway accumulation. The token stream
   is a mirror, never a source.
 
