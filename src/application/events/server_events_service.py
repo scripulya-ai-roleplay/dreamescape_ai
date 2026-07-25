@@ -27,13 +27,10 @@ class ServerEventsService(IServerEventsService):
 	_container: AsyncContainer
 
 	def _sse_frame(self, payload: dict[str, Any]) -> str:
-		# Always emit on the standard "message" channel. A failed generation still
-		# arrives as a chat message (status=failed is in the payload), so the client
-		# can render it. Using the SSE event name "error" collided with EventSource's
-		# reserved connection-error event: clients listening for "message" silently
-		# dropped failed replies and the UI waited forever on provider errors.
-		data = json.dumps(payload, ensure_ascii=False, default=str)
-		return f"event: message\ndata: {data}\n\n"
+		event_name = payload.get("_sse_event", "message")
+		data = {k: v for k, v in payload.items() if k != "_sse_event"}
+		body = json.dumps(data, ensure_ascii=False, default=str)
+		return f"event: {event_name}\ndata: {body}\n\n"
 
 	async def open_stream(self, chat_id: UUID, user_id: UUID) -> StreamingResponse:
 

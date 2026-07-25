@@ -82,7 +82,11 @@ class GatewayProvider(Provider):
 
 	@provide(scope=Scope.APP)
 	def provide_scripulya_agent_client(
-		self, logger: logging.Logger, heartbeat: IGenerationHeartbeat
+		self,
+		logger: logging.Logger,
+		heartbeat: IGenerationHeartbeat,
+		redis_client: redis.asyncio.Redis,
+		events: IChatEventGateway,
 	) -> IScripulyaAgentClient:
 		if settings.LLM_AGENT_ENABLED:
 			return ScripulyaAgentClient(
@@ -91,6 +95,8 @@ class GatewayProvider(Provider):
 				timeout=settings.LLM_AGENT_TIMEOUT,
 				logger=logger,
 				heartbeat=heartbeat,
+				redis=redis_client,
+				events=events,
 			)
 		return MockScripulyaAgentClient(logger=logger)
 
