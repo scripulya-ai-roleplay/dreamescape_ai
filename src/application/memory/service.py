@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import redis.asyncio
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.chats.prompt_sections import PromptSections
 from src.application.chats.settings import MemorySettings
@@ -41,6 +42,7 @@ class MemoryService(IMemoryService):
 	chat_settings_gateway: IChatSettingsGateway
 	summary_service: "SummaryService"
 	_uow: IUnitOfWork
+	_session: AsyncSession
 	_embedder: IEmbedder | None = None
 	_redis: redis.asyncio.Redis | None = None
 	logger: logging.Logger = field(default_factory=lambda: logging.getLogger(Logger.LOGGER_NAME))
@@ -60,10 +62,13 @@ class MemoryService(IMemoryService):
 
 		dedup_embedding = await self._safe(self._embed(summary_text), None) if summary_text else None
 
-		chunks, facts = await asyncio.gather(
-			self._safe(self._retrieve_chunks(chat_id, user_msg, vector_enabled, exclude_ids, dedup_embedding), []),
-			self._safe(self._retrieve_facts(chat_id, user_msg, graph_enabled), []),
+		# Sequential, not gathered: every read shares this request's AsyncSession, and a single
+		# session cannot run two savepoints concurrently. Each read is savepoint-isolated (see
+		# _safe) so a failure rolls back to the savepoint instead of aborting the request transaction.
+		chunks = await self._safe(
+			self._retrieve_chunks(chat_id, user_msg, vector_enabled, exclude_ids, dedup_embedding), []
 		)
+		facts = await self._safe(self._retrieve_facts(chat_id, user_msg, graph_enabled), [])
 
 		chunks = await self._dedup_chunks_vs_facts(chunks, facts)
 		sections = PromptSections(
@@ -175,8 +180,13 @@ class MemoryService(IMemoryService):
 		return bool(set_ok)
 
 	async def _safe(self, coro, default):
+		# Each memory read runs inside a SAVEPOINT. A failed/slow source (missing table, vector
+		# index not built, FalkorDB down) rolls back to the savepoint and degrades to `default` —
+		# without this, Postgres aborts the whole transaction and the next query on the request
+		# session fails with "current transaction is aborted".
 		try:
-			return await asyncio.wait_for(coro, timeout=settings.MEMORY_SOURCE_TIMEOUT_MS / 1000)
+			async with self._session.begin_nested():
+				return await asyncio.wait_for(coro, timeout=settings.MEMORY_SOURCE_TIMEOUT_MS / 1000)
 		except Exception:
 			self.logger.warning("memory source failed", exc_info=True)
 			return default

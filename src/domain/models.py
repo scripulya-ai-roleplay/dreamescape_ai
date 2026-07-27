@@ -18,10 +18,6 @@ class ChatRoles(StrEnum):
 
 
 class MessageStatus(StrEnum):
-	"""Lifecycle of a message. Model messages are persisted as PENDING while the
-	LLM is generating, then flipped to COMPLETED/FAILED when scripulya_agent replies.
-	User messages are always COMPLETED."""
-
 	PENDING = "pending"
 	COMPLETED = "completed"
 	FAILED = "failed"

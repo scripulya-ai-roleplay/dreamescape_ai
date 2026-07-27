@@ -17,6 +17,18 @@ def _uow_cm():
 	return uow
 
 
+def _session_cm():
+	# A passthrough SAVEPOINT: _safe wraps each read in `async with session.begin_nested()`.
+	# `session` is a plain MagicMock so begin_nested() returns the nested cm directly (an AsyncMock
+	# call would instead return a coroutine).
+	session = MagicMock()
+	nested = AsyncMock()
+	nested.__aenter__.return_value = nested
+	nested.__aexit__.return_value = None  # falsy => does not suppress => exception re-raises
+	session.begin_nested.return_value = nested
+	return session
+
+
 def _service(**overrides):
 	summary_gateway = overrides.get("summary_gateway", AsyncMock())
 	vector_gateway = overrides.get("vector_gateway", AsyncMock())
@@ -28,6 +40,7 @@ def _service(**overrides):
 	chat_settings_gateway = overrides.get("chat_settings_gateway", AsyncMock())
 	summary_service = overrides.get("summary_service", AsyncMock())
 	uow = overrides.get("uow", _uow_cm())
+	session = overrides.get("session", _session_cm())
 	return MemoryService(
 		summary_gateway=summary_gateway,
 		vector_gateway=vector_gateway,
@@ -36,6 +49,7 @@ def _service(**overrides):
 		chat_settings_gateway=chat_settings_gateway,
 		summary_service=summary_service,
 		_uow=uow,
+		_session=session,
 		_embedder=None,
 		_redis=None,
 	)
