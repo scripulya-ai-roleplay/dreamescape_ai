@@ -243,6 +243,44 @@ class TestTokenRelay:
 		assert pubsub.closed is True
 
 	@pytest.mark.asyncio
+	async def test_drain_routes_thinking_frames_to_separate_event(self):
+		# The model's chain-of-thought arrives as "thinking" frames and must surface as a
+		# distinct SSE event (publish_thinking), separate from the answer (publish_token),
+		# so the UI can render thinking in its own panel while the answer streams.
+		events = Mock(spec=IChatEventGateway)
+		client = ScripulyaAgentClient(
+			broker=AsyncMock(),
+			request_queue="llm.agent.request",
+			timeout=5.0,
+			logger=Mock(),
+			heartbeat=AsyncMock(),
+			events=events,
+		)
+		chat_id = uuid4()
+		request_id = uuid4()
+
+		pubsub = _FakePubSub(
+			[
+				{"type": "message", "data": '{"type": "thinking", "text": "delib"}'},
+				{"type": "message", "data": '{"type": "thinking", "text": "eration"}'},
+				{"type": "message", "data": '{"type": "token", "text": "Hello"}'},
+				{"type": "message", "data": '{"type": "done"}'},
+			]
+		)
+
+		await client._drain_tokens(pubsub, str(request_id), chat_id)
+
+		thinking = "".join(call.args[2] for call in events.publish_thinking.call_args_list)
+		tokens = "".join(call.args[2] for call in events.publish_token.call_args_list)
+		assert thinking == "deliberation"
+		assert tokens == "Hello"
+		for call in events.publish_thinking.call_args_list:
+			assert call.args[0] == chat_id
+			assert call.args[1] == request_id
+		events.publish_generation_done.assert_called_once_with(chat_id, request_id)
+		assert pubsub.closed is True
+
+	@pytest.mark.asyncio
 	async def test_drain_flushes_buffer_on_error_terminal(self):
 		events = Mock(spec=IChatEventGateway)
 		client = ScripulyaAgentClient(

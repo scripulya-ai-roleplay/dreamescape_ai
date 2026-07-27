@@ -109,6 +109,7 @@ CREATE TABLE messages (
     content TEXT NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'completed' CHECK (status IN ('pending', 'completed', 'failed')),
     cost_crystals INTEGER DEFAULT 0,
+    reasoning TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

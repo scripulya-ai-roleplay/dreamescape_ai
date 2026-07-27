@@ -56,13 +56,16 @@ class MessageService(IMessageService):
 		if result.error is not None:
 			content = result.error.message or result.error.reason or "LLM generation failed"
 			status = MessageStatus.FAILED
+			reasoning = None
 		elif result.message is not None:
 			content = result.message.message
 			status = MessageStatus.COMPLETED
+			reasoning = result.message.reasoning
 		else:
 			self.logger.warning("LLMResult for chat_id=%s has neither message nor error", result.chat_id)
 			content = "LLM returned neither a message nor an error"
 			status = MessageStatus.FAILED
+			reasoning = None
 
 		async with self._uow:
 			return await self.message_gateway.create(
@@ -71,6 +74,7 @@ class MessageService(IMessageService):
 					chat_id=result.chat_id,
 					role=ChatRoles.MODEL,
 					status=status,
+					reasoning=reasoning,
 				)
 			)
 

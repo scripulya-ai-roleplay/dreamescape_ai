@@ -97,6 +97,7 @@ class Message(BaseModel):
 	status: MessageStatus = MessageStatus.COMPLETED
 	date_created: None | datetime = None
 	date_edited: None | datetime = None
+	reasoning: None | str = None
 
 
 class MediaEntityType(StrEnum):
