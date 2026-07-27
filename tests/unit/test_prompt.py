@@ -74,3 +74,25 @@ class TestBuildSystemPrompt:
 	def test_no_user_character_omits_user_block(self, service):
 		prompt = service.build_system_prompt(None, [], None)
 		assert "# User" not in prompt
+
+	def test_characters_block_is_first_block(self, service):
+		prompt = service.build_system_prompt(
+			_scene(title="Forest", background="A dark wood."),
+			[_character(name="Aria", system_prompt="A brave knight.")],
+			_character(name="Kael", system_prompt="A wandering bard."),
+		)
+		assert prompt.index("# Characters") == 0
+
+	def test_blocks_ordered_characters_scene_user_global(self, service):
+		prompt = service.build_system_prompt(
+			_scene(title="Forest", background="A dark wood."),
+			[_character(name="Aria", system_prompt="A brave knight.")],
+			_character(name="Kael", system_prompt="A wandering bard."),
+		)
+		assert prompt.index("# Characters") < prompt.index("# Scene")
+		assert prompt.index("# Scene") < prompt.index("# User")
+		assert prompt.index("# User") < prompt.index("You are a narrator")
+
+	def test_global_prompt_last_even_without_characters(self, service):
+		prompt = service.build_system_prompt(_scene(title="Forest", background="A dark wood."), [])
+		assert prompt.index("# Scene") < prompt.index("You are a narrator")

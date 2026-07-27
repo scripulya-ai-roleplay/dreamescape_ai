@@ -10,7 +10,7 @@ class PromptService(IPromptService):
 	def build_system_prompt(
 		self, scene: Scene | None, characters: list[Character], user_character: Character | None = None
 	) -> str:
-		parts: list[str] = [settings.SYSTEM_PROMPT.strip()]
+		parts: list[str] = []
 		if characters:
 			character_lines = ["# Characters"]
 			for character in characters:
@@ -23,4 +23,5 @@ class PromptService(IPromptService):
 			parts.append("\n\n".join(scene_lines))
 		if user_character is not None:
 			parts.append(f"# User\n## {user_character.name}\n{user_character.system_prompt}".rstrip())
+		parts.append(settings.SYSTEM_PROMPT.strip())
 		return "\n\n".join(part for part in parts if part).strip()
