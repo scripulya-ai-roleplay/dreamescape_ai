@@ -90,6 +90,9 @@ class IChatEventGateway(abc.ABC):
 	def publish_token(self, chat_id: UUID, request_id: UUID, text: str) -> None: ...
 
 	@abc.abstractmethod
+	def publish_thinking(self, chat_id: UUID, request_id: UUID, text: str) -> None: ...
+
+	@abc.abstractmethod
 	def publish_generation_start(self, chat_id: UUID, request_id: UUID) -> None: ...
 
 	@abc.abstractmethod

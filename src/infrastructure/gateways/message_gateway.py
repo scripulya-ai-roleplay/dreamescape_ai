@@ -27,6 +27,7 @@ class MessageGateway(IMessageGateway):
 			content=message.message,  # Domain uses 'message', DB uses 'content'
 			status=message.status.value,
 			cost_crystals=0,
+			reasoning=message.reasoning,
 		)
 
 		self._session.add(message_model)
@@ -160,4 +161,5 @@ class MessageGateway(IMessageGateway):
 			status=status,
 			date_created=message_model.created_at,  # Convert DB 'created_at' to domain 'date_created'
 			date_edited=message_model.updated_at,  # Convert DB 'updated_at' to domain 'date_edited'
+			reasoning=message_model.reasoning,
 		)

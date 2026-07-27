@@ -102,7 +102,8 @@ class ScripulyaAgentClient(IScripulyaAgentClient):
 		deadline = loop.time() + settings.LLM_HEARTBEAT_HARD_DEADLINE_SECONDS
 		assert self.events is not None
 		self.events.publish_generation_start(chat_id, UUID(request_id))
-		buffer: list[str] = []
+		answer: list[str] = []
+		thinking: list[str] = []
 		last_flush = loop.time()
 		# None until a done/error frame arrives; "done" is the only clean outcome. An error
 		# frame, a deadline expiry (no terminal frame — agent crashed or the frame was lost),
@@ -113,12 +114,15 @@ class ScripulyaAgentClient(IScripulyaAgentClient):
 		terminal: str | None = None
 		try:
 			while loop.time() <= deadline:
+				now = loop.time()
 				msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=_FLUSH_INTERVAL_SECONDS)
 				if msg is None:
-					if buffer and loop.time() - last_flush >= _FLUSH_INTERVAL_SECONDS:
-						self._flush(buffer, request_id, chat_id)
-						buffer = []
-						last_flush = loop.time()
+					if (answer or thinking) and now - last_flush >= _FLUSH_INTERVAL_SECONDS:
+						self._flush(answer, request_id, chat_id, self.events.publish_token)
+						self._flush(thinking, request_id, chat_id, self.events.publish_thinking)
+						answer = []
+						thinking = []
+						last_flush = now
 					continue
 				if msg.get("type") != "message":
 					continue
@@ -129,31 +133,41 @@ class ScripulyaAgentClient(IScripulyaAgentClient):
 					continue
 				kind = frame.get("type")
 				if kind == "token":
-					buffer.append(frame.get("text", ""))
-					if len(buffer) >= _FLUSH_TOKEN_BATCH or loop.time() - last_flush >= _FLUSH_INTERVAL_SECONDS:
-						self._flush(buffer, request_id, chat_id)
-						buffer = []
-						last_flush = loop.time()
+					answer.append(frame.get("text", ""))
+				elif kind == "thinking":
+					thinking.append(frame.get("text", ""))
 				elif kind in ("done", "error"):
 					terminal = kind
 					break
+				else:
+					continue
+				if (
+					len(answer) >= _FLUSH_TOKEN_BATCH
+					or len(thinking) >= _FLUSH_TOKEN_BATCH
+					or now - last_flush >= _FLUSH_INTERVAL_SECONDS
+				):
+					self._flush(answer, request_id, chat_id, self.events.publish_token)
+					self._flush(thinking, request_id, chat_id, self.events.publish_thinking)
+					answer = []
+					thinking = []
+					last_flush = now
 			if terminal is None:
 				self.logger.warning("token relay deadline exceeded rid=%s", request_id)
 		except Exception:
 			self.logger.warning("token relay failed rid=%s", request_id, exc_info=True)
 		finally:
-			if buffer:
-				self._flush(buffer, request_id, chat_id)
+			self._flush(answer, request_id, chat_id, self.events.publish_token)
+			self._flush(thinking, request_id, chat_id, self.events.publish_thinking)
 			if terminal == "done":
 				self.events.publish_generation_done(chat_id, UUID(request_id))
 			else:
 				self.events.publish_generation_error(chat_id, UUID(request_id))
 			await self._close_pubsub(pubsub)
 
-	def _flush(self, buffer: list[str], request_id: str, chat_id: UUID) -> None:
+	def _flush(self, buffer: list[str], request_id: str, chat_id: UUID, sink) -> None:
 		text = "".join(buffer)
 		if text and self.events is not None:
-			self.events.publish_token(chat_id, UUID(request_id), text)
+			sink(chat_id, UUID(request_id), text)
 
 
 @dataclass

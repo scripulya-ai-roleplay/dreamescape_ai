@@ -50,6 +50,12 @@ class ChatEventGateway(IChatEventGateway):
 			{"_sse_event": "token", "request_id": str(request_id), "text": text},
 		)
 
+	def publish_thinking(self, chat_id: UUID, request_id: UUID, text: str) -> None:
+		self.publish(
+			chat_id,
+			{"_sse_event": "thinking", "request_id": str(request_id), "text": text},
+		)
+
 	def publish_generation_start(self, chat_id: UUID, request_id: UUID) -> None:
 		self.publish(chat_id, {"_sse_event": "generation_start", "request_id": str(request_id)})
 

@@ -28,6 +28,7 @@ class LLMResponse(BaseModel):
 	model: LLMModelType
 	usage: dict | None = None
 	provider: str
+	reasoning: str | None = None
 
 
 class UserMessageDTO(BaseModel):
@@ -35,6 +36,7 @@ class UserMessageDTO(BaseModel):
 	message: str
 	llm_model: LLMModelType | None = LLMModelType.testing_mock
 	role: ChatRoles
+	reasoning: str | None = None
 
 
 class LLMRequest(BaseModel):

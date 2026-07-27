@@ -37,6 +37,7 @@ class TestMessageGateway:
 		model.content = "Test message content"
 		model.status = "completed"
 		model.cost_crystals = 0
+		model.reasoning = None
 		model.created_at = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
 		model.updated_at = datetime(2024, 1, 2, 15, 30, 0, tzinfo=UTC)
 		return model
@@ -63,6 +64,7 @@ class TestMessageGateway:
 		row.content = content
 		row.status = status
 		row.cost_crystals = 0
+		row.reasoning = None
 		row.created_at = datetime(2024, 3, 10, 8, 0, 0, tzinfo=UTC)
 		row.updated_at = datetime(2024, 3, 11, 9, 0, 0, tzinfo=UTC)
 		return row
@@ -316,6 +318,7 @@ class TestMessageGateway:
 		message_model.role = "model"
 		message_model.content = "AI response"
 		message_model.status = "completed"
+		message_model.reasoning = "deliberating over the reply"
 		message_model.created_at = datetime(2024, 3, 10, 8, 0, 0, tzinfo=UTC)
 		message_model.updated_at = datetime(2024, 3, 11, 9, 0, 0, tzinfo=UTC)
 
@@ -327,6 +330,7 @@ class TestMessageGateway:
 		assert result.message == message_model.content
 		assert result.chat_id == message_model.chat_id
 		assert result.role == ChatRoles.MODEL
+		assert result.reasoning == "deliberating over the reply"
 		assert result.date_created == message_model.created_at
 		assert result.date_edited == message_model.updated_at
 

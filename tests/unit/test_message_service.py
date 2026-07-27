@@ -282,7 +282,9 @@ class TestMessageService:
 		chat_id = uuid4()
 		result = LLMResult(
 			chat_id=chat_id,
-			message=UserMessageDTO(chat_id=chat_id, message="hello back", role=ChatRoles.MODEL),
+			message=UserMessageDTO(
+				chat_id=chat_id, message="hello back", role=ChatRoles.MODEL, reasoning="the model's deliberation"
+			),
 		)
 		persisted = Message(
 			id=uuid4(), message="hello back", chat_id=chat_id, role=ChatRoles.MODEL, status=MessageStatus.COMPLETED
@@ -296,6 +298,7 @@ class TestMessageService:
 		assert sent.role == ChatRoles.MODEL
 		assert sent.status == MessageStatus.COMPLETED
 		assert sent.message == "hello back"
+		assert sent.reasoning == "the model's deliberation"
 		assert sent.chat_id == chat_id
 
 	@pytest.mark.unit
