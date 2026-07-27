@@ -12,7 +12,7 @@ from src.domain.models import Character, ChatRoles, Scene
 class LLMModelType(StrEnum):
 	testing_mock = "testing_mock"
 	gemini_flash_preview = "gemini-3-flash-preview"
-	gemini_pro = "gemini-2.5-pro"
+	gemini_pro = "gemini-3.1-pro-preview"
 	claude_sonnet = "claude-sonnet-4-20250514"
 	claude_haiku = "claude-haiku-4-20250514"
 	qwen_plus = "qwen-plus"
