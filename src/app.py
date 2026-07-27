@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 
 from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import Depends, FastAPI
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from src.application.ports.media import IObjectStorageGateway
 from src.application.streaming.llm_watchdog import GenerationWatchdog
@@ -16,6 +18,7 @@ from src.controllers.api.v1.chat_settings import router as chat_settings_router
 from src.controllers.api.v1.chats import router as chat_router
 from src.controllers.api.v1.health import router as health_router
 from src.controllers.api.v1.media import router as media_router
+from src.controllers.api.v1.memory import router as memory_router
 from src.controllers.api.v1.messages import router as message_router
 from src.controllers.api.v1.scenes import router as scenes_router
 from src.controllers.api.v1.users import router as users_router
@@ -26,6 +29,37 @@ from src.infrastructure.web.middlewares import TraceAndLogRequestsMiddleware
 
 logger = logging.getLogger(__name__)
 
+_DIMENSION_QUERY = (
+	"SELECT atttypmod FROM pg_attribute WHERE attrelid = 'chat_memories'::regclass AND attname = 'embedding'"
+)
+
+
+async def _verify_embedding_dimension(container) -> None:
+	# pgvector bakes the dimension into the column type (atttypmod). A mismatch between the
+	# configured embedder dimension and the stored column means every store would silently fail
+	# (caught and degraded in ingest), so surface it loudly at startup rather than per-write.
+	if not settings.VECTOR_MEMORY_ENABLED:
+		return
+	try:
+		engine = await container.get(AsyncEngine)
+		async with engine.connect() as conn:
+			column_dim = (await conn.execute(text(_DIMENSION_QUERY))).scalar_one_or_none()
+	except Exception:
+		logger.warning("Could not verify pgvector embedding dimension at startup", exc_info=True)
+		return
+	if column_dim is None:
+		logger.info("chat_memories not present yet; skipping embedding dimension check")
+		return
+	if column_dim != settings.EMBEDDING_DIMENSION:
+		logger.error(
+			"Embedding dimension mismatch: configured=%d but chat_memories.embedding is vector(%d). "
+			"Switching embedders requires ALTERing the column and re-embedding existing rows.",
+			settings.EMBEDDING_DIMENSION,
+			column_dim,
+		)
+		return
+	logger.info("pgvector embedding dimension verified: vector(%d)", settings.EMBEDDING_DIMENSION)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -35,6 +69,8 @@ async def lifespan(app: FastAPI):
 		logger.info("Media buckets ensured")
 	except Exception:
 		logger.warning("Could not ensure media buckets at startup; will retry on first upload", exc_info=True)
+
+	await _verify_embedding_dimension(app.state.dishka_container)
 
 	if not settings.LLM_AGENT_ENABLED:
 		logger.info("scripulya_agent disabled (LLM_AGENT_ENABLED=false); RabbitMQ broker not started")
@@ -100,6 +136,7 @@ def create_app() -> FastAPI:
 	app.include_router(users_router)
 	app.include_router(message_router)
 	app.include_router(media_router)
+	app.include_router(memory_router)
 	logger.info("API routes registered")
 
 	return app

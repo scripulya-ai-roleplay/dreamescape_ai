@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator
 
 import redis.asyncio
 from dishka import AsyncContainer, Provider, Scope, make_async_container, provide
+from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from src.application.auth.authz import AuthorizationService
@@ -10,12 +11,17 @@ from src.application.auth.jwt_service import JWTService
 from src.application.auth.password_hasher import Argon2PasswordHasher
 from src.application.auth.service import AuthService
 from src.application.character.service import CharacterService
+from src.application.chats.budgeter import HeuristicTokenCounter, TiktokenCounter, TokenCounter
 from src.application.chats.llm_service import LLMChatsService
 from src.application.chats.prompt_service import PromptService
 from src.application.chats.service import ChatService
 from src.application.chats.settings_service import ChatSettingsService
 from src.application.events.server_events_service import ServerEventsService
 from src.application.media.service import MediaService
+from src.application.memory.ingest_dispatcher import MemoryIngestDispatcher
+from src.application.memory.memory_control_service import MemoryControlService
+from src.application.memory.service import MemoryService
+from src.application.memory.summary_service import SummaryService
 from src.application.message.service import MessageService
 from src.application.ports.auth import IAuthService, IJWTService, IPasswordHasher
 from src.application.ports.authorization import IAuthorizationService, IVisibilityGateway
@@ -28,10 +34,19 @@ from src.application.ports.chats import (
 	IChatSettingsService,
 	IChatsService,
 )
+from src.application.ports.embedder import IEmbedder
 from src.application.ports.llm import IGatewayFactory, IPromptService, IScripulyaAgentClient, LLMModelType
 from src.application.ports.media import IImageReader, IMediaGateway, IMediaService, IObjectStorageGateway
+from src.application.ports.memory import (
+	IGraphMemoryGateway,
+	IMemoryControlService,
+	IMemoryService,
+	ISummaryGateway,
+	IVectorMemoryGateway,
+)
 from src.application.ports.messages import IGenerationHeartbeat, IMessageGateway, IMessageService, IServerEventsService
 from src.application.ports.scenes import IInitialMessageGateway, IInitialMessageService, ISceneGateway, ISceneService
+from src.application.ports.summary_model import ISummaryModel
 from src.application.ports.user import IUserGateway, IUserService
 from src.application.scene.initial_message_service import InitialMessageService
 from src.application.scene.service import SceneService
@@ -45,17 +60,23 @@ from src.infrastructure.gateways.chat_event_gateway import ChatEventGateway
 from src.infrastructure.gateways.chat_gateway import ChatGateway
 from src.infrastructure.gateways.chat_settings_gateway import ChatSettingsGateway
 from src.infrastructure.gateways.gateway_factory import GatewayFactory
+from src.infrastructure.gateways.graphiti_memory_gateway import GraphitiMemoryGateway
 from src.infrastructure.gateways.image_reader import ImageReader
 from src.infrastructure.gateways.initial_message_gateway import InitialMessageGateway
 from src.infrastructure.gateways.media_gateway import MediaGateway
 from src.infrastructure.gateways.message_gateway import MessageGateway
 from src.infrastructure.gateways.mock_gateway import MockGateway
 from src.infrastructure.gateways.mock_scripulya_agent_client import MockScripulyaAgentClient
+from src.infrastructure.gateways.null_graph_memory_gateway import NullGraphMemoryGateway
 from src.infrastructure.gateways.object_storage_gateway import MinioObjectStorageGateway
+from src.infrastructure.gateways.openai_embedder import OpenAIEmbedder
+from src.infrastructure.gateways.openai_summary_model import OpenAISummaryModel
 from src.infrastructure.gateways.redis_heartbeat import RedisGenerationHeartbeat
 from src.infrastructure.gateways.scenes_gateway import SceneGateway
 from src.infrastructure.gateways.scripulya_agent_gateway import ScripulyaAgentClient, ScripulyaAgentGateway
+from src.infrastructure.gateways.summary_gateway import SummaryGateway
 from src.infrastructure.gateways.user_gateway import UserGateway
+from src.infrastructure.gateways.vector_memory_gateway import PgVectorMemoryGateway
 from src.infrastructure.gateways.visibility import VisibilityGateway
 from src.infrastructure.logging.logger import Logger
 
@@ -172,6 +193,55 @@ class GatewayProvider(Provider):
 	def provide_chat_event_gateway(self, logger: logging.Logger) -> IChatEventGateway:
 		return ChatEventGateway(logger=logger)
 
+	@provide(scope=Scope.APP)
+	def provide_openai_client(self, logger: logging.Logger) -> AsyncOpenAI:
+		# Construct even without a key so the app starts and memory layers degrade to empty
+		# (every embed/summarize call is wrapped in try/except). Real usage needs OPENAI_API_KEY.
+		api_key = settings.OPENAI_API_KEY or "missing"
+		if not settings.OPENAI_API_KEY:
+			logger.warning("OPENAI_API_KEY is not set; embedding/summary memory will degrade to empty until configured")
+		return AsyncOpenAI(api_key=api_key, base_url=settings.OPENAI_BASE_URL)
+
+	@provide(scope=Scope.APP)
+	def provide_embedder(self, client: AsyncOpenAI, logger: logging.Logger) -> IEmbedder:
+		return OpenAIEmbedder(
+			_client=client, _model=settings.EMBEDDING_MODEL, _dimension=settings.EMBEDDING_DIMENSION, logger=logger
+		)
+
+	@provide(scope=Scope.APP)
+	def provide_summary_model(self, client: AsyncOpenAI, logger: logging.Logger) -> ISummaryModel:
+		return OpenAISummaryModel(_client=client, logger=logger)
+
+	@provide(scope=Scope.APP)
+	def provide_graph_memory_gateway(self, logger: logging.Logger) -> IGraphMemoryGateway:
+		if settings.GRAPH_MEMORY_ENABLED:
+			return GraphitiMemoryGateway()
+		return NullGraphMemoryGateway(logger=logger)
+
+	@provide(scope=Scope.APP)
+	def provide_token_counter(self, logger: logging.Logger) -> TokenCounter:
+		try:
+			return TiktokenCounter()
+		except Exception:
+			logger.warning("tiktoken unavailable; falling back to heuristic token counter", exc_info=True)
+			return HeuristicTokenCounter()
+
+	@provide(scope=Scope.APP)
+	def provide_memory_ingest_dispatcher(
+		self, container: AsyncContainer, logger: logging.Logger
+	) -> MemoryIngestDispatcher:
+		return MemoryIngestDispatcher(_container=container, logger=logger)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_summary_gateway(self, session: AsyncSession, logger: logging.Logger) -> ISummaryGateway:
+		return SummaryGateway(_session=session, logger=logger)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_vector_memory_gateway(
+		self, session: AsyncSession, embedder: IEmbedder, logger: logging.Logger
+	) -> IVectorMemoryGateway:
+		return PgVectorMemoryGateway(_session=session, _embedder=embedder, logger=logger)
+
 
 class ServiceProvider(Provider):
 	@provide(scope=Scope.REQUEST)
@@ -216,6 +286,83 @@ class ServiceProvider(Provider):
 		return AuthorizationService()
 
 	@provide(scope=Scope.REQUEST)
+	def provide_summary_service(
+		self,
+		summary_gateway: ISummaryGateway,
+		message_gateway: IMessageGateway,
+		summary_model: ISummaryModel,
+		token_counter: TokenCounter,
+		uow: PostgresqlUOW,
+		logger: logging.Logger,
+	) -> SummaryService:
+		return SummaryService(
+			summary_gateway=summary_gateway,
+			message_gateway=message_gateway,
+			summary_model=summary_model,
+			token_counter=token_counter,
+			_uow=uow,
+			logger=logger,
+		)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_memory_service(
+		self,
+		summary_gateway: ISummaryGateway,
+		vector_memory_gateway: IVectorMemoryGateway,
+		graph_memory_gateway: IGraphMemoryGateway,
+		message_gateway: IMessageGateway,
+		chat_settings_gateway: IChatSettingsGateway,
+		summary_service: SummaryService,
+		uow: PostgresqlUOW,
+		embedder: IEmbedder,
+		redis_client: redis.asyncio.Redis,
+		logger: logging.Logger,
+	) -> IMemoryService:
+		return MemoryService(
+			summary_gateway=summary_gateway,
+			vector_gateway=vector_memory_gateway,
+			graph_gateway=graph_memory_gateway,
+			message_gateway=message_gateway,
+			chat_settings_gateway=chat_settings_gateway,
+			summary_service=summary_service,
+			_uow=uow,
+			_embedder=embedder,
+			_redis=redis_client,
+			logger=logger,
+		)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_memory_control_service(
+		self,
+		chat_gateway: IChatGateway,
+		scene_gateway: ISceneGateway,
+		character_gateway: ICharacterGateway,
+		chat_settings_gateway: IChatSettingsGateway,
+		summary_gateway: ISummaryGateway,
+		message_gateway: IMessageGateway,
+		prompt_service: IPromptService,
+		memory_service: IMemoryService,
+		token_counter: TokenCounter,
+		authorization_service: IAuthorizationService,
+		uow: PostgresqlUOW,
+		logger: logging.Logger,
+	) -> IMemoryControlService:
+		return MemoryControlService(
+			chat_gateway=chat_gateway,
+			scene_gateway=scene_gateway,
+			character_gateway=character_gateway,
+			chat_settings_gateway=chat_settings_gateway,
+			summary_gateway=summary_gateway,
+			message_gateway=message_gateway,
+			prompt_service=prompt_service,
+			memory_service=memory_service,
+			token_counter=token_counter,
+			authz=authorization_service,
+			_uow=uow,
+			logger=logger,
+		)
+
+	@provide(scope=Scope.REQUEST)
 	def provide_chats_service(
 		self,
 		gateway_factory: IGatewayFactory,
@@ -225,6 +372,8 @@ class ServiceProvider(Provider):
 		scene_gateway: ISceneGateway,
 		character_gateway: ICharacterGateway,
 		prompt_service: IPromptService,
+		memory_service: IMemoryService,
+		token_counter: TokenCounter,
 		authorization_service: IAuthorizationService,
 		events: IChatEventGateway,
 		logger: logging.Logger,
@@ -237,6 +386,8 @@ class ServiceProvider(Provider):
 			scene_gateway=scene_gateway,
 			character_gateway=character_gateway,
 			prompt_service=prompt_service,
+			memory_service=memory_service,
+			token_counter=token_counter,
 			authz=authorization_service,
 			_events=events,
 			logger=logger,
@@ -270,6 +421,7 @@ class ServiceProvider(Provider):
 		chat_gateway: IChatGateway,
 		initial_message_gateway: IInitialMessageGateway,
 		message_gateway: IMessageGateway,
+		graph_memory_gateway: IGraphMemoryGateway,
 		uow: PostgresqlUOW,
 		authorization_service: IAuthorizationService,
 		logger: logging.Logger,
@@ -278,6 +430,7 @@ class ServiceProvider(Provider):
 			chat_gateway=chat_gateway,
 			initial_message_gateway=initial_message_gateway,
 			message_gateway=message_gateway,
+			graph_gateway=graph_memory_gateway,
 			uow=uow,
 			authz=authorization_service,
 			logger=logger,

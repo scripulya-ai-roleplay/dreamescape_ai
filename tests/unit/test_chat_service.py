@@ -9,6 +9,7 @@ from src.application.chats.schemas import ChatFilterDTO
 from src.application.chats.service import ChatService
 from src.application.ports.chats import IChatGateway
 from src.application.ports.common import IUnitOfWork, Page
+from src.application.ports.memory import IGraphMemoryGateway
 from src.application.ports.messages import IMessageGateway
 from src.application.ports.scenes import IInitialMessageGateway
 from src.domain.models import Chat, ChatRoles, InitialMessage, Message, MessageStatus
@@ -39,11 +40,18 @@ class TestChatService:
 		return uow
 
 	@pytest.fixture
-	def chat_service(self, mock_chat_gateway, mock_initial_message_gateway, mock_message_gateway, mock_uow, authz):
+	def mock_graph_gateway(self):
+		return AsyncMock(spec=IGraphMemoryGateway)
+
+	@pytest.fixture
+	def chat_service(
+		self, mock_chat_gateway, mock_initial_message_gateway, mock_message_gateway, mock_graph_gateway, mock_uow, authz
+	):
 		return ChatService(
 			chat_gateway=mock_chat_gateway,
 			initial_message_gateway=mock_initial_message_gateway,
 			message_gateway=mock_message_gateway,
+			graph_gateway=mock_graph_gateway,
 			uow=mock_uow,
 			authz=authz,
 		)
@@ -127,6 +135,8 @@ class TestChatService:
 		# Assert
 		assert result == chat_id
 		mock_chat_gateway.delete.assert_called_once_with(chat_id)
+		# The FalkorDB graph partition has no FK cascade, so it is dropped explicitly.
+		chat_service.graph_gateway.delete_group.assert_awaited_once_with(chat_id)
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio

@@ -1,5 +1,8 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "vector";
 
+DROP TABLE IF EXISTS chat_memories CASCADE;
+DROP TABLE IF EXISTS conversation_summaries CASCADE;
 DROP TABLE IF EXISTS media_assets CASCADE;
 DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS chat_settings CASCADE;
@@ -114,6 +117,36 @@ CREATE TABLE messages (
 );
 
 CREATE INDEX idx_messages_chat_id ON messages(chat_id);
+
+CREATE TABLE conversation_summaries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    from_message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    to_message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    token_count INTEGER NOT NULL DEFAULT 0,
+    supersedes_id UUID REFERENCES conversation_summaries(id) ON DELETE SET NULL,
+    model VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (chat_id, to_message_id)
+);
+
+CREATE INDEX idx_conversation_summaries_chat_created ON conversation_summaries(chat_id, created_at DESC);
+CREATE INDEX idx_conversation_summaries_current ON conversation_summaries(chat_id) WHERE supersedes_id IS NULL;
+
+CREATE TABLE chat_memories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    role VARCHAR(50) NOT NULL,
+    content TEXT NOT NULL,
+    embedding vector(1536) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (chat_id, message_id)
+);
+
+CREATE INDEX idx_chat_memories_chat_message ON chat_memories(chat_id, message_id);
+CREATE INDEX idx_chat_memories_hnsw ON chat_memories USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
 CREATE TABLE media_assets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

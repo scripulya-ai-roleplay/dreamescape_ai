@@ -71,3 +71,42 @@ async def test_success_result_is_dispatched_without_warning(caplog):
 	message_service.append_model_message.assert_awaited_once_with(result)
 	events.publish_message.assert_called_once_with(chat_id, created)
 	assert not any(rec.levelno >= logging.WARNING for rec in caplog.records)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_success_result_spawns_memory_ingest():
+	"""A completed reply triggers async memory ingestion; a FAILED reply does not."""
+	chat_id = uuid4()
+	result = LLMResult(chat_id=chat_id)
+	created = Message(id=uuid4(), message="ok", chat_id=chat_id, role=ChatRoles.MODEL, status=MessageStatus.COMPLETED)
+	message_service = AsyncMock()
+	message_service.append_model_message.return_value = created
+	events = MagicMock()
+	ingest_dispatcher = MagicMock()
+
+	await _dispatch_agent_result(
+		result, message_service=message_service, events=events, ingest_dispatcher=ingest_dispatcher
+	)
+
+	ingest_dispatcher.dispatch.assert_called_once_with(chat_id, created.id)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_failed_result_does_not_spawn_memory_ingest():
+	chat_id = uuid4()
+	result = _failed_result(chat_id)
+	created = Message(
+		id=uuid4(), message=result.error.message, chat_id=chat_id, role=ChatRoles.MODEL, status=MessageStatus.FAILED
+	)
+	message_service = AsyncMock()
+	message_service.append_model_message.return_value = created
+	events = MagicMock()
+	ingest_dispatcher = MagicMock()
+
+	await _dispatch_agent_result(
+		result, message_service=message_service, events=events, ingest_dispatcher=ingest_dispatcher
+	)
+
+	ingest_dispatcher.dispatch.assert_not_called()

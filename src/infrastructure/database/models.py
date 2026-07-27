@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, ForeignKey, Index, Integer, String, Table, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -168,6 +169,41 @@ class Message(Base):
 	updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 	chat: Mapped["Chat"] = relationship(back_populates="messages")
+
+
+class ConversationSummary(Base):
+	__tablename__ = "conversation_summaries"
+	__table_args__ = (
+		Index("idx_conversation_summaries_current", "chat_id", postgresql_where=text("supersedes_id IS NULL")),
+	)
+
+	id: Mapped[uuid.UUID] = mapped_column(
+		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+	)
+	chat_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chats.id", ondelete="CASCADE"), index=True)
+	from_message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
+	to_message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
+	content: Mapped[str] = mapped_column(Text)
+	token_count: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+	supersedes_id: Mapped[uuid.UUID | None] = mapped_column(
+		ForeignKey("conversation_summaries.id", ondelete="SET NULL")
+	)
+	model: Mapped[str] = mapped_column(String(100))
+	created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class ChatMemory(Base):
+	__tablename__ = "chat_memories"
+
+	id: Mapped[uuid.UUID] = mapped_column(
+		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+	)
+	chat_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chats.id", ondelete="CASCADE"), index=True)
+	message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
+	role: Mapped[str] = mapped_column(String(50))
+	content: Mapped[str] = mapped_column(Text)
+	embedding: Mapped[list[float]] = mapped_column(Vector(1536))
+	created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class MediaAsset(Base):

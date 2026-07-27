@@ -105,6 +105,20 @@ class MediaEntityType(StrEnum):
 	USER = "user"
 
 
+class ConversationSummary(BaseModel):
+	model_config = ConfigDict(frozen=True)
+
+	id: None | UUID = None
+	chat_id: UUID
+	from_message_id: UUID
+	to_message_id: UUID
+	content: str
+	token_count: int = 0
+	supersedes_id: None | UUID = None
+	model: str
+	created_at: None | datetime = None
+
+
 class MediaAsset(BaseModel):
 	model_config = ConfigDict(frozen=True)
 
