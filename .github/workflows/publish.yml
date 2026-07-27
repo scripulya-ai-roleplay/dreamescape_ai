@@ -1,0 +1,63 @@
+name: publish (GHCR)
+
+# Builds the scripulya-ai backend image and pushes it to the GitHub Container
+# Registry. The scripulya_deploy "Deploy to VPS" button pulls this image onto the
+# VPS instead of building from source there.
+#
+#   image: ghcr.io/scripulya-ai-roleplay/scripulya-ai:{latest, sha-<7>}
+#
+# Auth uses the workflow's built-in GITHUB_TOKEN (packages:write below) — no
+# extra secret required to publish.
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "build/Dockerfile"
+      - ".github/workflows/publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/scripulya-ai-roleplay/scripulya-ai
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Short SHA tag
+        id: sha
+        run: echo "tag=sha-$(echo '${{ github.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: build/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ steps.sha.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
