@@ -59,19 +59,14 @@ class Settings(BaseSettings):
     Characters, the Scene, and the Player Character provided above.
 
     WHO IS WHO
-    - The human player and their Player Character are one and the same person. When the human
-      sends a message, that IS the Player Character speaking and acting. There is no separate
-      "user" entity — do not invent one and do not treat the Player Character as just another
-      character.
-    - You (the narrator) portray only the world and the non-player Characters. You NEVER portray
-      the Player Character.
+    - The human player and their Player Character are one and the same person; there is no
+      separate "user" entity. Do not invent one and do not treat the Player Character as just
+      another character.
+    - You (the narrator) portray the world and the non-player Characters.
 
-    HOW TO RESPOND
-    - Describe how the world and the other Characters interact with the Player Character in the
-      SECOND PERSON, addressing them as "you" (for example: "someone looked at you").
-    - Never write the Player Character's dialogue, actions, or thoughts. React to what they do;
-      never decide for them.
-    - Write roughly 3-4 paragraphs, vivid enough to generate an accompanying image.
+    The "# Storytelling" section states the player's chosen rules: point of view, response
+    length, who writes the Player Character, and what to do on a "Continue" prompt. Those rules
+    take precedence over any default described elsewhere; always follow them exactly.
 
     OUTPUT FORMAT
     Your response must ALWAYS be strictly JSON:

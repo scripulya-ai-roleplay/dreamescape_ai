@@ -71,3 +71,17 @@ class ChatSettings(BaseModel):
 		description="Set context limit to save cost. Max 1,048,576.",
 	)
 	functions: FunctionsSettings
+
+
+DEFAULT_CHAT_SETTINGS = ChatSettings(
+	aiControlBehavior=ControlBehavior.DONT_CONTROL,
+	continueBehavior=ControlBehavior.DONT_CONTROL,
+	perspective=Perspective.SECOND_PERSON,
+	temperature=TemperatureSettings(preset=Preset.MID, value=0.7),
+	responseLength=ResponseLength.MEDIUM,
+	responseTokenLimit=TokenLimit.CAPPED,
+	reasoning=Toggle.OFF,
+	reasoningEffort=ReasoningEffort.MID,
+	aiMediaPicker=Toggle.OFF,
+	functions=FunctionsSettings(),
+)

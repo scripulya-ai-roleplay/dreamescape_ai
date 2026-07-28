@@ -80,7 +80,11 @@ class IScripulyaAgentClient(abc.ABC):
 class IPromptService(abc.ABC):
 	@abc.abstractmethod
 	def build_system_prompt(
-		self, scene: Scene | None, characters: list[Character], user_character: Character | None = None
+		self,
+		scene: Scene | None,
+		characters: list[Character],
+		user_character: Character | None = None,
+		chat_settings: ChatSettings | None = None,
 	) -> str: ...
 
 
