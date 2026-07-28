@@ -47,7 +47,8 @@ class LLMChatsService(IChatsService):
 		if chat.user_character_id is None:
 			raise PersonaRequiredException()
 		user_character = await self.character_gateway.get_one(chat.user_character_id)
-		system_prompt = self.prompt_service.build_system_prompt(scene, characters, user_character)
+		chat_settings = await self.chat_settings_gateway.get_for_chat(chat_dto.chat_id)
+		system_prompt = self.prompt_service.build_system_prompt(scene, characters, user_character, chat_settings)
 
 		# A client-authored message is always role=USER; never persist a role
 		# supplied by the caller, which would let it forge assistant messages.
@@ -60,7 +61,6 @@ class LLMChatsService(IChatsService):
 			)
 		)
 
-		chat_settings = await self.chat_settings_gateway.get_for_chat(chat_dto.chat_id)
 		if settings.DEBUG:
 			history_preview = "\n\n".join(f"[{m.role}] {m.message}" for m in history) or "(none)"
 			self.logger.debug(
