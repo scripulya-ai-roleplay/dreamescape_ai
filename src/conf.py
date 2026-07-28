@@ -36,6 +36,48 @@ class Settings(BaseSettings):
 	LLM_HEARTBEAT_HARD_DEADLINE_SECONDS: int = 1800  # backstop so inflight keys can't leak
 	LLM_SWEEP_INTERVAL_SECONDS: int = 10
 
+	# --- Hybrid memory ---
+	SUMMARY_ENABLED: bool = True
+	VECTOR_MEMORY_ENABLED: bool = True
+	GRAPH_MEMORY_ENABLED: bool = False  # needs FalkorDB (see scripulya_deploy); degrades to empty when off
+	MEMORY_SOURCE_TIMEOUT_MS: int = 800
+	MEMORY_INGEST_IDEMPOTENCY_TTL_SECONDS: int = 7 * 24 * 3600
+	DEFAULT_CONTEXT_LIMIT: int = 32_000
+	HISTORY_MAX_TAIL: int = 200
+
+	# Summary (rolling)
+	SUMMARY_TRIGGER_TOKENS: int = 2000
+	SUMMARY_FOLD_BATCH_TOKENS: int = 1000
+	SUMMARY_TOKEN_CAP: int = 500
+	SUMMARY_MODEL: str = "gpt-4o-mini"
+
+	# Vector (pgvector verbatim recall)
+	EMBEDDING_MODEL: str = "text-embedding-3-small"
+	EMBEDDING_DIMENSION: int = 1536
+	MEMORIES_TOKEN_CAP: int = 600
+	MEMORIES_MAX_DISTANCE: float = 0.5
+	MEMORIES_K: int = 5
+	MEMORIES_EF_SEARCH: int = 40
+	MEMORY_SUMMARY_DEDUP_SIMILARITY: float = 0.92
+
+	# Reminder
+	REMINDER_TOKEN_CAP: int = 150
+
+	# Graph (Graphiti + FalkorDB) — current-state facts, invalidation-aware
+	FALKORDB_HOST: str = "falkordb"
+	FALKORDB_PORT: int = 6379
+	FALKORDB_USERNAME: str = ""
+	FALKORDB_PASSWORD: str = ""
+	FALKORDB_DATABASE: str = "default_db"
+	GRAPH_EXTRACTION_MODEL: str = "gpt-4o-mini"  # cheap model for entity/relation extraction
+	GRAPH_SMALL_MODEL: str = "gpt-4o-mini"
+	GRAPH_MEMORY_SEARCH_RESULTS: int = 10
+	GRAPH_MEMORY_MAX_FACTS: int = 12
+
+	# Vendor client (embedder + summary model). Behind ports so Google/other vendors can swap in.
+	OPENAI_API_KEY: str = ""
+	OPENAI_BASE_URL: str = "https://api.openai.com/v1"
+
 	# Database Settings
 	DATABASE_URL: str = "postgresql+asyncpg://user:password@postgres:5432/dbname"
 

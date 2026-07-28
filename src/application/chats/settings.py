@@ -1,4 +1,5 @@
 from enum import Enum
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -54,6 +55,13 @@ class FunctionsSettings(BaseModel):
 	characterNameGenerator: bool = Field(default=True, description="Generates unique character names using AI")
 
 
+class MemorySettings(BaseModel):
+	summaryEnabled: bool = True
+	vectorMemoryEnabled: bool = True
+	graphMemoryEnabled: bool = True
+	pinnedMessageIds: list[UUID] = Field(default_factory=list)
+
+
 class ChatSettings(BaseModel):
 	aiControlBehavior: ControlBehavior
 	continueBehavior: ControlBehavior
@@ -71,3 +79,4 @@ class ChatSettings(BaseModel):
 		description="Set context limit to save cost. Max 1,048,576.",
 	)
 	functions: FunctionsSettings
+	memory: MemorySettings = Field(default_factory=MemorySettings)

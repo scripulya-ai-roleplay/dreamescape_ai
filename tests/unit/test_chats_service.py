@@ -5,7 +5,9 @@ import pytest
 from fastapi import HTTPException
 
 from src.application.auth.authz import AuthorizationService
+from src.application.chats.budgeter import HeuristicTokenCounter
 from src.application.chats.llm_service import LLMChatsService
+from src.application.chats.prompt_sections import PromptSections
 from src.application.chats.prompt_service import PromptService
 from src.application.chats.settings import (
 	ChatSettings,
@@ -23,6 +25,7 @@ from src.application.ports.characters import ICharacterGateway
 from src.application.ports.chats import IChatEventGateway, IChatGateway, IChatSettingsGateway
 from src.application.ports.common import Page
 from src.application.ports.llm import IGatewayFactory, ILLMChatGateway, LLMModelType, LLMResponse, UserMessageDTO
+from src.application.ports.memory import EnrichResult, IMemoryService
 from src.application.ports.messages import IMessageService
 from src.application.ports.scenes import ISceneGateway
 from src.conf import settings
@@ -39,6 +42,13 @@ def _persist(message: Message) -> Message:
 		role=message.role,
 		status=message.status,
 	)
+
+
+def _memory_service(tail: list[Message] | None = None) -> IMemoryService:
+	"""Memory service mock whose enrich() returns empty sections + the given chronological tail."""
+	svc = AsyncMock(spec=IMemoryService)
+	svc.enrich.return_value = EnrichResult(sections=PromptSections(), tail=list(tail or []))
+	return svc
 
 
 class TestChatsService:
@@ -65,6 +75,14 @@ class TestChatsService:
 	@pytest.fixture
 	def mock_events(self):
 		return Mock(spec=IChatEventGateway)
+
+	@pytest.fixture
+	def mock_memory_service(self):
+		return _memory_service()
+
+	@pytest.fixture
+	def token_counter(self):
+		return HeuristicTokenCounter()
 
 	@pytest.fixture
 	def mock_chat_settings_gateway(self):
@@ -111,6 +129,8 @@ class TestChatsService:
 		mock_chat_gateway,
 		mock_scene_gateway,
 		mock_character_gateway,
+		mock_memory_service,
+		token_counter,
 		mock_events,
 	):
 		return LLMChatsService(
@@ -121,6 +141,8 @@ class TestChatsService:
 			scene_gateway=mock_scene_gateway,
 			character_gateway=mock_character_gateway,
 			prompt_service=PromptService(),
+			memory_service=mock_memory_service,
+			token_counter=token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
 		)
@@ -216,7 +238,6 @@ class TestChatsService:
 	):
 		"""Prior history is forwarded to the gateway as UserMessageDTOs."""
 		prior_done = Message(message="previous turn", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.MODEL)
-		mock_message_service.search.return_value = Page[Message](items=[prior_done], count=1, offset=0, limit=10)
 		chats_service = LLMChatsService(
 			gateway_factory=mock_gateway_factory,
 			message_service=mock_message_service,
@@ -225,6 +246,8 @@ class TestChatsService:
 			scene_gateway=mock_scene_gateway,
 			character_gateway=mock_character_gateway,
 			prompt_service=PromptService(),
+			memory_service=_memory_service(tail=[prior_done]),
+			token_counter=HeuristicTokenCounter(),
 			authz=AuthorizationService(),
 			_events=mock_events,
 		)
@@ -256,6 +279,8 @@ class TestChatsService:
 			scene_gateway=AsyncMock(spec=ISceneGateway),
 			character_gateway=AsyncMock(spec=ICharacterGateway),
 			prompt_service=PromptService(),
+			memory_service=_memory_service(),
+			token_counter=HeuristicTokenCounter(),
 			authz=AuthorizationService(),
 			_events=Mock(spec=IChatEventGateway),
 		)
@@ -289,6 +314,8 @@ class TestChatsService:
 			scene_gateway=AsyncMock(spec=ISceneGateway),
 			character_gateway=AsyncMock(spec=ICharacterGateway),
 			prompt_service=PromptService(),
+			memory_service=_memory_service(),
+			token_counter=HeuristicTokenCounter(),
 			authz=AuthorizationService(),
 			_events=Mock(spec=IChatEventGateway),
 		)
@@ -322,6 +349,8 @@ class TestChatsService:
 			scene_gateway=mock_scene_gateway,
 			character_gateway=mock_character_gateway,
 			prompt_service=PromptService(),
+			memory_service=_memory_service(),
+			token_counter=HeuristicTokenCounter(),
 			authz=AuthorizationService(),
 			_events=mock_events,
 		)
@@ -366,6 +395,8 @@ class TestChatsService:
 			scene_gateway=mock_scene_gateway,
 			character_gateway=mock_character_gateway,
 			prompt_service=PromptService(),
+			memory_service=_memory_service(),
+			token_counter=HeuristicTokenCounter(),
 			authz=AuthorizationService(),
 			_events=mock_events,
 		)
@@ -377,83 +408,19 @@ class TestChatsService:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_submit_failure_records_failed_turn_and_returns_user_message(
+	async def test_submit_failure_propagates_to_middleware(
 		self, chats_service, mock_gateway, mock_message_service, mock_events, sample_user_message_dto, sample_user_id
 	):
-		"""A submit/publish failure is recorded in-state — a FAILED model message via
-		append_model_message plus an SSE error event — and the request still returns the
-		user message (202). The user message is already committed, so raising a 5xx here
-		would leave history mutated with no record of the failure and push clients to
-		retry-and-duplicate the turn."""
-		mock_gateway.submit.side_effect = LLMGatewayException(
-			message="failed to publish request to scripulya_agent: broker down", details={}
-		)
-		failed_row = Message(
-			id=uuid4(),
-			message="failed to publish request to scripulya_agent: broker down",
-			chat_id=sample_user_message_dto.chat_id,
-			role=ChatRoles.MODEL,
-			status=MessageStatus.FAILED,
-		)
-		mock_message_service.append_model_message.return_value = failed_row
-
-		result = await chats_service.send_message(sample_user_message_dto, sample_user_id)
-
-		# the user message is returned, not raised as a 5xx
-		assert result.role == ChatRoles.USER
-		# exactly the user-message persist; the FAILED row went through append_model_message
-		assert mock_message_service.send_message.await_count == 1
-		mock_message_service.append_model_message.assert_awaited_once()
-		llm_result = mock_message_service.append_model_message.await_args.args[0]
-		assert llm_result.chat_id == sample_user_message_dto.chat_id
-		assert llm_result.error is not None
-		assert llm_result.error.status == 502
-		# the SSE error event fans out the FAILED model message
-		mock_events.publish_message.assert_called_once_with(sample_user_message_dto.chat_id, failed_row)
-
-	@pytest.mark.unit
-	@pytest.mark.asyncio
-	async def test_submit_failure_preserves_provider_error_code_and_status(
-		self, chats_service, mock_gateway, mock_message_service, sample_user_message_dto, sample_user_id
-	):
-		"""A quota/rate-limit style failure keeps its own status/error_code on the
-		recorded FAILED row instead of being flattened to a generic 502."""
-		from src.infrastructure.exceptions import QuotaExceededException
-
-		mock_gateway.submit.side_effect = QuotaExceededException(message="over quota")
-		mock_message_service.append_model_message.return_value = Message(
-			id=uuid4(),
-			message="x",
-			chat_id=sample_user_message_dto.chat_id,
-			role=ChatRoles.MODEL,
-			status=MessageStatus.FAILED,
-		)
-
-		await chats_service.send_message(sample_user_message_dto, sample_user_id)
-
-		llm_result = mock_message_service.append_model_message.await_args.args[0]
-		assert llm_result.error.status == 429
-		assert llm_result.error.error_code == "quota_exceeded"
-
-	@pytest.mark.unit
-	@pytest.mark.asyncio
-	async def test_submit_failure_recovery_failure_still_returns_user_message(
-		self, chats_service, mock_gateway, mock_message_service, mock_events, sample_user_message_dto, sample_user_id
-	):
-		"""If recording the failure itself raises (e.g. a DB outage right after the
-		gateway failure), the request must still return the user message rather than
-		5xx. The user message is already committed, so propagating here would
-		re-introduce the partial-apply this path exists to prevent."""
+		"""A gateway/submit failure is a real error: it propagates to the global exception handler
+		(which owns the HTTP error response) instead of being intercepted here to record a FAILED
+		row. The service no longer does exception-driven business logic — see
+		docs/adr/0001-send-message-exception-boundary.md."""
 		mock_gateway.submit.side_effect = LLMGatewayException(message="broker down")
-		mock_message_service.append_model_message.side_effect = RuntimeError("DB outage")
 
-		result = await chats_service.send_message(sample_user_message_dto, sample_user_id)
+		with pytest.raises(LLMGatewayException):
+			await chats_service.send_message(sample_user_message_dto, sample_user_id)
 
-		# user message returned, not raised
-		assert result.role == ChatRoles.USER
-		# recording was attempted
-		mock_message_service.append_model_message.assert_awaited_once()
-		# but no SSE event could be emitted since recording failed
+		mock_message_service.append_model_message.assert_not_called()
 		mock_events.publish_message.assert_not_called()
 
 	@pytest.mark.unit
@@ -562,9 +529,57 @@ class TestChatsService:
 	):
 		newest = Message(message="newest", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.USER)
 		oldest = Message(message="oldest", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.MODEL)
-		mock_message_service.search.return_value = Page[Message](items=[newest, oldest], count=2, offset=0, limit=10)
+		chats_service.memory_service.enrich.return_value = EnrichResult(
+			sections=PromptSections(), tail=[oldest, newest]
+		)
 
 		await chats_service.send_message(sample_user_message_dto, sample_user_id)
 
 		_, history = mock_gateway.submit.await_args.args
 		assert [m.message for m in history] == ["oldest", "newest"]
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_memory_flags_off_is_byte_identical_to_legacy(
+		self,
+		monkeypatch,
+		mock_chat_gateway,
+		mock_scene_gateway,
+		mock_character_gateway,
+		mock_chat_settings_gateway,
+		mock_gateway,
+		mock_message_service,
+		mock_events,
+		sample_user_message_dto,
+		sample_user_id,
+	):
+		"""With both memory layers off, send_message forwards the full tail unchanged and the
+		system prompt equals the pre-feature build_system_prompt output (rollout-safety gate)."""
+		monkeypatch.setattr(settings, "SUMMARY_ENABLED", False)
+		monkeypatch.setattr(settings, "VECTOR_MEMORY_ENABLED", False)
+		scene = Scene(title="Dark Forest", owner_id=uuid4(), background_prompt="A misty woodland.")
+		character = Character(name="Aria", system_prompt="A brave knight.")
+		mock_scene_gateway.get_one.return_value = scene
+		mock_character_gateway.get_for_scene.return_value = [character]
+		mock_character_gateway.get_one.return_value = character
+		prior = Message(message="an earlier turn", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.MODEL)
+		service = LLMChatsService(
+			gateway_factory=MagicMock(spec=IGatewayFactory, create_gateway=Mock(return_value=mock_gateway)),
+			message_service=mock_message_service,
+			chat_settings_gateway=mock_chat_settings_gateway,
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=mock_scene_gateway,
+			character_gateway=mock_character_gateway,
+			prompt_service=PromptService(),
+			memory_service=_memory_service(tail=[prior]),
+			token_counter=HeuristicTokenCounter(),
+			authz=AuthorizationService(),
+			_events=mock_events,
+		)
+
+		await service.send_message(sample_user_message_dto, sample_user_id)
+
+		args, kwargs = mock_gateway.submit.await_args
+		history = args[1]
+		assert [m.message for m in history] == ["an earlier turn"]
+		assert kwargs["system_prompt"] == PromptService().build_system_prompt(scene, [character], character)

@@ -92,3 +92,11 @@ class MessageService(IMessageService):
 
 	async def latest_model_message(self, chat_id: UUID) -> Message | None:
 		return await self.message_gateway.latest_model_message(chat_id)
+
+	async def tail_after(
+		self, chat_id: UUID, after_message_id: UUID | None = None, limit: int | None = None
+	) -> list[Message]:
+		return await self.message_gateway.tail_after(chat_id, after_message_id, limit)
+
+	async def message_before(self, chat_id: UUID, before_message_id: UUID) -> Message | None:
+		return await self.message_gateway.message_before(chat_id, before_message_id)

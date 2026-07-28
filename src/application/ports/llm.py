@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from src.application.chats.prompt_sections import PromptSections
 from src.application.chats.settings import ChatSettings
 from src.domain.models import Character, ChatRoles, Scene
 
@@ -80,6 +81,16 @@ class IScripulyaAgentClient(abc.ABC):
 class IPromptService(abc.ABC):
 	@abc.abstractmethod
 	def build_system_prompt(
+		self, scene: Scene | None, characters: list[Character], user_character: Character | None = None
+	) -> str: ...
+
+	@abc.abstractmethod
+	def build_prompt_sections(
+		self, scene: Scene | None, characters: list[Character], user_character: Character | None = None
+	) -> PromptSections: ...
+
+	@abc.abstractmethod
+	def build_reminder(
 		self, scene: Scene | None, characters: list[Character], user_character: Character | None = None
 	) -> str: ...
 

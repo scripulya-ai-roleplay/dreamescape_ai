@@ -31,6 +31,14 @@ class IMessageGateway(abc.ABC):
 	@abc.abstractmethod
 	async def latest_model_message(self, chat_id: UUID) -> Message | None: ...
 
+	@abc.abstractmethod
+	async def tail_after(
+		self, chat_id: UUID, after_message_id: UUID | None = None, limit: int | None = None
+	) -> list[Message]: ...
+
+	@abc.abstractmethod
+	async def message_before(self, chat_id: UUID, before_message_id: UUID) -> Message | None: ...
+
 
 class IGenerationHeartbeat(abc.ABC):
 	@abc.abstractmethod
@@ -69,3 +77,11 @@ class IMessageService(abc.ABC):
 
 	@abc.abstractmethod
 	async def latest_model_message(self, chat_id: UUID) -> Message | None: ...
+
+	@abc.abstractmethod
+	async def tail_after(
+		self, chat_id: UUID, after_message_id: UUID | None = None, limit: int | None = None
+	) -> list[Message]: ...
+
+	@abc.abstractmethod
+	async def message_before(self, chat_id: UUID, before_message_id: UUID) -> Message | None: ...

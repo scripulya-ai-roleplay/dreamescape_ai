@@ -18,10 +18,6 @@ class ChatRoles(StrEnum):
 
 
 class MessageStatus(StrEnum):
-	"""Lifecycle of a message. Model messages are persisted as PENDING while the
-	LLM is generating, then flipped to COMPLETED/FAILED when scripulya_agent replies.
-	User messages are always COMPLETED."""
-
 	PENDING = "pending"
 	COMPLETED = "completed"
 	FAILED = "failed"
@@ -104,6 +100,20 @@ class MediaEntityType(StrEnum):
 	CHARACTER = "character"
 	SCENE = "scene"
 	USER = "user"
+
+
+class ConversationSummary(BaseModel):
+	model_config = ConfigDict(frozen=True)
+
+	id: None | UUID = None
+	chat_id: UUID
+	from_message_id: UUID
+	to_message_id: UUID
+	content: str
+	token_count: int = 0
+	supersedes_id: None | UUID = None
+	model: str
+	created_at: None | datetime = None
 
 
 class MediaAsset(BaseModel):

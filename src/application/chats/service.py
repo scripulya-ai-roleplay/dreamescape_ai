@@ -6,6 +6,7 @@ from src.application.chats.schemas import ChatFilterDTO
 from src.application.ports.authorization import IAuthorizationService
 from src.application.ports.chats import IChatGateway, IChatService
 from src.application.ports.common import IUnitOfWork, Page
+from src.application.ports.memory import IGraphMemoryGateway
 from src.application.ports.messages import IMessageGateway
 from src.application.ports.scenes import IInitialMessageGateway
 from src.domain.models import Chat, ChatRoles, Message, MessageStatus
@@ -17,6 +18,7 @@ class ChatService(IChatService):
 	chat_gateway: IChatGateway
 	initial_message_gateway: IInitialMessageGateway
 	message_gateway: IMessageGateway
+	graph_gateway: IGraphMemoryGateway
 	uow: IUnitOfWork
 	authz: IAuthorizationService
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
@@ -46,7 +48,15 @@ class ChatService(IChatService):
 		self.logger.info(f"Deleting chat: {chat_uuid}")
 		await self._require_owned(chat_uuid, actor_id)
 		async with self.uow:
-			return await self.chat_gateway.delete(chat_uuid)
+			deleted_id = await self.chat_gateway.delete(chat_uuid)
+		# Summaries + vector memories are removed by FK ON DELETE CASCADE; the FalkorDB graph
+		# partition has no such trigger, so drop it explicitly. Best-effort: a failure here must
+		# not prevent the chat deletion the user already requested.
+		try:
+			await self.graph_gateway.delete_group(chat_uuid)
+		except Exception:
+			self.logger.warning("graph group cleanup failed chat_id=%s", chat_uuid, exc_info=True)
+		return deleted_id
 
 	async def update(self, target_chat_uuid: UUID, chat_name: str, actor_id: UUID) -> UUID:
 		self.logger.info(f"Updating chat {target_chat_uuid} with name: {chat_name}")

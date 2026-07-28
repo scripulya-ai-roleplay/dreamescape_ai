@@ -148,6 +148,38 @@ class MessageGateway(IMessageGateway):
 		message_model = result.scalar_one_or_none()
 		return self._to_domain_message(message_model) if message_model else None
 
+	async def tail_after(
+		self, chat_id: UUID, after_message_id: UUID | None = None, limit: int | None = None
+	) -> list[Message]:
+		query = select(MessageModel).where(MessageModel.chat_id == chat_id)
+		if after_message_id is not None:
+			boundary = select(MessageModel.created_at).where(MessageModel.id == after_message_id).scalar_subquery()
+			query = query.where(MessageModel.created_at > boundary)
+			query = query.order_by(MessageModel.created_at.asc(), MessageModel.id.asc())
+			if limit is not None:
+				query = query.limit(limit)
+			rows = (await self._session.execute(query)).scalars().all()
+			return [self._to_domain_message(row) for row in rows]
+		if limit is not None:
+			query = query.order_by(MessageModel.created_at.desc(), MessageModel.id.desc()).limit(limit)
+			rows = (await self._session.execute(query)).scalars().all()
+			return [self._to_domain_message(row) for row in reversed(rows)]
+		query = query.order_by(MessageModel.created_at.asc(), MessageModel.id.asc())
+		rows = (await self._session.execute(query)).scalars().all()
+		return [self._to_domain_message(row) for row in rows]
+
+	async def message_before(self, chat_id: UUID, before_message_id: UUID) -> Message | None:
+		boundary = select(MessageModel.created_at).where(MessageModel.id == before_message_id).scalar_subquery()
+		query = (
+			select(MessageModel)
+			.where(MessageModel.chat_id == chat_id, MessageModel.created_at < boundary)
+			.order_by(MessageModel.created_at.desc(), MessageModel.id.desc())
+			.limit(1)
+		)
+		result = await self._session.execute(query)
+		row = result.scalar_one_or_none()
+		return self._to_domain_message(row) if row else None
+
 	def _to_domain_message(self, message_model: MessageModel) -> Message:
 		# Convert string role/status back to enums
 		role = ChatRoles(message_model.role)
