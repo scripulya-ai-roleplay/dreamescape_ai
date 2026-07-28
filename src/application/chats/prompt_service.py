@@ -5,7 +5,7 @@ from src.application.chats.settings import (
 	ChatSettings,
 	ControlBehavior,
 	Perspective,
-	TokenLimit,
+	ResponseLength,
 )
 from src.application.ports.llm import IPromptService
 from src.conf import settings
@@ -18,9 +18,9 @@ _PERSPECTIVE_INSTRUCTIONS = {
 }
 
 _RESPONSE_LENGTH_INSTRUCTIONS = {
-	TokenLimit.CAPPED: "Keep each response to about 3-4 paragraphs.",
-	TokenLimit.HIGH: "Keep each response to about 4-5 paragraphs.",
-	TokenLimit.MAX: "Do not impose any length restriction; write as long as the scene calls for.",
+	ResponseLength.SHORT: "Keep each response brief, about 1-2 paragraphs.",
+	ResponseLength.MEDIUM: "Keep each response to about 3-4 paragraphs.",
+	ResponseLength.LONG: "Write a longer response of about 5 or more paragraphs.",
 }
 
 _CONTROL_INSTRUCTIONS = {
@@ -95,7 +95,7 @@ class PromptService(IPromptService):
 		lines = [
 			"# Storytelling",
 			f"- Point of view: {_PERSPECTIVE_INSTRUCTIONS[chat_settings.perspective]}",
-			f"- Length: {_RESPONSE_LENGTH_INSTRUCTIONS[chat_settings.responseTokenLimit]}",
+			f"- Length: {_RESPONSE_LENGTH_INSTRUCTIONS[chat_settings.responseLength]}",
 			f"- Player Character control: {_CONTROL_INSTRUCTIONS[chat_settings.aiControlBehavior]}",
 			f'- On a "Continue" prompt: {_CONTINUE_INSTRUCTIONS[chat_settings.continueBehavior]}',
 		]

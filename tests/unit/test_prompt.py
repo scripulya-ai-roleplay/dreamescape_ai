@@ -177,20 +177,20 @@ class TestStorytellingSettings:
 		assert "THIRD person" in prompt
 		assert "FIRST person" not in prompt
 
-	def test_response_length_capped(self, service):
-		prompt = service.build_system_prompt(None, [], chat_settings=_settings(responseTokenLimit=TokenLimit.CAPPED))
-		assert "3-4 paragraphs" in prompt
-		assert "4-5 paragraphs" not in prompt
-
-	def test_response_length_high(self, service):
-		prompt = service.build_system_prompt(None, [], chat_settings=_settings(responseTokenLimit=TokenLimit.HIGH))
-		assert "4-5 paragraphs" in prompt
+	def test_response_length_short(self, service):
+		prompt = service.build_system_prompt(None, [], chat_settings=_settings(responseLength=ResponseLength.SHORT))
+		assert "1-2 paragraphs" in prompt
 		assert "3-4 paragraphs" not in prompt
 
-	def test_response_length_max(self, service):
-		prompt = service.build_system_prompt(None, [], chat_settings=_settings(responseTokenLimit=TokenLimit.MAX))
-		assert "length restriction" in prompt
-		assert "paragraphs" not in prompt
+	def test_response_length_medium(self, service):
+		prompt = service.build_system_prompt(None, [], chat_settings=_settings(responseLength=ResponseLength.MEDIUM))
+		assert "3-4 paragraphs" in prompt
+		assert "1-2 paragraphs" not in prompt
+
+	def test_response_length_long(self, service):
+		prompt = service.build_system_prompt(None, [], chat_settings=_settings(responseLength=ResponseLength.LONG))
+		assert "5 or more paragraphs" in prompt
+		assert "3-4 paragraphs" not in prompt
 
 	def test_control_behavior_control(self, service):
 		prompt = service.build_system_prompt(
