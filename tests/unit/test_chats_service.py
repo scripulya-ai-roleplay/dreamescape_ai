@@ -514,7 +514,7 @@ class TestChatsService:
 		sample_user_id,
 	):
 		"""When the chat carries a user_character_id, that persona is resolved and rendered
-		as a # User section in the assembled system prompt."""
+		as a # Player Character section in the assembled system prompt."""
 		persona_id = uuid4()
 		persona = Character(name="Kael", system_prompt="A wandering bard with a silver tongue.")
 		mock_chat_gateway.get_one.return_value = Chat(
@@ -530,7 +530,8 @@ class TestChatsService:
 
 		mock_character_gateway.get_one.assert_awaited_once_with(persona_id)
 		system_prompt = mock_gateway.submit.await_args.kwargs["system_prompt"]
-		assert "# User" in system_prompt
+		assert "# Player Character" in system_prompt
+		assert "plays AS Kael" in system_prompt
 		assert "Kael" in system_prompt
 		assert "A wandering bard with a silver tongue." in system_prompt
 

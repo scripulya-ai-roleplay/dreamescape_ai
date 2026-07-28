@@ -65,15 +65,33 @@ class TestBuildSystemPrompt:
 		prompt = service.build_system_prompt(_scene(description="An ancient ruin."), [])
 		assert "An ancient ruin." in prompt
 
-	def test_user_character_block_included(self, service):
+	def test_player_character_block_included(self, service):
 		prompt = service.build_system_prompt(None, [], _character(name="Kael", system_prompt="A wandering bard."))
-		assert "# User" in prompt
+		assert "# Player Character (the human's persona)" in prompt
 		assert "Kael" in prompt
 		assert "A wandering bard." in prompt
 
-	def test_no_user_character_omits_user_block(self, service):
+	def test_no_player_character_omits_player_block(self, service):
 		prompt = service.build_system_prompt(None, [], None)
-		assert "# User" not in prompt
+		assert "# Player Character" not in prompt
+
+	def test_characters_block_marked_as_narrator_portrayed(self, service):
+		prompt = service.build_system_prompt(None, [_character(name="Aria", system_prompt="A brave knight.")])
+		assert "YOU (the narrator) portray" in prompt
+
+	def test_player_character_tied_to_human(self, service):
+		prompt = service.build_system_prompt(None, [], _character(name="Kael", system_prompt="A wandering bard."))
+		assert "plays AS Kael" in prompt
+		assert "the SAME person" in prompt
+		assert "as 'you'" in prompt
+
+	def test_player_character_disambiguated_from_characters(self, service):
+		prompt = service.build_system_prompt(
+			None,
+			[_character(name="Aria", system_prompt="A brave knight.")],
+			_character(name="Kael", system_prompt="A wandering bard."),
+		)
+		assert prompt.index("# Characters") < prompt.index("# Player Character")
 
 	def test_characters_block_is_first_block(self, service):
 		prompt = service.build_system_prompt(
@@ -83,16 +101,16 @@ class TestBuildSystemPrompt:
 		)
 		assert prompt.index("# Characters") == 0
 
-	def test_blocks_ordered_characters_scene_user_global(self, service):
+	def test_blocks_ordered_characters_scene_player_global(self, service):
 		prompt = service.build_system_prompt(
 			_scene(title="Forest", background="A dark wood."),
 			[_character(name="Aria", system_prompt="A brave knight.")],
 			_character(name="Kael", system_prompt="A wandering bard."),
 		)
 		assert prompt.index("# Characters") < prompt.index("# Scene")
-		assert prompt.index("# Scene") < prompt.index("# User")
-		assert prompt.index("# User") < prompt.index("You are a narrator")
+		assert prompt.index("# Scene") < prompt.index("# Player Character")
+		assert prompt.index("# Player Character") < prompt.index("You are the narrator")
 
 	def test_global_prompt_last_even_without_characters(self, service):
 		prompt = service.build_system_prompt(_scene(title="Forest", background="A dark wood."), [])
-		assert prompt.index("# Scene") < prompt.index("You are a narrator")
+		assert prompt.index("# Scene") < prompt.index("You are the narrator")
