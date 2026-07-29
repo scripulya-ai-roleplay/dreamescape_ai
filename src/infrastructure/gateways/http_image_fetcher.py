@@ -16,11 +16,17 @@ class UnsafeTargetException(Exception):
 
 class _SSRFSafeTransport(httpx.AsyncHTTPTransport):
 	async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-		scheme = (request.url.scheme or "").lower()
-		host = request.url.host
+		url = request.url
+		scheme = (url.scheme or "").lower()
+		host = url.host
 		if scheme not in ("http", "https") or not host:
 			raise UnsafeTargetException(f"Refused unsafe target scheme={scheme!r} host={host!r}")
-		await anyio.to_thread.run_sync(HttpImageFetcher._assert_safe_host, host)
+
+		pinned_ip = await anyio.to_thread.run_sync(HttpImageFetcher._resolve_safe, host)
+		authority = url.netloc.decode("ascii")
+		request.url = url.copy_with(host=pinned_ip)
+		request.headers["host"] = authority
+		request.extensions["sni_hostname"] = host
 		return await super().handle_async_request(request)
 
 
@@ -65,7 +71,7 @@ class HttpImageFetcher(IImageFetcher):
 		return self._client
 
 	@staticmethod
-	def _assert_safe_host(host: str) -> None:
+	def _resolve_safe(host: str) -> str:
 		try:
 			addr = ipaddress.ip_address(host)
 		except ValueError:
@@ -73,7 +79,7 @@ class HttpImageFetcher(IImageFetcher):
 		else:
 			if not addr.is_global:
 				raise UnsafeTargetException(f"Refused non-public host {host}")
-			return
+			return str(addr)
 
 		try:
 			infos = socket.getaddrinfo(host, None)
@@ -84,3 +90,5 @@ class HttpImageFetcher(IImageFetcher):
 			addr = ipaddress.ip_address(info[4][0])
 			if not addr.is_global:
 				raise UnsafeTargetException(f"Refused host {host}: resolves to non-public {addr}")
+
+		return infos[0][4][0]
