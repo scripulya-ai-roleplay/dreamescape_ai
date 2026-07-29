@@ -1,0 +1,42 @@
+from __future__ import annotations
+
+import abc
+from typing import TYPE_CHECKING
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict
+
+from src.application.imports.schemas import ImportLorebookResultDTO
+
+if TYPE_CHECKING:
+	from src.application.imports.lorebook import Lorebook, LorebookEntry
+
+
+class FetchedImage(BaseModel):
+	model_config = ConfigDict(frozen=True)
+
+	data: bytes
+	content_type: str | None = None
+
+
+class IImageFetcher(abc.ABC):
+	@abc.abstractmethod
+	async def fetch(self, url: str) -> FetchedImage | None: ...
+
+
+class IImportService(abc.ABC):
+	@abc.abstractmethod
+	async def import_lorebook(
+		self, raw: bytes, owner_id: UUID, *, is_public: bool, import_images: bool
+	) -> ImportLorebookResultDTO: ...
+
+
+class ILorebookParser(abc.ABC):
+	@abc.abstractmethod
+	def parse(self, raw: bytes) -> Lorebook: ...
+
+	@abc.abstractmethod
+	def greeting(self, name: str, content: str) -> str: ...
+
+	@abc.abstractmethod
+	def world_context(self, entries: list[LorebookEntry]) -> str: ...

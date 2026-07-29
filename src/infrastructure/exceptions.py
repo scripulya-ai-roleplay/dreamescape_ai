@@ -76,3 +76,13 @@ class InitialMessageRequiredException(BaseAPIException):
 			error_code="INITIAL_MESSAGE_REQUIRED",
 			**kwargs,
 		)
+
+
+class InvalidLorebookException(BaseAPIException):
+	def __init__(self, message: str = "Lorebook file is invalid", **kwargs):
+		super().__init__(
+			message=message,
+			status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+			error_code="INVALID_LOREBOOK",
+			**kwargs,
+		)

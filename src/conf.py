@@ -25,18 +25,14 @@ class Settings(BaseSettings):
 	RABBIT_URL: str = "amqp://guest:guest@rabbitmq:5672/"
 	LLM_AGENT_REQUEST_QUEUE: str = "llm.agent.request"
 	LLM_AGENT_RESULT_QUEUE: str = "llm.agent.result"
-	LLM_AGENT_TIMEOUT: float = 60.0  # seconds to await an LLMResult before failing the request
+	LLM_AGENT_TIMEOUT: float = 60.0
 
-	# --- Redis heartbeat (anti-hang) ---
-	# Tuned so a legitimately-slow generation never false-positives: as long as the
-	# agent keeps refreshing :alive, the watchdog leaves it alone.
 	REDIS_URL: str = "redis://redis:6379/0"
-	LLM_HEARTBEAT_ALIVE_TTL: int = 30  # no refresh for this long => agent considered dead
-	LLM_HEARTBEAT_GRACE_TTL: int = 45  # initial TTL on submit; must be > ALIVE_TTL
-	LLM_HEARTBEAT_HARD_DEADLINE_SECONDS: int = 1800  # backstop so inflight keys can't leak
+	LLM_HEARTBEAT_ALIVE_TTL: int = 30
+	LLM_HEARTBEAT_GRACE_TTL: int = 45
+	LLM_HEARTBEAT_HARD_DEADLINE_SECONDS: int = 1800
 	LLM_SWEEP_INTERVAL_SECONDS: int = 10
 
-	# Database Settings
 	DATABASE_URL: str = "postgresql+asyncpg://user:password@postgres:5432/dbname"
 
 	MINIO_INTERNAL_ENDPOINT: str = "minio:9000"
@@ -48,6 +44,7 @@ class Settings(BaseSettings):
 	MINIO_BUCKET_PRIVATE: str = "scripulya-private"
 	MINIO_PRESIGN_EXPIRY_SECONDS: int = 900
 	MEDIA_MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
+	LOREBOOK_MAX_UPLOAD_BYTES: int = 16 * 1024 * 1024
 
 	JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
 	JWT_PUBLIC_KEY: str = ""

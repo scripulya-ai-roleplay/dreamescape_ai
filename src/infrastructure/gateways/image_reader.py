@@ -58,7 +58,6 @@ class ImageReader(IImageReader):
 			self.logger.warning("Rejected upload: unsupported content_type=%s", content_type)
 			raise UnsupportedImageTypeException(f"Unsupported image content type: {content_type or 'unknown'}")
 
-		# Stream into memory with a hard cap so a huge upload cannot OOM the process.
 		buf = bytearray()
 		while True:
 			chunk = await file.read(_READ_CHUNK)
@@ -69,17 +68,28 @@ class ImageReader(IImageReader):
 				self.logger.warning("Rejected upload: size exceeds %s bytes", self.max_bytes)
 				raise ImageTooLargeException(f"Image exceeds the {self.max_bytes}-byte limit")
 
-		# The header is trivially forged, so the magic number is the source of truth.
-		sniffed = _sniff_image_type(buf)
-		if sniffed is None or sniffed != content_type:
-			self.logger.warning(
-				"Rejected upload: bytes do not match claimed type %s (sniffed=%s)", content_type, sniffed
-			)
-			raise UnsupportedImageTypeException("File contents do not match the declared image content type")
+		return self._finalize(content_type, buf)
 
+	async def read_bytes(self, data: bytes, content_type: str | None = None) -> UploadedImage:
+		if len(data) > self.max_bytes:
+			self.logger.warning("Rejected bytes: size exceeds %s bytes", self.max_bytes)
+			raise ImageTooLargeException(f"Image exceeds the {self.max_bytes}-byte limit")
+
+		declared = (content_type or "").split(";")[0].strip().lower()
+		return self._finalize(declared, data)
+
+	def _finalize(self, declared: str, data: bytes | bytearray) -> UploadedImage:
+		sniffed = _sniff_image_type(data)
+		if sniffed is None:
+			self.logger.warning("Rejected image: bytes are not a recognized image type")
+			raise UnsupportedImageTypeException("File contents are not a recognized image type")
+		final = declared if declared in _CONTENT_TYPE_EXT else sniffed
+		if sniffed != final:
+			self.logger.warning("Rejected image: claimed %s but sniffed %s", final, sniffed)
+			raise UnsupportedImageTypeException("File contents do not match the declared image content type")
 		return UploadedImage(
-			content_type=content_type,
-			ext=_CONTENT_TYPE_EXT[content_type],
-			data=bytes(buf),
-			size=len(buf),
+			content_type=final,
+			ext=_CONTENT_TYPE_EXT[final],
+			data=bytes(data),
+			size=len(data),
 		)

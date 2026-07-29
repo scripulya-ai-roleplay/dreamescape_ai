@@ -41,3 +41,14 @@ class MediaUploadDTO(BaseModel):
 	entity_id: UUID
 	is_public: bool = False
 	owner_id: UUID
+
+
+class MediaUploadBytesDTO(BaseModel):
+	model_config = ConfigDict(frozen=True)
+
+	data: bytes
+	content_type: str | None = None
+	entity_type: MediaEntityType
+	entity_id: UUID
+	is_public: bool = False
+	owner_id: UUID
