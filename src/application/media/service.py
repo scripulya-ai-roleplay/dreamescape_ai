@@ -6,11 +6,11 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 from starlette import status
 
-from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadDTO
+from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadBytesDTO, MediaUploadDTO
 from src.application.ports.authorization import IAuthorizationService
 from src.application.ports.common import IUnitOfWork, Page
-from src.application.ports.media import IImageReader, IMediaGateway, IMediaService, IObjectStorageGateway
-from src.domain.models import MediaAsset
+from src.application.ports.media import IImageReader, IMediaGateway, IMediaService, IObjectStorageGateway, UploadedImage
+from src.domain.models import MediaAsset, MediaEntityType
 from src.infrastructure.logging.logger import Logger
 
 
@@ -24,13 +24,23 @@ class MediaService(IMediaService):
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def upload(self, dto: MediaUploadDTO) -> MediaAssetDTO:
-		entity_owner = await self.gateway.get_entity_owner(dto.entity_type, dto.entity_id)
-		if entity_owner is None or entity_owner != dto.owner_id:
+		await self._require_owner(dto.entity_type, dto.entity_id, dto.owner_id)
+		image = await self.reader.read(dto.file)
+		return await self._store(image, dto.entity_type, dto.entity_id, dto.owner_id, dto.is_public)
+
+	async def upload_bytes(self, dto: MediaUploadBytesDTO) -> MediaAssetDTO:
+		await self._require_owner(dto.entity_type, dto.entity_id, dto.owner_id)
+		image = await self.reader.read_bytes(dto.data, dto.content_type)
+		return await self._store(image, dto.entity_type, dto.entity_id, dto.owner_id, dto.is_public)
+
+	async def _require_owner(self, entity_type: MediaEntityType, entity_id: UUID, owner_id: UUID) -> None:
+		entity_owner = await self.gateway.get_entity_owner(entity_type, entity_id)
+		if entity_owner is None or entity_owner != owner_id:
 			self.logger.warning(
 				"Rejected upload: user %s may not attach media to %s/%s (owner=%s)",
-				dto.owner_id,
-				dto.entity_type,
-				dto.entity_id,
+				owner_id,
+				entity_type,
+				entity_id,
 				entity_owner,
 			)
 			raise HTTPException(
@@ -38,9 +48,15 @@ class MediaService(IMediaService):
 				detail="Not allowed to attach media to this entity",
 			)
 
-		image = await self.reader.read(dto.file)
-
-		object_key = f"{dto.entity_type.value}/{uuid4().hex}.{image.ext}"
+	async def _store(
+		self,
+		image: UploadedImage,
+		entity_type: MediaEntityType,
+		entity_id: UUID,
+		owner_id: UUID,
+		is_public: bool,
+	) -> MediaAssetDTO:
+		object_key = f"{entity_type.value}/{uuid4().hex}.{image.ext}"
 
 		await self.storage.ensure_buckets()
 		bucket, size = await self.storage.upload(
@@ -48,7 +64,7 @@ class MediaService(IMediaService):
 			data=io.BytesIO(image.data),
 			length=image.size,
 			content_type=image.content_type,
-			is_public=dto.is_public,
+			is_public=is_public,
 		)
 
 		asset = MediaAsset(
@@ -57,14 +73,12 @@ class MediaService(IMediaService):
 			file_url=None,
 			content_type=image.content_type,
 			size_bytes=size,
-			entity_type=dto.entity_type,
-			entity_id=dto.entity_id,
-			is_public=dto.is_public,
-			owner_id=dto.owner_id,
+			entity_type=entity_type,
+			entity_id=entity_id,
+			is_public=is_public,
+			owner_id=owner_id,
 		)
 
-		# The object is already in storage; if the DB write fails, reclaim it so
-		# it can't become an unreclaimable orphan. Mirrors the delete ordering.
 		try:
 			async with self.uow:
 				asset = await self.gateway.create(asset)
@@ -75,7 +89,7 @@ class MediaService(IMediaService):
 				self.logger.exception("Failed to clean up orphaned object %s/%s", bucket, object_key)
 			raise
 
-		self.logger.info("Uploaded media %s for %s/%s", asset.id, dto.entity_type, dto.entity_id)
+		self.logger.info("Uploaded media %s for %s/%s", asset.id, entity_type, entity_id)
 		return await self._to_dto(asset)
 
 	async def get_one(self, media_id: UUID, actor_id: UUID | None) -> MediaAssetDTO:

@@ -15,6 +15,7 @@ from src.controllers.api.v1.chat_events import router as chat_events_router
 from src.controllers.api.v1.chat_settings import router as chat_settings_router
 from src.controllers.api.v1.chats import router as chat_router
 from src.controllers.api.v1.health import router as health_router
+from src.controllers.api.v1.imports import router as imports_router
 from src.controllers.api.v1.media import router as media_router
 from src.controllers.api.v1.messages import router as message_router
 from src.controllers.api.v1.scenes import router as scenes_router
@@ -93,6 +94,7 @@ def create_app() -> FastAPI:
 	app.include_router(health_router)
 	app.include_router(auth_router)
 	app.include_router(characters_router)
+	app.include_router(imports_router)
 	app.include_router(chat_router)
 	app.include_router(chat_settings_router)
 	app.include_router(chat_events_router)

@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import UploadFile
 from pydantic import BaseModel, ConfigDict
 
-from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadDTO
+from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadBytesDTO, MediaUploadDTO
 from src.application.ports.common import Page
 from src.domain.models import MediaAsset, MediaEntityType
 
@@ -22,6 +22,9 @@ class UploadedImage(BaseModel):
 class IImageReader(abc.ABC):
 	@abc.abstractmethod
 	async def read(self, file: UploadFile) -> UploadedImage: ...
+
+	@abc.abstractmethod
+	async def read_bytes(self, data: bytes, content_type: str | None = None) -> UploadedImage: ...
 
 
 class IObjectStorageGateway(abc.ABC):
@@ -71,6 +74,9 @@ class IMediaGateway(abc.ABC):
 class IMediaService(abc.ABC):
 	@abc.abstractmethod
 	async def upload(self, dto: MediaUploadDTO) -> MediaAssetDTO: ...
+
+	@abc.abstractmethod
+	async def upload_bytes(self, dto: MediaUploadBytesDTO) -> MediaAssetDTO: ...
 
 	@abc.abstractmethod
 	async def get_one(self, media_id: UUID, actor_id: UUID | None) -> MediaAssetDTO: ...

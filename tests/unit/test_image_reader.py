@@ -81,3 +81,34 @@ class TestImageReaderRead:
 		with pytest.raises(ImageTooLargeException) as exc:
 			await _reader(max_bytes=10).read(_FakeUpload(big, "image/png"))
 		assert exc.value.status_code == 413
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestImageReaderReadBytes:
+	async def test_reads_png_without_content_type(self):
+		image = await _reader().read_bytes(PNG_BYTES)
+		assert image.content_type == "image/png"
+		assert image.ext == "png"
+		assert image.data == PNG_BYTES
+
+	async def test_strips_content_type_parameters(self):
+		image = await _reader().read_bytes(PNG_BYTES, "image/png; charset=utf-8")
+		assert image.content_type == "image/png"
+
+	async def test_falls_back_to_sniff_for_nonstandard_subtype(self):
+		image = await _reader().read_bytes(PNG_BYTES, "image/jpg")
+		assert image.content_type == "image/png"
+
+	async def test_rejects_known_subtype_mismatch(self):
+		with pytest.raises(UnsupportedImageTypeException):
+			await _reader().read_bytes(PNG_BYTES, "image/jpeg")
+
+	async def test_rejects_non_image_bytes(self):
+		with pytest.raises(UnsupportedImageTypeException):
+			await _reader().read_bytes(HTML_BYTES, "image/png")
+
+	async def test_rejects_oversize(self):
+		big = PNG_BYTES + b"\x00" * 100
+		with pytest.raises(ImageTooLargeException):
+			await _reader(max_bytes=10).read_bytes(big, "image/png")

@@ -15,6 +15,8 @@ from src.application.chats.prompt_service import PromptService
 from src.application.chats.service import ChatService
 from src.application.chats.settings_service import ChatSettingsService
 from src.application.events.server_events_service import ServerEventsService
+from src.application.imports.lorebook import LorebookParser
+from src.application.imports.service import ImportService
 from src.application.media.service import MediaService
 from src.application.message.service import MessageService
 from src.application.ports.auth import IAuthService, IJWTService, IPasswordHasher
@@ -28,6 +30,7 @@ from src.application.ports.chats import (
 	IChatSettingsService,
 	IChatsService,
 )
+from src.application.ports.imports import IImageFetcher, IImportService, ILorebookParser
 from src.application.ports.llm import IGatewayFactory, IPromptService, IScripulyaAgentClient, LLMModelType
 from src.application.ports.media import IImageReader, IMediaGateway, IMediaService, IObjectStorageGateway
 from src.application.ports.messages import IGenerationHeartbeat, IMessageGateway, IMessageService, IServerEventsService
@@ -45,6 +48,7 @@ from src.infrastructure.gateways.chat_event_gateway import ChatEventGateway
 from src.infrastructure.gateways.chat_gateway import ChatGateway
 from src.infrastructure.gateways.chat_settings_gateway import ChatSettingsGateway
 from src.infrastructure.gateways.gateway_factory import GatewayFactory
+from src.infrastructure.gateways.http_image_fetcher import HttpImageFetcher
 from src.infrastructure.gateways.image_reader import ImageReader
 from src.infrastructure.gateways.initial_message_gateway import InitialMessageGateway
 from src.infrastructure.gateways.media_gateway import MediaGateway
@@ -161,6 +165,18 @@ class GatewayProvider(Provider):
 	@provide(scope=Scope.APP)
 	def provide_image_reader(self, logger: logging.Logger) -> IImageReader:
 		return ImageReader(max_bytes=settings.MEDIA_MAX_UPLOAD_BYTES, logger=logger)
+
+	@provide(scope=Scope.APP)
+	def provide_lorebook_parser(self) -> ILorebookParser:
+		return LorebookParser()
+
+	@provide(scope=Scope.REQUEST)
+	async def provide_http_image_fetcher(self, logger: logging.Logger) -> AsyncGenerator[IImageFetcher]:
+		fetcher = HttpImageFetcher(max_bytes=settings.MEDIA_MAX_UPLOAD_BYTES, logger=logger)
+		try:
+			yield fetcher
+		finally:
+			await fetcher.aclose()
 
 	@provide(scope=Scope.REQUEST)
 	def provide_media_gateway(
@@ -350,6 +366,25 @@ class ServiceProvider(Provider):
 		logger: logging.Logger,
 	) -> ICharacterService:
 		return CharacterService(uow=uow, gateway=character_gateway, authz=authorization_service, logger=logger)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_import_service(
+		self,
+		character_service: ICharacterService,
+		scene_service: ISceneService,
+		media_service: IMediaService,
+		image_fetcher: IImageFetcher,
+		parser: ILorebookParser,
+		logger: logging.Logger,
+	) -> IImportService:
+		return ImportService(
+			character_service=character_service,
+			scene_service=scene_service,
+			media_service=media_service,
+			image_fetcher=image_fetcher,
+			parser=parser,
+			logger=logger,
+		)
 
 
 class DatabaseProvider(Provider):
