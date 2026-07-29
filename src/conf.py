@@ -44,6 +44,7 @@ class Settings(BaseSettings):
 	MINIO_BUCKET_PRIVATE: str = "scripulya-private"
 	MINIO_PRESIGN_EXPIRY_SECONDS: int = 900
 	MEDIA_MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
+	LOREBOOK_MAX_UPLOAD_BYTES: int = 16 * 1024 * 1024
 
 	JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
 	JWT_PUBLIC_KEY: str = ""

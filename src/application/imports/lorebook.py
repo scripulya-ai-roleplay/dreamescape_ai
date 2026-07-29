@@ -109,13 +109,22 @@ class LorebookParser(ILorebookParser):
 		return None
 
 	def _to_entry(self, raw_entry: dict) -> LorebookEntry | None:
-		name = (raw_entry.get("comment") or raw_entry.get("name") or "").strip()
-		content = (raw_entry.get("content") or "").strip()
+		name = self._as_text(raw_entry.get("comment")) or self._as_text(raw_entry.get("name"))
+		content = self._as_text(raw_entry.get("content"))
 		if not name or not content:
 			return None
-		group = (raw_entry.get("group") or "").strip()
+		group = self._as_text(raw_entry.get("group"))
+		uid = raw_entry.get("uid")
+		if not isinstance(uid, (int, str)):
+			uid = None
 		image_urls = self._extract_image_urls(f"{name}\n{content}")
-		return LorebookEntry(uid=raw_entry.get("uid"), name=name, content=content, group=group, image_urls=image_urls)
+		return LorebookEntry(uid=uid, name=name, content=content, group=group, image_urls=image_urls)
+
+	@staticmethod
+	def _as_text(value: object) -> str:
+		if isinstance(value, str):
+			return value.strip()
+		return ""
 
 	def _extract_image_urls(self, text: str) -> list[str]:
 		found: list[str] = []

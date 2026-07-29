@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from dataclasses import dataclass
 from uuid import UUID
@@ -10,6 +11,8 @@ from src.application.ports.media import IMediaService
 from src.application.ports.scenes import ISceneService
 from src.domain.models import Character, InitialMessage, MediaEntityType, Scene
 from src.infrastructure.logging.logger import Logger
+
+_MAX_CONCURRENT_IMAGE_FETCHES = 4
 
 
 @dataclass
@@ -32,6 +35,7 @@ class ImportService(IImportService):
 		images_imported = 0
 		image_failures: list[str] = []
 		skipped = lorebook.skipped
+		image_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_IMAGE_FETCHES)
 
 		for entry in lorebook.entries:
 			if not entry.is_character:
@@ -52,7 +56,13 @@ class ImportService(IImportService):
 			character_ids.append(character_id)
 			if import_images:
 				images_imported += await self._import_entry_images(
-					entry.image_urls, MediaEntityType.CHARACTER, character_id, owner_id, is_public, image_failures
+					entry.image_urls,
+					MediaEntityType.CHARACTER,
+					character_id,
+					owner_id,
+					is_public,
+					image_failures,
+					image_semaphore,
 				)
 
 		location_entries = [e for e in lorebook.entries if e.is_location]
@@ -80,7 +90,13 @@ class ImportService(IImportService):
 						self.logger.error("Failed to attach characters to scene %s: %s", scene_id, exc)
 				if import_images:
 					images_imported += await self._import_entry_images(
-						entry.image_urls, MediaEntityType.SCENE, scene_id, owner_id, is_public, image_failures
+						entry.image_urls,
+						MediaEntityType.SCENE,
+						scene_id,
+						owner_id,
+						is_public,
+						image_failures,
+						image_semaphore,
 					)
 		elif lorebook.entries:
 			background = world_context or f"Imported lorebook containing {len(lorebook.entries)} entries."
@@ -122,26 +138,33 @@ class ImportService(IImportService):
 		owner_id: UUID,
 		is_public: bool,
 		failures: list[str],
+		semaphore: asyncio.Semaphore,
 	) -> int:
-		count = 0
-		for url in urls:
-			fetched = await self.image_fetcher.fetch(url)
-			if fetched is None or not fetched.data:
-				failures.append(url)
-				continue
-			try:
-				await self.media_service.upload_bytes(
-					MediaUploadBytesDTO(
-						data=fetched.data,
-						content_type=fetched.content_type,
-						entity_type=entity_type,
-						entity_id=entity_id,
-						owner_id=owner_id,
-						is_public=is_public,
+		if not urls:
+			return 0
+
+		async def _fetch_one(url: str) -> int:
+			async with semaphore:
+				fetched = await self.image_fetcher.fetch(url)
+				if fetched is None or not fetched.data:
+					failures.append(url)
+					return 0
+				try:
+					await self.media_service.upload_bytes(
+						MediaUploadBytesDTO(
+							data=fetched.data,
+							content_type=fetched.content_type,
+							entity_type=entity_type,
+							entity_id=entity_id,
+							owner_id=owner_id,
+							is_public=is_public,
+						)
 					)
-				)
-				count += 1
-			except Exception as exc:
-				self.logger.warning("Image import failed for %s: %s", url, exc)
-				failures.append(url)
-		return count
+					return 1
+				except Exception as exc:
+					self.logger.warning("Image import failed for %s: %s", url, exc)
+					failures.append(url)
+					return 0
+
+		results = await asyncio.gather(*(_fetch_one(url) for url in urls))
+		return sum(results)

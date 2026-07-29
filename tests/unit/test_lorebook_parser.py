@@ -115,3 +115,23 @@ class TestLorebookParser:
 		raw = _dump({"0": {"comment": "Amn", "content": "Nation.", "group": "location"}})
 		lorebook = parser.parse(raw)
 		assert parser.world_context(lorebook.entries) == ""
+
+	def test_non_string_comment_or_content_skipped_not_crash(self):
+		raw = _dump(
+			{
+				"0": {"comment": 123, "content": "has text", "group": "Character"},
+				"1": {"comment": "ok", "content": ["not", "str"], "group": "Character"},
+				"2": {"comment": {"weird": True}, "content": "has text", "group": "Character"},
+				"3": {"comment": "good", "content": "valid", "group": "Character"},
+			}
+		)
+		lorebook = parser.parse(raw)
+		assert [e.name for e in lorebook.entries] == ["good"]
+		assert lorebook.skipped == 3
+
+	def test_non_string_group_coerced_to_empty(self):
+		raw = _dump({"0": {"comment": "x", "content": "y", "group": 99}})
+		lorebook = parser.parse(raw)
+		assert len(lorebook.entries) == 1
+		assert lorebook.entries[0].group == ""
+		assert lorebook.entries[0].is_character is False

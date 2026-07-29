@@ -1,3 +1,4 @@
+import asyncio
 import json
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -5,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from src.application.imports.lorebook import LorebookParser
-from src.application.imports.service import ImportService
+from src.application.imports.service import _MAX_CONCURRENT_IMAGE_FETCHES, ImportService
 from src.application.ports.imports import FetchedImage
 from src.infrastructure.exceptions import InvalidLorebookException
 
@@ -158,6 +159,34 @@ class TestImportService:
 		assert result.images_imported == 1
 		assert result.image_failures == ["https://x.com/missing.jpg"]
 		svc.media_service.upload_bytes.assert_awaited_once()
+
+	@pytest.mark.asyncio
+	async def test_image_fetches_run_with_bounded_concurrency(self):
+		svc = _service()
+		svc.character_service.create_character.return_value = uuid4()
+		svc.scene_service.create_scene.return_value = uuid4()
+		state = {"in_flight": 0, "max_seen": 0}
+
+		async def tracking_fetch(url):
+			state["in_flight"] += 1
+			state["max_seen"] = max(state["max_seen"], state["in_flight"])
+			await asyncio.sleep(0.01)
+			state["in_flight"] -= 1
+			return None
+
+		svc.image_fetcher.fetch.side_effect = tracking_fetch
+		content = " ".join(f"![](https://x.com/{i}.png)" for i in range(_MAX_CONCURRENT_IMAGE_FETCHES * 3))
+
+		result = await svc.import_lorebook(
+			_lorebook({"0": {"comment": "hero", "content": content, "group": "Character"}}),
+			owner_id=uuid4(),
+			is_public=False,
+			import_images=True,
+		)
+
+		assert state["max_seen"] <= _MAX_CONCURRENT_IMAGE_FETCHES
+		assert state["max_seen"] >= 2
+		assert len(result.image_failures) == _MAX_CONCURRENT_IMAGE_FETCHES * 3
 
 	@pytest.mark.asyncio
 	async def test_import_images_false_skips_fetch_and_upload(self):
