@@ -39,6 +39,44 @@ class TestImportAPI:
 		assert response.status_code == 422
 		assert response.json()["error"]["code"] == "INVALID_LOREBOOK"
 
+	def test_preview_then_selective_import_without_linking(self, client, auth_headers):
+		payload = {
+			"entries": {
+				"0": {"comment": "Laeral", "content": "Open Lord of Waterdeep.", "group": "Character"},
+				"1": {"comment": "Khelben", "content": "Blackstaff of Waterdeep.", "group": "Character"},
+				"2": {"comment": "Amn", "content": "Wealthy mercantile nation.", "group": "location"},
+			}
+		}
+		files = {"file": ("lorebook.json", json.dumps(payload), "application/json")}
+
+		preview_resp = client.post("/api/v1/import/lorebook/preview", files=files, headers=auth_headers)
+		assert preview_resp.status_code == 200, preview_resp.text
+		preview = preview_resp.json()["result"]
+		assert len(preview["characters"]) == 2
+		assert len(preview["scenes"]) == 1
+		char_keys = {c["name"]: c["key"] for c in preview["characters"]}
+		scene_key = preview["scenes"][0]["key"]
+
+		# Import only Laeral + the scene, unlinked.
+		data = {
+			"is_public": "false",
+			"import_images": "false",
+			"link_scenes": "false",
+			"selected_keys": [char_keys["Laeral"], scene_key],
+		}
+		import_resp = client.post("/api/v1/import/lorebook", files=files, data=data, headers=auth_headers)
+		assert import_resp.status_code == 200, import_resp.text
+		result = import_resp.json()["result"]
+		# The file has 2 characters + 1 scene; only Laeral + the scene were
+		# selected, so exactly one of each is created.
+		assert result["characters_created"] == 1
+		assert result["scenes_created"] == 1
+
+		for cid in result["character_ids"]:
+			client.delete(f"/api/v1/characters/{cid}", headers=auth_headers)
+		for sid in result["scene_ids"]:
+			client.delete(f"/api/v1/scenes/{sid}", headers=auth_headers)
+
 	def test_import_requires_authentication(self, client):
 		files = {"file": ("lorebook.json", b'{"entries": {}}', "application/json")}
 

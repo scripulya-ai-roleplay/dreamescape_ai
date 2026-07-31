@@ -135,3 +135,27 @@ class TestLorebookParser:
 		assert len(lorebook.entries) == 1
 		assert lorebook.entries[0].group == ""
 		assert lorebook.entries[0].is_character is False
+
+	def test_entry_key_is_dict_key_for_mapping(self):
+		raw = _dump(
+			{
+				"0": {"comment": "a", "content": "x", "group": "Character"},
+				"7": {"comment": "b", "content": "y", "group": "location"},
+			}
+		)
+		lorebook = parser.parse(raw)
+		by_name = {e.name: e for e in lorebook.entries}
+		assert by_name["a"].key == "0"
+		assert by_name["b"].key == "7"
+
+	def test_entry_key_is_index_for_list(self):
+		raw = json.dumps(
+			{
+				"entries": [
+					{"comment": "a", "content": "x", "group": "Character"},
+					{"comment": "b", "content": "y", "group": "location"},
+				]
+			}
+		).encode()
+		lorebook = parser.parse(raw)
+		assert [e.key for e in lorebook.entries] == ["0", "1"]

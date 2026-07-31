@@ -11,6 +11,9 @@ class ISceneService(abc.ABC):
 	async def create_scene(self, scene: Scene) -> UUID: ...
 
 	@abc.abstractmethod
+	async def bulk_create(self, scenes: list[Scene]) -> list[UUID]: ...
+
+	@abc.abstractmethod
 	async def get_one(self, scene_uuid: UUID, actor_id: UUID | None) -> Scene: ...
 
 	@abc.abstractmethod

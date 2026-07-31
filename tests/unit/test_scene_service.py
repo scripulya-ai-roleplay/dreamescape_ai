@@ -84,6 +84,45 @@ class TestSceneService:
 		mock_initial_message_gateway.bulk_create.assert_called_once_with(expected_id, sample_scene.initial_messages)
 
 	@pytest.mark.asyncio
+	async def test_bulk_create_creates_each_scene_in_one_transaction(
+		self, scene_service, mock_scene_gateway, mock_initial_message_gateway, mock_uow, sample_scene
+	):
+		"""All scenes (and their initial messages) are written inside a single UoW."""
+		another = Scene(
+			title="Other Scene",
+			background_prompt="bg",
+			owner_id=sample_scene.owner_id,
+			initial_messages=[InitialMessage(text="hi")],
+		)
+		first_id, second_id = uuid4(), uuid4()
+		mock_scene_gateway.create.side_effect = [first_id, second_id]
+
+		result = await scene_service.bulk_create([sample_scene, another])
+
+		assert result == [first_id, second_id]
+		assert mock_scene_gateway.create.await_count == 2
+		assert mock_initial_message_gateway.bulk_create.await_count == 2
+		mock_uow.__aenter__.assert_awaited_once()  # one transaction for the whole batch
+
+	@pytest.mark.asyncio
+	async def test_bulk_create_rejects_scene_without_initial_messages(
+		self, scene_service, mock_scene_gateway, sample_scene
+	):
+		"""Validation runs for every scene before any write occurs."""
+		empty = Scene(
+			title="no greeting",
+			background_prompt="b",
+			owner_id=sample_scene.owner_id,
+			initial_messages=[],
+		)
+		mock_scene_gateway.create.return_value = uuid4()
+
+		with pytest.raises(ValueError):
+			await scene_service.bulk_create([sample_scene, empty])
+
+		mock_scene_gateway.create.assert_not_called()
+
+	@pytest.mark.asyncio
 	async def test_create_scene_without_initial_messages_rejected(self, scene_service, mock_scene_gateway):
 		"""A scene with no initial messages is rejected before any write."""
 		scene = Scene(
