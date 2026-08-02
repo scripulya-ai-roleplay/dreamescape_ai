@@ -1,49 +1,100 @@
-import asyncio
 import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.application.imports.schemas import ImportLorebookResultDTO
-from src.application.media.schemas import MediaUploadBytesDTO
+from src.application.imports.lorebook import Lorebook, LorebookEntry
+from src.application.imports.schemas import (
+	ImportCandidateDTO,
+	ImportLorebookResultDTO,
+	ImportPreviewDTO,
+)
 from src.application.ports.characters import ICharacterService
-from src.application.ports.imports import IImageFetcher, IImportService, ILorebookParser
-from src.application.ports.media import IMediaService
+from src.application.ports.imports import IImageImporter, IImportService, ILorebookParser
 from src.application.ports.scenes import ISceneService
 from src.domain.models import Character, InitialMessage, MediaEntityType, Scene
 from src.infrastructure.logging.logger import Logger
 
-_MAX_CONCURRENT_IMAGE_FETCHES = 4
+_PREVIEW_CONTENT_LIMIT = 300
+_CHARACTER_NAME_LIMIT = 254
 
 
 @dataclass
 class ImportService(IImportService):
+	"""Orchestrates turning a SillyTavern lorebook into Characters & Scenes.
+
+	This service only orchestrates: it maps lorebook entries to domain objects,
+	persists them via the character/scene services, and delegates image fetching
+	to [IImageImporter]. The import-vs-link policy (world context, fallback
+	scene, character attachment) lives here because it's import policy, not
+	domain logic of scenes or characters.
+	"""
+
 	character_service: ICharacterService
 	scene_service: ISceneService
-	media_service: IMediaService
-	image_fetcher: IImageFetcher
+	image_importer: IImageImporter
 	parser: ILorebookParser
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def import_lorebook(
-		self, raw: bytes, owner_id: UUID, *, is_public: bool, import_images: bool
+		self,
+		raw: bytes,
+		owner_id: UUID,
+		*,
+		is_public: bool,
+		import_images: bool,
+		selected_keys: list[str] | None = None,
+		link_scenes: bool = True,
 	) -> ImportLorebookResultDTO:
 		lorebook = self.parser.parse(raw)
-		world_context = self.parser.world_context(lorebook.entries)
+		entries = self._selected_entries(lorebook, selected_keys)
 
-		character_ids: list[UUID] = []
-		scene_ids: list[UUID] = []
-		images_imported = 0
 		image_failures: list[str] = []
-		skipped = lorebook.skipped
-		image_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_IMAGE_FETCHES)
 
-		for entry in lorebook.entries:
-			if not entry.is_character:
-				continue
+		character_ids, char_images, char_skipped = await self._create_characters(
+			[e for e in entries if e.is_character],
+			owner_id=owner_id,
+			is_public=is_public,
+			import_images=import_images,
+			image_failures=image_failures,
+		)
+		scene_ids, scene_images, scene_skipped = await self._create_scenes(
+			location_entries=[e for e in entries if e.is_location],
+			all_entries=entries,
+			character_ids=character_ids,
+			owner_id=owner_id,
+			is_public=is_public,
+			import_images=import_images,
+			link_scenes=link_scenes,
+			image_failures=image_failures,
+		)
+
+		return ImportLorebookResultDTO(
+			characters_created=len(character_ids),
+			scenes_created=len(scene_ids),
+			images_imported=char_images + scene_images,
+			image_failures=image_failures,
+			character_ids=character_ids,
+			scene_ids=scene_ids,
+			skipped_entries=lorebook.skipped + char_skipped + scene_skipped,
+		)
+
+	async def _create_characters(
+		self,
+		entries: list[LorebookEntry],
+		*,
+		owner_id: UUID,
+		is_public: bool,
+		import_images: bool,
+		image_failures: list[str],
+	) -> tuple[list[UUID], int, int]:
+		ids: list[UUID] = []
+		images = 0
+		skipped = 0
+		for entry in entries:
 			try:
 				character_id = await self.character_service.create_character(
 					Character(
-						name=entry.name[:254],
+						name=entry.name[:_CHARACTER_NAME_LIMIT],
 						system_prompt=entry.content,
 						owner_id=owner_id,
 						is_public=is_public,
@@ -53,53 +104,83 @@ class ImportService(IImportService):
 				self.logger.error("Skipped character %r during import: %s", entry.name, exc)
 				skipped += 1
 				continue
-			character_ids.append(character_id)
-			if import_images:
-				images_imported += await self._import_entry_images(
+			ids.append(character_id)
+			images += await self._import_images(
+				entry.image_urls,
+				MediaEntityType.CHARACTER,
+				character_id,
+				owner_id,
+				is_public,
+				import_images,
+				image_failures,
+			)
+		return ids, images, skipped
+
+	async def _create_scenes(
+		self,
+		*,
+		location_entries: list[LorebookEntry],
+		all_entries: list[LorebookEntry],
+		character_ids: list[UUID],
+		owner_id: UUID,
+		is_public: bool,
+		import_images: bool,
+		link_scenes: bool,
+		image_failures: list[str],
+	) -> tuple[list[UUID], int, int]:
+		if link_scenes:
+			return await self._create_linked_scenes(
+				location_entries=location_entries,
+				all_entries=all_entries,
+				character_ids=character_ids,
+				owner_id=owner_id,
+				is_public=is_public,
+				import_images=import_images,
+				image_failures=image_failures,
+			)
+		return await self._create_standalone_scenes(
+			location_entries=location_entries,
+			owner_id=owner_id,
+			is_public=is_public,
+			import_images=import_images,
+			image_failures=image_failures,
+		)
+
+	async def _create_linked_scenes(
+		self,
+		*,
+		location_entries: list[LorebookEntry],
+		all_entries: list[LorebookEntry],
+		character_ids: list[UUID],
+		owner_id: UUID,
+		is_public: bool,
+		import_images: bool,
+		image_failures: list[str],
+	) -> tuple[list[UUID], int, int]:
+		world_context = self.parser.world_context(all_entries)
+
+		if location_entries:
+			scenes = [
+				self._scene(entry, background=entry.content + world_context, owner_id=owner_id, is_public=is_public)
+				for entry in location_entries
+			]
+			scene_ids, skipped = await self._bulk_create(scenes)
+			images = 0
+			for entry, scene_id in zip(location_entries, scene_ids):
+				await self._attach_characters(scene_id, character_ids)
+				images += await self._import_images(
 					entry.image_urls,
-					MediaEntityType.CHARACTER,
-					character_id,
+					MediaEntityType.SCENE,
+					scene_id,
 					owner_id,
 					is_public,
+					import_images,
 					image_failures,
-					image_semaphore,
 				)
+			return scene_ids, images, skipped
 
-		location_entries = [e for e in lorebook.entries if e.is_location]
-		if location_entries:
-			for entry in location_entries:
-				scene = Scene(
-					title=entry.name,
-					description=None,
-					background_prompt=entry.content + world_context,
-					owner_id=owner_id,
-					is_public=is_public,
-					initial_messages=[InitialMessage(text=self.parser.greeting(entry.name, entry.content))],
-				)
-				try:
-					scene_id = await self.scene_service.create_scene(scene)
-				except Exception as exc:
-					self.logger.error("Skipped scene %r during import: %s", entry.name, exc)
-					skipped += 1
-					continue
-				scene_ids.append(scene_id)
-				if character_ids:
-					try:
-						await self.scene_service.attach_characters(scene_id, character_ids)
-					except Exception as exc:
-						self.logger.error("Failed to attach characters to scene %s: %s", scene_id, exc)
-				if import_images:
-					images_imported += await self._import_entry_images(
-						entry.image_urls,
-						MediaEntityType.SCENE,
-						scene_id,
-						owner_id,
-						is_public,
-						image_failures,
-						image_semaphore,
-					)
-		elif lorebook.entries:
-			background = world_context or f"Imported lorebook containing {len(lorebook.entries)} entries."
+		if all_entries:
+			background = world_context or f"Imported lorebook containing {len(all_entries)} entries."
 			fallback = Scene(
 				title="Imported lorebook",
 				description=None,
@@ -108,63 +189,118 @@ class ImportService(IImportService):
 				is_public=is_public,
 				initial_messages=[InitialMessage(text="The story begins.")],
 			)
-			try:
-				scene_id = await self.scene_service.create_scene(fallback)
-				scene_ids.append(scene_id)
-				if character_ids:
-					try:
-						await self.scene_service.attach_characters(scene_id, character_ids)
-					except Exception as exc:
-						self.logger.error("Failed to attach characters to fallback scene %s: %s", scene_id, exc)
-			except Exception as exc:
-				self.logger.error("Skipped fallback scene during import: %s", exc)
-				skipped += 1
+			scene_ids, skipped = await self._bulk_create([fallback])
+			if scene_ids:
+				await self._attach_characters(scene_ids[0], character_ids)
+			return scene_ids, 0, skipped
 
-		return ImportLorebookResultDTO(
-			characters_created=len(character_ids),
-			scenes_created=len(scene_ids),
-			images_imported=images_imported,
-			image_failures=image_failures,
-			character_ids=character_ids,
-			scene_ids=scene_ids,
-			skipped_entries=skipped,
+		return [], 0, 0
+
+	async def _create_standalone_scenes(
+		self,
+		*,
+		location_entries: list[LorebookEntry],
+		owner_id: UUID,
+		is_public: bool,
+		import_images: bool,
+		image_failures: list[str],
+	) -> tuple[list[UUID], int, int]:
+		if not location_entries:
+			return [], 0, 0
+		scenes = [
+			self._scene(entry, background=entry.content, owner_id=owner_id, is_public=is_public)
+			for entry in location_entries
+		]
+		scene_ids, skipped = await self._bulk_create(scenes)
+		images = 0
+		for entry, scene_id in zip(location_entries, scene_ids):
+			images += await self._import_images(
+				entry.image_urls,
+				MediaEntityType.SCENE,
+				scene_id,
+				owner_id,
+				is_public,
+				import_images,
+				image_failures,
+			)
+		return scene_ids, images, skipped
+
+	def preview_lorebook(self, raw: bytes) -> ImportPreviewDTO:
+		lorebook = self.parser.parse(raw)
+		characters: list[ImportCandidateDTO] = []
+		scenes: list[ImportCandidateDTO] = []
+		other = 0
+		for entry in lorebook.entries:
+			if entry.is_character:
+				characters.append(self._candidate(entry))
+			elif entry.is_location:
+				scenes.append(self._candidate(entry))
+			else:
+				other += 1
+		return ImportPreviewDTO(
+			characters=characters,
+			scenes=scenes,
+			other_entries=other,
+			skipped_entries=lorebook.skipped,
+			world_context_preview=self.parser.world_context(lorebook.entries),
 		)
 
-	async def _import_entry_images(
+	@staticmethod
+	def _selected_entries(lorebook: Lorebook, selected_keys: list[str] | None) -> list[LorebookEntry]:
+		if selected_keys:
+			wanted = {k for k in selected_keys}
+			return [e for e in lorebook.entries if e.key in wanted]
+		return list(lorebook.entries)
+
+	def _scene(self, entry: LorebookEntry, *, background: str, owner_id: UUID, is_public: bool) -> Scene:
+		return Scene(
+			title=entry.name,
+			description=None,
+			background_prompt=background,
+			owner_id=owner_id,
+			is_public=is_public,
+			initial_messages=[InitialMessage(text=self.parser.greeting(entry.name, entry.content))],
+		)
+
+	async def _bulk_create(self, scenes: list[Scene]) -> tuple[list[UUID], int]:
+		try:
+			return await self.scene_service.bulk_create(scenes), 0
+		except Exception as exc:
+			self.logger.error("Skipped %d scene(s) during import: %s", len(scenes), exc)
+			return [], len(scenes)
+
+	async def _attach_characters(self, scene_id: UUID, character_ids: list[UUID]) -> None:
+		if not character_ids:
+			return
+		try:
+			await self.scene_service.attach_characters(scene_id, character_ids)
+		except Exception as exc:
+			self.logger.error("Failed to attach characters to scene %s: %s", scene_id, exc)
+
+	async def _import_images(
 		self,
 		urls: list[str],
 		entity_type: MediaEntityType,
 		entity_id: UUID,
 		owner_id: UUID,
 		is_public: bool,
-		failures: list[str],
-		semaphore: asyncio.Semaphore,
+		import_images: bool,
+		image_failures: list[str],
 	) -> int:
-		if not urls:
+		if not import_images or not urls:
 			return 0
+		imported, failed = await self.image_importer.import_images(urls, entity_type, entity_id, owner_id, is_public)
+		image_failures.extend(failed)
+		return imported
 
-		async def _fetch_one(url: str) -> int:
-			async with semaphore:
-				fetched = await self.image_fetcher.fetch(url)
-				if fetched is None or not fetched.data:
-					failures.append(url)
-					return 0
-				try:
-					await self.media_service.upload_bytes(
-						MediaUploadBytesDTO(
-							data=fetched.data,
-							content_type=fetched.content_type,
-							entity_type=entity_type,
-							entity_id=entity_id,
-							owner_id=owner_id,
-							is_public=is_public,
-						)
-					)
-					return 1
-				except Exception as exc:
-					self.logger.warning("Image import failed for %s: %s", url, exc)
-					failures.append(url)
-					return 0
-
-		results = await asyncio.gather(*(_fetch_one(url) for url in urls))
-		return sum(results)
+	@staticmethod
+	def _candidate(entry: LorebookEntry) -> ImportCandidateDTO:
+		return ImportCandidateDTO(
+			key=entry.key,
+			uid=entry.uid,
+			name=entry.name,
+			group=entry.group,
+			content_preview=entry.content[:_PREVIEW_CONTENT_LIMIT],
+			content_length=len(entry.content),
+			image_count=len(entry.image_urls),
+		)

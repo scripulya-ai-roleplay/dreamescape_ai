@@ -21,6 +21,7 @@ _BARE_IMAGE_RE = re.compile(
 
 @dataclass(frozen=True)
 class LorebookEntry:
+	key: str
 	uid: int | str | None
 	name: str
 	content: str
@@ -54,19 +55,19 @@ class LorebookParser(ILorebookParser):
 			raise InvalidLorebookException(message="Lorebook JSON has no 'entries' object or array")
 
 		if isinstance(entries_obj, dict):
-			raw_items = list(entries_obj.values())
+			raw_items = [(str(k), v) for k, v in entries_obj.items()]
 		elif isinstance(entries_obj, list):
-			raw_items = entries_obj
+			raw_items = [(str(i), v) for i, v in enumerate(entries_obj)]
 		else:
 			raise InvalidLorebookException(message="'entries' must be an object or array")
 
 		entries: list[LorebookEntry] = []
 		skipped = 0
-		for item in raw_items:
+		for key, item in raw_items:
 			if not isinstance(item, dict):
 				skipped += 1
 				continue
-			entry = self._to_entry(item)
+			entry = self._to_entry(key, item)
 			if entry is None:
 				skipped += 1
 				continue
@@ -108,7 +109,7 @@ class LorebookParser(ILorebookParser):
 					return entries
 		return None
 
-	def _to_entry(self, raw_entry: dict) -> LorebookEntry | None:
+	def _to_entry(self, key: str, raw_entry: dict) -> LorebookEntry | None:
 		name = self._as_text(raw_entry.get("comment")) or self._as_text(raw_entry.get("name"))
 		content = self._as_text(raw_entry.get("content"))
 		if not name or not content:
@@ -118,7 +119,14 @@ class LorebookParser(ILorebookParser):
 		if not isinstance(uid, (int, str)):
 			uid = None
 		image_urls = self._extract_image_urls(f"{name}\n{content}")
-		return LorebookEntry(uid=uid, name=name, content=content, group=group, image_urls=image_urls)
+		return LorebookEntry(
+			key=key,
+			uid=uid,
+			name=name,
+			content=content,
+			group=group,
+			image_urls=image_urls,
+		)
 
 	@staticmethod
 	def _as_text(value: object) -> str:

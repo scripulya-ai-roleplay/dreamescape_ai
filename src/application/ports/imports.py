@@ -6,7 +6,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from src.application.imports.schemas import ImportLorebookResultDTO
+from src.application.imports.schemas import (
+	ImportLorebookResultDTO,
+	ImportPreviewDTO,
+)
+from src.domain.models import MediaEntityType
 
 if TYPE_CHECKING:
 	from src.application.imports.lorebook import Lorebook, LorebookEntry
@@ -24,11 +28,33 @@ class IImageFetcher(abc.ABC):
 	async def fetch(self, url: str) -> FetchedImage | None: ...
 
 
+class IImageImporter(abc.ABC):
+	@abc.abstractmethod
+	async def import_images(
+		self,
+		urls: list[str],
+		entity_type: MediaEntityType,
+		entity_id: UUID,
+		owner_id: UUID,
+		is_public: bool,
+	) -> tuple[int, list[str]]: ...
+
+
 class IImportService(abc.ABC):
 	@abc.abstractmethod
 	async def import_lorebook(
-		self, raw: bytes, owner_id: UUID, *, is_public: bool, import_images: bool
+		self,
+		raw: bytes,
+		owner_id: UUID,
+		*,
+		is_public: bool,
+		import_images: bool,
+		selected_keys: list[str] | None = None,
+		link_scenes: bool = True,
 	) -> ImportLorebookResultDTO: ...
+
+	@abc.abstractmethod
+	def preview_lorebook(self, raw: bytes) -> ImportPreviewDTO: ...
 
 
 class ILorebookParser(abc.ABC):

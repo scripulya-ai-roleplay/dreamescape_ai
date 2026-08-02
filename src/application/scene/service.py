@@ -36,6 +36,26 @@ class SceneService(ISceneService):
 				self.logger.error(f"Failed to create scene: {e}")
 				raise
 
+	async def bulk_create(self, scenes: list[Scene]) -> list[UUID]:
+		self.logger.info(f"Bulk creating {len(scenes)} scene(s)")
+
+		for scene in scenes:
+			if not scene.initial_messages:
+				raise ValueError("Scene must have at least one initial message")
+
+		ids: list[UUID] = []
+		async with self.uow:
+			try:
+				for scene in scenes:
+					scene_id = await self.gateway.create(scene)
+					await self.initial_message_gateway.bulk_create(scene_id, scene.initial_messages)
+					ids.append(scene_id)
+				self.logger.info(f"Successfully created {len(ids)} scene(s)")
+				return ids
+			except Exception as e:
+				self.logger.error(f"Failed to bulk create scenes: {e}")
+				raise
+
 	async def get_one(self, scene_uuid: UUID, actor_id: UUID | None) -> Scene:
 		self.logger.info(f"Getting scene: {scene_uuid}")
 

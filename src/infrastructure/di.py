@@ -15,6 +15,7 @@ from src.application.chats.prompt_service import PromptService
 from src.application.chats.service import ChatService
 from src.application.chats.settings_service import ChatSettingsService
 from src.application.events.server_events_service import ServerEventsService
+from src.application.imports.image_importer import ImageImporter
 from src.application.imports.lorebook import LorebookParser
 from src.application.imports.service import ImportService
 from src.application.media.service import MediaService
@@ -30,7 +31,7 @@ from src.application.ports.chats import (
 	IChatSettingsService,
 	IChatsService,
 )
-from src.application.ports.imports import IImageFetcher, IImportService, ILorebookParser
+from src.application.ports.imports import IImageFetcher, IImageImporter, IImportService, ILorebookParser
 from src.application.ports.llm import IGatewayFactory, IPromptService, IScripulyaAgentClient, LLMModelType
 from src.application.ports.media import IImageReader, IMediaGateway, IMediaService, IObjectStorageGateway
 from src.application.ports.messages import IGenerationHeartbeat, IMessageGateway, IMessageService, IServerEventsService
@@ -368,20 +369,27 @@ class ServiceProvider(Provider):
 		return CharacterService(uow=uow, gateway=character_gateway, authz=authorization_service, logger=logger)
 
 	@provide(scope=Scope.REQUEST)
+	def provide_image_importer(
+		self,
+		media_service: IMediaService,
+		image_fetcher: IImageFetcher,
+		logger: logging.Logger,
+	) -> IImageImporter:
+		return ImageImporter(media_service=media_service, image_fetcher=image_fetcher, logger=logger)
+
+	@provide(scope=Scope.REQUEST)
 	def provide_import_service(
 		self,
 		character_service: ICharacterService,
 		scene_service: ISceneService,
-		media_service: IMediaService,
-		image_fetcher: IImageFetcher,
+		image_importer: IImageImporter,
 		parser: ILorebookParser,
 		logger: logging.Logger,
 	) -> IImportService:
 		return ImportService(
 			character_service=character_service,
 			scene_service=scene_service,
-			media_service=media_service,
-			image_fetcher=image_fetcher,
+			image_importer=image_importer,
 			parser=parser,
 			logger=logger,
 		)
