@@ -1,16 +1,27 @@
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
+from src.application.chats.schemas import ContextUsage, ModelContextUsage
+from src.application.chats.settings import ChatSettings
 from src.application.message.schemas import MessagesFilterDto
 from src.application.ports.authorization import IAuthorizationService
 from src.application.ports.characters import ICharacterGateway
 from src.application.ports.chats import IChatEventGateway, IChatGateway, IChatSettingsGateway, IChatsService
-from src.application.ports.llm import IGatewayFactory, IPromptService, LLMErrorResponse, LLMResult, UserMessageDTO
+from src.application.ports.llm import (
+	LLM_MODEL_CONTEXT_WINDOWS,
+	IGatewayFactory,
+	IPromptService,
+	ITokenCounter,
+	LLMErrorResponse,
+	LLMModelType,
+	LLMResult,
+	UserMessageDTO,
+)
 from src.application.ports.messages import IMessageService
 from src.application.ports.scenes import ISceneGateway
 from src.conf import settings
-from src.domain.models import ChatRoles, Message, MessageStatus
+from src.domain.models import Chat, ChatRoles, Message, MessageStatus
 from src.infrastructure.exceptions import BaseAPIException, InitialMessageRequiredException, PersonaRequiredException
 from src.infrastructure.logging.logger import Logger
 
@@ -24,8 +35,10 @@ class LLMChatsService(IChatsService):
 	scene_gateway: ISceneGateway
 	character_gateway: ICharacterGateway
 	prompt_service: IPromptService
+	token_counter: ITokenCounter
 	authz: IAuthorizationService
 	_events: IChatEventGateway
+	context_windows: dict[LLMModelType, int] = field(default_factory=lambda: LLM_MODEL_CONTEXT_WINDOWS)
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def send_message(self, chat_dto: UserMessageDTO, actor_id: UUID) -> Message:
@@ -34,21 +47,10 @@ class LLMChatsService(IChatsService):
 
 		chat = await self.chat_gateway.get_one(chat_dto.chat_id)
 		self.authz.require_owned(owner_id=chat.user_id, actor_id=actor_id, noun="chat")
-		history_page = await self.message_service.search(MessagesFilterDto(chats_ids=[chat_dto.chat_id]), chat.user_id)
-		if not history_page.items and chat.initial_message_id is None:
+		history = await self._load_history(chat_dto.chat_id, chat.user_id, chat_dto.llm_model)
+		if not history and chat.initial_message_id is None:
 			raise InitialMessageRequiredException()
-		history = [
-			UserMessageDTO(message=m.message, chat_id=chat_dto.chat_id, llm_model=chat_dto.llm_model, role=m.role)
-			for m in reversed(history_page.items)
-		]
-
-		scene = await self.scene_gateway.get_one(chat.scene_id)
-		characters = await self.character_gateway.get_for_scene(chat.scene_id)
-		if chat.user_character_id is None:
-			raise PersonaRequiredException()
-		user_character = await self.character_gateway.get_one(chat.user_character_id)
-		chat_settings = await self.chat_settings_gateway.get_for_chat(chat_dto.chat_id)
-		system_prompt = self.prompt_service.build_system_prompt(scene, characters, user_character, chat_settings)
+		system_prompt, chat_settings = await self._assemble_prompt(chat)
 
 		# A client-authored message is always role=USER; never persist a role
 		# supplied by the caller, which would let it forge assistant messages.
@@ -108,3 +110,50 @@ class LLMChatsService(IChatsService):
 			self._events.publish_message(chat_dto.chat_id, model_message)
 
 		return user_message
+
+	async def get_context_usage(self, chat_id: UUID, actor_id: UUID) -> ContextUsage:
+		chat = await self.chat_gateway.get_one(chat_id)
+		self.authz.require_owned(owner_id=chat.user_id, actor_id=actor_id, noun="chat")
+		history = await self._load_history(chat_id, chat.user_id, None)
+		system_prompt, _ = await self._assemble_prompt(chat)
+
+		system_prompt_tokens = self.token_counter.count(system_prompt)
+		history_tokens = sum(self.token_counter.count(m.message) for m in history)
+		total_tokens = system_prompt_tokens + history_tokens
+
+		models = [
+			ModelContextUsage(
+				llm_model=model,
+				context_window_tokens=window,
+				remaining_tokens=window - total_tokens,
+				fits=total_tokens <= window,
+			)
+			for model in LLMModelType
+			if (window := self.context_windows.get(model)) is not None
+		]
+		return ContextUsage(
+			system_prompt_tokens=system_prompt_tokens,
+			history_tokens=history_tokens,
+			history_messages_count=len(history),
+			total_tokens=total_tokens,
+			models=models,
+		)
+
+	async def _load_history(
+		self, chat_id: UUID, owner_id: UUID, llm_model: LLMModelType | None
+	) -> list[UserMessageDTO]:
+		history_page = await self.message_service.search(MessagesFilterDto(chats_ids=[chat_id]), owner_id)
+		return [
+			UserMessageDTO(message=m.message, chat_id=chat_id, llm_model=llm_model, role=m.role)
+			for m in reversed(history_page.items)
+		]
+
+	async def _assemble_prompt(self, chat: Chat) -> tuple[str, ChatSettings | None]:
+		scene = await self.scene_gateway.get_one(chat.scene_id)
+		characters = await self.character_gateway.get_for_scene(chat.scene_id)
+		if chat.user_character_id is None:
+			raise PersonaRequiredException()
+		user_character = await self.character_gateway.get_one(chat.user_character_id)
+		chat_settings = await self.chat_settings_gateway.get_for_chat(chat.id)
+		system_prompt = self.prompt_service.build_system_prompt(scene, characters, user_character, chat_settings)
+		return system_prompt, chat_settings

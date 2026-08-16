@@ -10,6 +10,9 @@ COPY pyproject.toml uv.lock ./
 RUN uv export --frozen --no-dev --no-emit-project -o requirements.txt \
     && pip install --no-cache-dir -r requirements.txt
 
+ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken
+RUN python -c "import tiktoken; tiktoken.get_encoding('o200k_base')"
+
 FROM python:3.13-slim AS runtime
 
 WORKDIR /app
@@ -17,6 +20,8 @@ WORKDIR /app
 # Copy installed packages from the deps stage
 COPY --from=deps /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=deps /usr/local/bin /usr/local/bin
+COPY --from=deps /opt/tiktoken /opt/tiktoken
+ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken
 
 COPY src/ src/
 COPY tests/ tests/

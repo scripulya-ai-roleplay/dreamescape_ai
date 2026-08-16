@@ -22,7 +22,14 @@ from src.application.chats.settings import (
 from src.application.ports.characters import ICharacterGateway
 from src.application.ports.chats import IChatEventGateway, IChatGateway, IChatSettingsGateway
 from src.application.ports.common import Page
-from src.application.ports.llm import IGatewayFactory, ILLMChatGateway, LLMModelType, LLMResponse, UserMessageDTO
+from src.application.ports.llm import (
+	IGatewayFactory,
+	ILLMChatGateway,
+	ITokenCounter,
+	LLMModelType,
+	LLMResponse,
+	UserMessageDTO,
+)
 from src.application.ports.messages import IMessageService
 from src.application.ports.scenes import ISceneGateway
 from src.conf import settings
@@ -67,6 +74,12 @@ class TestChatsService:
 		return Mock(spec=IChatEventGateway)
 
 	@pytest.fixture
+	def stub_token_counter(self):
+		counter = Mock(spec=ITokenCounter)
+		counter.count.side_effect = len
+		return counter
+
+	@pytest.fixture
 	def mock_chat_settings_gateway(self):
 		"""Mock settings gateway. get_for_chat() returns None by default (no settings stored)."""
 		gateway = AsyncMock(spec=IChatSettingsGateway)
@@ -78,9 +91,10 @@ class TestChatsService:
 		return uuid4()
 
 	@pytest.fixture
-	def mock_chat_gateway(self, sample_user_id):
+	def mock_chat_gateway(self, sample_user_id, sample_chat_id):
 		gateway = AsyncMock(spec=IChatGateway)
 		gateway.get_one.return_value = Chat(
+			id=sample_chat_id,
 			title="chat",
 			user_id=sample_user_id,
 			scene_id=uuid4(),
@@ -111,6 +125,7 @@ class TestChatsService:
 		mock_chat_gateway,
 		mock_scene_gateway,
 		mock_character_gateway,
+		stub_token_counter,
 		mock_events,
 	):
 		return LLMChatsService(
@@ -121,6 +136,7 @@ class TestChatsService:
 			scene_gateway=mock_scene_gateway,
 			character_gateway=mock_character_gateway,
 			prompt_service=PromptService(),
+			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
 		)
@@ -210,6 +226,7 @@ class TestChatsService:
 		mock_chat_gateway,
 		mock_scene_gateway,
 		mock_character_gateway,
+		stub_token_counter,
 		mock_events,
 		sample_user_message_dto,
 		sample_user_id,
@@ -225,6 +242,7 @@ class TestChatsService:
 			scene_gateway=mock_scene_gateway,
 			character_gateway=mock_character_gateway,
 			prompt_service=PromptService(),
+			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
 		)
@@ -241,7 +259,7 @@ class TestChatsService:
 	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_rejects_chat_owned_by_another_user(
-		self, mock_chat_gateway, mock_message_service, mock_gateway, sample_user_message_dto
+		self, mock_chat_gateway, mock_message_service, mock_gateway, stub_token_counter, sample_user_message_dto
 	):
 		"""The chat must belong to the actor: a foreign-owned chat 403s before any
 		persistence or LLM call (authorization lives in the service, not the caller)."""
@@ -256,6 +274,7 @@ class TestChatsService:
 			scene_gateway=AsyncMock(spec=ISceneGateway),
 			character_gateway=AsyncMock(spec=ICharacterGateway),
 			prompt_service=PromptService(),
+			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=Mock(spec=IChatEventGateway),
 		)
@@ -270,7 +289,13 @@ class TestChatsService:
 	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_send_message_requires_chosen_initial_message(
-		self, mock_chat_gateway, mock_message_service, mock_gateway, sample_user_message_dto, sample_user_id
+		self,
+		mock_chat_gateway,
+		mock_message_service,
+		mock_gateway,
+		stub_token_counter,
+		sample_user_message_dto,
+		sample_user_id,
 	):
 		"""Until the user picks an initial message inside the chat, sending is rejected
 		with INITIAL_MESSAGE_REQUIRED before any persistence or LLM call."""
@@ -289,6 +314,7 @@ class TestChatsService:
 			scene_gateway=AsyncMock(spec=ISceneGateway),
 			character_gateway=AsyncMock(spec=ICharacterGateway),
 			prompt_service=PromptService(),
+			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=Mock(spec=IChatEventGateway),
 		)
@@ -309,6 +335,7 @@ class TestChatsService:
 		mock_chat_gateway,
 		mock_scene_gateway,
 		mock_character_gateway,
+		stub_token_counter,
 		mock_events,
 		sample_user_message_dto,
 		sample_user_id,
@@ -322,6 +349,7 @@ class TestChatsService:
 			scene_gateway=mock_scene_gateway,
 			character_gateway=mock_character_gateway,
 			prompt_service=PromptService(),
+			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
 		)
@@ -340,6 +368,7 @@ class TestChatsService:
 		mock_chat_gateway,
 		mock_scene_gateway,
 		mock_character_gateway,
+		stub_token_counter,
 		mock_events,
 		sample_user_message_dto,
 		sample_user_id,
@@ -366,6 +395,7 @@ class TestChatsService:
 			scene_gateway=mock_scene_gateway,
 			character_gateway=mock_character_gateway,
 			prompt_service=PromptService(),
+			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
 		)
@@ -569,3 +599,131 @@ class TestChatsService:
 
 		_, history = mock_gateway.submit.await_args.args
 		assert [m.message for m in history] == ["oldest", "newest"]
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_context_usage_totals_are_sum_of_system_and_history(
+		self, chats_service, mock_message_service, sample_chat_id, sample_user_id
+	):
+		"""The estimated total is the counted system prompt plus every counted history
+		message, with the same history slice send_message assembles."""
+		m1 = Message(message="hello there", chat_id=sample_chat_id, role=ChatRoles.USER)
+		m2 = Message(message="greetings and salutations", chat_id=sample_chat_id, role=ChatRoles.MODEL)
+		mock_message_service.search.return_value = Page[Message](items=[m2, m1], count=2, offset=0, limit=10)
+
+		result = await chats_service.get_context_usage(sample_chat_id, sample_user_id)
+
+		assert result.system_prompt_tokens > 0
+		assert result.history_tokens == len("hello there") + len("greetings and salutations")
+		assert result.history_messages_count == 2
+		assert result.total_tokens == result.system_prompt_tokens + result.history_tokens
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_context_usage_models_ordered_by_enum_with_fits_math(
+		self,
+		mock_gateway_factory,
+		mock_message_service,
+		mock_chat_settings_gateway,
+		mock_chat_gateway,
+		mock_scene_gateway,
+		mock_character_gateway,
+		stub_token_counter,
+		mock_events,
+		sample_chat_id,
+		sample_user_id,
+	):
+		"""Per-model rows follow enum declaration order, and remaining_tokens/fits are
+		derived from the injected window size."""
+		chats_service = LLMChatsService(
+			gateway_factory=mock_gateway_factory,
+			message_service=mock_message_service,
+			chat_settings_gateway=mock_chat_settings_gateway,
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=mock_scene_gateway,
+			character_gateway=mock_character_gateway,
+			prompt_service=PromptService(),
+			token_counter=stub_token_counter,
+			authz=AuthorizationService(),
+			_events=mock_events,
+			context_windows={LLMModelType.gemini_flash_preview: 10_000_000, LLMModelType.qwen_max: 12},
+		)
+
+		result = await chats_service.get_context_usage(sample_chat_id, sample_user_id)
+
+		assert [m.llm_model for m in result.models] == [
+			LLMModelType.gemini_flash_preview,
+			LLMModelType.qwen_max,
+		]
+		gemini, qwen = result.models
+		assert gemini.context_window_tokens == 10_000_000
+		assert gemini.remaining_tokens == 10_000_000 - result.total_tokens
+		assert gemini.fits is True
+		assert qwen.context_window_tokens == 12
+		assert qwen.remaining_tokens == 12 - result.total_tokens
+		assert qwen.fits is False
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_context_usage_excludes_testing_mock(self, chats_service, sample_chat_id, sample_user_id):
+		result = await chats_service.get_context_usage(sample_chat_id, sample_user_id)
+
+		model_values = {m.llm_model for m in result.models}
+		assert LLMModelType.testing_mock not in model_values
+		assert len(result.models) == len(LLMModelType) - 1
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_context_usage_requires_persona(
+		self, mock_chat_gateway, mock_message_service, chats_service, sample_chat_id, sample_user_id
+	):
+		"""The persona section is part of the assembled prompt, so a chat without one is
+		rejected just like send_message."""
+		mock_chat_gateway.get_one.return_value = Chat(
+			title="chat",
+			user_id=sample_user_id,
+			scene_id=uuid4(),
+			user_character_id=None,
+			initial_message_id=uuid4(),
+		)
+
+		with pytest.raises(PersonaRequiredException):
+			await chats_service.get_context_usage(sample_chat_id, sample_user_id)
+
+		mock_message_service.send_message.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_context_usage_skips_initial_message_gate(
+		self, mock_chat_gateway, chats_service, sample_chat_id, sample_user_id
+	):
+		"""The preview is read-only: a fresh chat with no initial message chosen still
+		reports usage instead of raising INITIAL_MESSAGE_REQUIRED."""
+		mock_chat_gateway.get_one.return_value = Chat(
+			title="fresh chat",
+			user_id=sample_user_id,
+			scene_id=uuid4(),
+			user_character_id=uuid4(),
+			initial_message_id=None,
+		)
+
+		result = await chats_service.get_context_usage(sample_chat_id, sample_user_id)
+
+		assert result.history_messages_count == 0
+		assert result.history_tokens == 0
+		assert result.total_tokens == result.system_prompt_tokens
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_context_usage_rejects_chat_owned_by_another_user(
+		self, mock_chat_gateway, mock_message_service, chats_service, sample_chat_id
+	):
+		mock_chat_gateway.get_one.return_value = Chat(
+			title="not yours", user_id=uuid4(), scene_id=uuid4(), user_character_id=uuid4()
+		)
+
+		with pytest.raises(HTTPException) as exc:
+			await chats_service.get_context_usage(sample_chat_id, uuid4())
+		assert exc.value.status_code == 403
+
+		mock_message_service.send_message.assert_not_called()

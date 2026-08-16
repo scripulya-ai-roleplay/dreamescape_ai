@@ -23,6 +23,25 @@ class LLMModelType(StrEnum):
 	glm_4_5 = "glm-4.5"
 
 
+LLM_MODEL_CONTEXT_WINDOWS: dict[LLMModelType, int] = {
+	LLMModelType.gemini_flash_preview: 1_048_576,
+	LLMModelType.gemini_pro: 1_048_576,
+	LLMModelType.claude_sonnet: 200_000,
+	LLMModelType.claude_haiku: 200_000,
+	LLMModelType.qwen_plus: 1_000_000,
+	LLMModelType.qwen_turbo: 1_000_000,
+	LLMModelType.qwen_max: 32_768,
+	LLMModelType.glm_5_2: 1_000_000,
+	LLMModelType.glm_4_6: 200_000,
+	LLMModelType.glm_4_5: 128_000,
+}
+
+
+class ITokenCounter(abc.ABC):
+	@abc.abstractmethod
+	def count(self, text: str) -> int: ...
+
+
 class LLMResponse(BaseModel):
 	text: str
 	model: LLMModelType
