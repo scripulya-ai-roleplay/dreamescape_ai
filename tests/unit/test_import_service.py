@@ -270,3 +270,54 @@ class TestImportService:
 		assert result.scenes_created == 0
 		svc.scene_service.bulk_create.assert_not_awaited()
 		svc.scene_service.attach_characters.assert_not_awaited()
+
+	def test_preview_ungrouped_lorebook_defaults_to_characters(self):
+		svc = _service()
+		preview = svc.preview_lorebook(
+			_lorebook(
+				{
+					"0": {"comment": "Itami", "content": "JSDF officer."},
+					"1": {"comment": "Lelei", "content": "Mage."},
+					"2": {"comment": "Special Region", "content": "Overview."},
+				}
+			)
+		)
+		assert [c.name for c in preview.characters] == ["Itami", "Lelei", "Special Region"]
+		assert preview.scenes == []
+		assert preview.other_entries == 0
+
+	@pytest.mark.asyncio
+	async def test_import_ungrouped_lorebook_creates_characters(self):
+		svc = _service()
+		svc.character_service.create_character.return_value = uuid4()
+		svc.scene_service.bulk_create.return_value = [uuid4()]
+
+		result = await svc.import_lorebook(
+			_lorebook(
+				{
+					"0": {"comment": "Itami", "content": "JSDF officer."},
+					"1": {"comment": "Lelei", "content": "Mage."},
+				}
+			),
+			owner_id=uuid4(),
+			is_public=False,
+			import_images=False,
+		)
+
+		assert result.characters_created == 2
+		assert svc.character_service.create_character.await_count == 2
+
+	def test_preview_synonym_groups_classified(self):
+		svc = _service()
+		preview = svc.preview_lorebook(
+			_lorebook(
+				{
+					"0": {"comment": "Itami", "content": "JSDF officer.", "group": "People"},
+					"1": {"comment": "Ginza", "content": "Tokyo district.", "group": "Places"},
+					"2": {"comment": "Empire", "content": "Lore.", "group": "Lore"},
+				}
+			)
+		)
+		assert [c.name for c in preview.characters] == ["Itami"]
+		assert [s.name for s in preview.scenes] == ["Ginza"]
+		assert preview.other_entries == 1

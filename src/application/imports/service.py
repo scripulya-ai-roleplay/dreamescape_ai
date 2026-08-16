@@ -17,6 +17,11 @@ from src.infrastructure.logging.logger import Logger
 _PREVIEW_CONTENT_LIMIT = 300
 _CHARACTER_NAME_LIMIT = 254
 
+_CHARACTER_GROUPS = frozenset(
+	{"character", "characters", "char", "npc", "npcs", "person", "people", "protagonist", "cast"}
+)
+_LOCATION_GROUPS = frozenset({"location", "locations", "place", "places", "area", "region", "setting", "world"})
+
 
 @dataclass
 class ImportService(IImportService):
@@ -47,18 +52,19 @@ class ImportService(IImportService):
 	) -> ImportLorebookResultDTO:
 		lorebook = self.parser.parse(raw)
 		entries = self._selected_entries(lorebook, selected_keys)
+		character_entries, location_entries, _other = self._classify(entries)
 
 		image_failures: list[str] = []
 
 		character_ids, char_images, char_skipped = await self._create_characters(
-			[e for e in entries if e.is_character],
+			character_entries,
 			owner_id=owner_id,
 			is_public=is_public,
 			import_images=import_images,
 			image_failures=image_failures,
 		)
 		scene_ids, scene_images, scene_skipped = await self._create_scenes(
-			location_entries=[e for e in entries if e.is_location],
+			location_entries=location_entries,
 			all_entries=entries,
 			character_ids=character_ids,
 			owner_id=owner_id,
@@ -227,23 +233,33 @@ class ImportService(IImportService):
 
 	def preview_lorebook(self, raw: bytes) -> ImportPreviewDTO:
 		lorebook = self.parser.parse(raw)
-		characters: list[ImportCandidateDTO] = []
-		scenes: list[ImportCandidateDTO] = []
-		other = 0
-		for entry in lorebook.entries:
-			if entry.is_character:
-				characters.append(self._candidate(entry))
-			elif entry.is_location:
-				scenes.append(self._candidate(entry))
-			else:
-				other += 1
+		character_entries, location_entries, other_entries = self._classify(lorebook.entries)
 		return ImportPreviewDTO(
-			characters=characters,
-			scenes=scenes,
-			other_entries=other,
+			characters=[self._candidate(e) for e in character_entries],
+			scenes=[self._candidate(e) for e in location_entries],
+			other_entries=len(other_entries),
 			skipped_entries=lorebook.skipped,
 			world_context_preview=self.parser.world_context(lorebook.entries),
 		)
+
+	@staticmethod
+	def _classify(
+		entries: list[LorebookEntry],
+	) -> tuple[list[LorebookEntry], list[LorebookEntry], list[LorebookEntry]]:
+		characters: list[LorebookEntry] = []
+		locations: list[LorebookEntry] = []
+		other: list[LorebookEntry] = []
+		for entry in entries:
+			group = entry.group.strip().lower()
+			if group in _CHARACTER_GROUPS:
+				characters.append(entry)
+			elif group in _LOCATION_GROUPS:
+				locations.append(entry)
+			else:
+				other.append(entry)
+		if not characters and not locations:
+			return list(entries), [], []
+		return characters, locations, other
 
 	@staticmethod
 	def _selected_entries(lorebook: Lorebook, selected_keys: list[str] | None) -> list[LorebookEntry]:
