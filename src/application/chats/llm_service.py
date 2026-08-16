@@ -1,5 +1,7 @@
+import asyncio
 import logging
 from dataclasses import dataclass, field
+from typing import ClassVar
 from uuid import UUID
 
 from src.application.chats.schemas import ContextUsage, ModelContextUsage
@@ -8,8 +10,12 @@ from src.application.message.schemas import MessagesFilterDto
 from src.application.ports.authorization import IAuthorizationService
 from src.application.ports.characters import ICharacterGateway
 from src.application.ports.chats import IChatEventGateway, IChatGateway, IChatSettingsGateway, IChatsService
+from src.application.ports.common import Page
 from src.application.ports.llm import (
+	CONTEXT_WINDOW_SAFETY_FACTOR,
+	DEFAULT_OUTPUT_RESERVE_TOKENS,
 	LLM_MODEL_CONTEXT_WINDOWS,
+	OUTPUT_RESERVE_BY_TOKEN_LIMIT,
 	IGatewayFactory,
 	IPromptService,
 	ITokenCounter,
@@ -22,12 +28,21 @@ from src.application.ports.messages import IMessageService
 from src.application.ports.scenes import ISceneGateway
 from src.conf import settings
 from src.domain.models import Chat, ChatRoles, Message, MessageStatus
-from src.infrastructure.exceptions import BaseAPIException, InitialMessageRequiredException, PersonaRequiredException
+from src.infrastructure.exceptions import (
+	BaseAPIException,
+	ContextWindowExceededException,
+	InitialMessageRequiredException,
+	PersonaRequiredException,
+)
 from src.infrastructure.logging.logger import Logger
+
+_MAX_SEARCH_LIMIT = 100_000
 
 
 @dataclass
 class LLMChatsService(IChatsService):
+	MAX_SEARCH_LIMIT: ClassVar[int] = _MAX_SEARCH_LIMIT
+
 	gateway_factory: IGatewayFactory
 	message_service: IMessageService
 	chat_settings_gateway: IChatSettingsGateway
@@ -38,7 +53,9 @@ class LLMChatsService(IChatsService):
 	token_counter: ITokenCounter
 	authz: IAuthorizationService
 	_events: IChatEventGateway
-	context_windows: dict[LLMModelType, int] = field(default_factory=lambda: LLM_MODEL_CONTEXT_WINDOWS)
+	context_windows: dict[LLMModelType, int] = field(default_factory=lambda: dict(LLM_MODEL_CONTEXT_WINDOWS))
+	safety_factor: float = CONTEXT_WINDOW_SAFETY_FACTOR
+	_cached_base_prompt_tokens: int | None = None
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def send_message(self, chat_dto: UserMessageDTO, actor_id: UUID) -> Message:
@@ -47,10 +64,13 @@ class LLMChatsService(IChatsService):
 
 		chat = await self.chat_gateway.get_one(chat_dto.chat_id)
 		self.authz.require_owned(owner_id=chat.user_id, actor_id=actor_id, noun="chat")
-		history = await self._load_history(chat_dto.chat_id, chat.user_id, chat_dto.llm_model)
+		history_page = await self._search_history(chat_dto.chat_id, chat.user_id)
+		history = self._page_to_history(history_page, chat_dto.chat_id, chat_dto.llm_model)
 		if not history and chat.initial_message_id is None:
 			raise InitialMessageRequiredException()
 		system_prompt, chat_settings = await self._assemble_prompt(chat)
+
+		await self._require_fits_window(system_prompt, history, chat_dto, chat_settings)
 
 		# A client-authored message is always role=USER; never persist a role
 		# supplied by the caller, which would let it forge assistant messages.
@@ -114,38 +134,99 @@ class LLMChatsService(IChatsService):
 	async def get_context_usage(self, chat_id: UUID, actor_id: UUID) -> ContextUsage:
 		chat = await self.chat_gateway.get_one(chat_id)
 		self.authz.require_owned(owner_id=chat.user_id, actor_id=actor_id, noun="chat")
-		history = await self._load_history(chat_id, chat.user_id, None)
-		system_prompt, _ = await self._assemble_prompt(chat)
+		history_page = await self._search_history(chat_id, chat.user_id)
+		history = self._page_to_history(history_page, chat_id, None)
+		system_prompt, chat_settings = await self._assemble_prompt(chat)
 
-		system_prompt_tokens = self.token_counter.count(system_prompt)
-		history_tokens = sum(self.token_counter.count(m.message) for m in history)
-		total_tokens = system_prompt_tokens + history_tokens
+		cards_tokens, history_tokens = await asyncio.to_thread(
+			self._count_parts, system_prompt, [m.message for m in history], None
+		)
+		total_tokens = cards_tokens + history_tokens
 
 		models = [
 			ModelContextUsage(
 				llm_model=model,
 				context_window_tokens=window,
-				remaining_tokens=window - total_tokens,
-				fits=total_tokens <= window,
+				usable_tokens=usable,
+				remaining_tokens=usable - total_tokens,
+				fits=total_tokens <= usable,
+				estimated=True,
 			)
 			for model in LLMModelType
 			if (window := self.context_windows.get(model)) is not None
+			for usable in (self._usable_tokens(model, chat_settings),)
 		]
 		return ContextUsage(
-			system_prompt_tokens=system_prompt_tokens,
+			cards_tokens=cards_tokens,
 			history_tokens=history_tokens,
 			history_messages_count=len(history),
 			total_tokens=total_tokens,
+			estimated=True,
 			models=models,
 		)
 
-	async def _load_history(
-		self, chat_id: UUID, owner_id: UUID, llm_model: LLMModelType | None
-	) -> list[UserMessageDTO]:
-		history_page = await self.message_service.search(MessagesFilterDto(chats_ids=[chat_id]), owner_id)
+	async def _require_fits_window(
+		self,
+		system_prompt: str,
+		history: list[UserMessageDTO],
+		chat_dto: UserMessageDTO,
+		chat_settings: ChatSettings | None,
+	) -> None:
+		window = self.context_windows.get(chat_dto.llm_model)
+		if window is None:
+			return
+		usable = self._usable_tokens(chat_dto.llm_model, chat_settings)
+		cards_tokens, history_tokens = await asyncio.to_thread(
+			self._count_parts, system_prompt, [m.message for m in history], chat_dto.message
+		)
+		if cards_tokens + history_tokens > usable:
+			raise ContextWindowExceededException(
+				details={
+					"llm_model": chat_dto.llm_model.value,
+					"context_window_tokens": window,
+					"usable_tokens": usable,
+					"prompt_tokens": cards_tokens + history_tokens,
+					"suggestion": "summarize some messages to continue",
+				}
+			)
+
+	def _count_parts(self, system_prompt: str, history_texts: list[str], new_message: str | None) -> tuple[int, int]:
+		cards = self.token_counter.count(system_prompt) - self._base_prompt_tokens()
+		history_sum = sum(self.token_counter.count(text) for text in history_texts)
+		if new_message is not None:
+			history_sum += self.token_counter.count(new_message)
+		return cards, history_sum
+
+	def _usable_tokens(self, model: LLMModelType, chat_settings: ChatSettings | None) -> int:
+		window = self.context_windows.get(model)
+		if window is None:
+			return 0
+		limit = window
+		if chat_settings is not None and chat_settings.contextLimitOverride is not None:
+			limit = min(limit, chat_settings.contextLimitOverride)
+		return int(limit * self.safety_factor) - self._output_reserve(chat_settings)
+
+	@staticmethod
+	def _output_reserve(chat_settings: ChatSettings | None) -> int:
+		if chat_settings is None:
+			return DEFAULT_OUTPUT_RESERVE_TOKENS
+		return OUTPUT_RESERVE_BY_TOKEN_LIMIT.get(chat_settings.responseTokenLimit, DEFAULT_OUTPUT_RESERVE_TOKENS)
+
+	def _base_prompt_tokens(self) -> int:
+		if self._cached_base_prompt_tokens is None:
+			self._cached_base_prompt_tokens = self.token_counter.count(settings.SYSTEM_PROMPT.strip())
+		return self._cached_base_prompt_tokens
+
+	async def _search_history(self, chat_id: UUID, owner_id: UUID) -> Page[Message]:
+		return await self.message_service.search(
+			MessagesFilterDto(chats_ids=[chat_id], limit=self.MAX_SEARCH_LIMIT), owner_id
+		)
+
+	@staticmethod
+	def _page_to_history(page: Page[Message], chat_id: UUID, llm_model: LLMModelType | None) -> list[UserMessageDTO]:
 		return [
 			UserMessageDTO(message=m.message, chat_id=chat_id, llm_model=llm_model, role=m.role)
-			for m in reversed(history_page.items)
+			for m in reversed(page.items)
 		]
 
 	async def _assemble_prompt(self, chat: Chat) -> tuple[str, ChatSettings | None]:

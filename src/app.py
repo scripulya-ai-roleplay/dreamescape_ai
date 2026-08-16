@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import Depends, FastAPI
 
+from src.application.ports.llm import ITokenCounter
 from src.application.ports.media import IObjectStorageGateway
 from src.application.streaming.llm_watchdog import GenerationWatchdog
 from src.conf import settings
@@ -36,6 +37,10 @@ async def lifespan(app: FastAPI):
 		logger.info("Media buckets ensured")
 	except Exception:
 		logger.warning("Could not ensure media buckets at startup; will retry on first upload", exc_info=True)
+
+	token_counter = await app.state.dishka_container.get(ITokenCounter)
+	token_counter.count("")
+	logger.info("Token counter warmed (tiktoken encoding loaded)")
 
 	if not settings.LLM_AGENT_ENABLED:
 		logger.info("scripulya_agent disabled (LLM_AGENT_ENABLED=false); RabbitMQ broker not started")

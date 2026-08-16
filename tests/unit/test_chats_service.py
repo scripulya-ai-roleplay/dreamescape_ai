@@ -23,6 +23,8 @@ from src.application.ports.characters import ICharacterGateway
 from src.application.ports.chats import IChatEventGateway, IChatGateway, IChatSettingsGateway
 from src.application.ports.common import Page
 from src.application.ports.llm import (
+	CONTEXT_WINDOW_SAFETY_FACTOR,
+	DEFAULT_OUTPUT_RESERVE_TOKENS,
 	IGatewayFactory,
 	ILLMChatGateway,
 	ITokenCounter,
@@ -34,7 +36,12 @@ from src.application.ports.messages import IMessageService
 from src.application.ports.scenes import ISceneGateway
 from src.conf import settings
 from src.domain.models import Character, Chat, ChatRoles, Message, MessageStatus, Scene
-from src.infrastructure.exceptions import InitialMessageRequiredException, LLMGatewayException, PersonaRequiredException
+from src.infrastructure.exceptions import (
+	ContextWindowExceededException,
+	InitialMessageRequiredException,
+	LLMGatewayException,
+	PersonaRequiredException,
+)
 
 
 def _persist(message: Message) -> Message:
@@ -602,21 +609,104 @@ class TestChatsService:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
-	async def test_context_usage_totals_are_sum_of_system_and_history(
-		self, chats_service, mock_message_service, sample_chat_id, sample_user_id
+	async def test_history_forwarded_is_not_truncated_to_page_default(
+		self, chats_service, mock_message_service, mock_gateway, sample_user_message_dto, sample_user_id
 	):
-		"""The estimated total is the counted system prompt plus every counted history
-		message, with the same history slice send_message assembles."""
+		"""The LLM receives the full chat history: the search asks for MAX_SEARCH_LIMIT
+		instead of the filter's 50-message default (pagination is a mobile-app concern,
+		not a prompt-assembly one)."""
+		messages = [
+			Message(message=f"msg{i}", chat_id=sample_user_message_dto.chat_id, role=ChatRoles.USER) for i in range(73)
+		]
+		mock_message_service.search.return_value = Page[Message](
+			items=list(reversed(messages)), count=73, offset=0, limit=LLMChatsService.MAX_SEARCH_LIMIT
+		)
+
+		await chats_service.send_message(sample_user_message_dto, sample_user_id)
+
+		assert mock_message_service.search.await_args.args[0].limit == LLMChatsService.MAX_SEARCH_LIMIT
+		_, history = mock_gateway.submit.await_args.args
+		assert len(history) == 73
+		assert [m.message for m in history] == [f"msg{i}" for i in range(73)]
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_context_usage_totals_are_cards_plus_full_history(
+		self,
+		chats_service,
+		mock_message_service,
+		mock_scene_gateway,
+		mock_character_gateway,
+		sample_chat_id,
+		sample_user_id,
+	):
+		"""The total covers every message in the chat plus the assembled cards
+		(characters/scene/persona), with the fixed base SYSTEM_PROMPT excluded —
+		it does not scale with the chat, so it is not part of the summarization
+		volume the caller wants to track."""
 		m1 = Message(message="hello there", chat_id=sample_chat_id, role=ChatRoles.USER)
 		m2 = Message(message="greetings and salutations", chat_id=sample_chat_id, role=ChatRoles.MODEL)
 		mock_message_service.search.return_value = Page[Message](items=[m2, m1], count=2, offset=0, limit=10)
 
 		result = await chats_service.get_context_usage(sample_chat_id, sample_user_id)
 
-		assert result.system_prompt_tokens > 0
+		expected_prompt = PromptService().build_system_prompt(
+			mock_scene_gateway.get_one.return_value,
+			mock_character_gateway.get_for_scene.return_value,
+			mock_character_gateway.get_one.return_value,
+			None,
+		)
+		expected_cards = len(expected_prompt) - len(settings.SYSTEM_PROMPT.strip())
+		assert result.cards_tokens == expected_cards
 		assert result.history_tokens == len("hello there") + len("greetings and salutations")
 		assert result.history_messages_count == 2
-		assert result.total_tokens == result.system_prompt_tokens + result.history_tokens
+		assert result.total_tokens == expected_cards + result.history_tokens
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_context_usage_counts_every_message_beyond_send_page_limit(
+		self, chats_service, mock_message_service, sample_chat_id, sample_user_id
+	):
+		"""Usage measures the whole chat, not the 50-message slice send_message
+		assembles: the search is issued with a large limit and every returned
+		message is counted."""
+		messages = [Message(message=f"msg{i}", chat_id=sample_chat_id, role=ChatRoles.USER) for i in range(75)]
+		mock_message_service.search.return_value = Page[Message](
+			items=list(reversed(messages)), count=75, offset=0, limit=100_000
+		)
+
+		result = await chats_service.get_context_usage(sample_chat_id, sample_user_id)
+
+		requested_filter = mock_message_service.search.await_args.args[0]
+		assert requested_filter.limit == LLMChatsService.MAX_SEARCH_LIMIT
+		assert result.history_messages_count == 75
+		assert result.history_tokens == sum(len(m.message) for m in messages)
+		assert result.total_tokens == result.cards_tokens + result.history_tokens
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_context_usage_cards_exclude_base_system_prompt(
+		self, chats_service, mock_scene_gateway, sample_chat_id, sample_user_id
+	):
+		"""cards_tokens is the assembled system prompt minus the fixed base prompt, so
+		it tracks only the chat-dependent sections (characters, scene, persona,
+		storytelling)."""
+		mock_scene_gateway.get_one.return_value = Scene(
+			title="SceneTitleXYZ",
+			owner_id=uuid4(),
+			background_prompt="background text",
+		)
+
+		result = await chats_service.get_context_usage(sample_chat_id, sample_user_id)
+
+		full_prompt = PromptService().build_system_prompt(
+			Scene(title="SceneTitleXYZ", owner_id=uuid4(), background_prompt="background text"),
+			[],
+			Character(name="Persona", system_prompt="persona"),
+			None,
+		)
+		expected = len(full_prompt) - len(settings.SYSTEM_PROMPT.strip())
+		assert result.cards_tokens == expected
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -634,7 +724,8 @@ class TestChatsService:
 		sample_user_id,
 	):
 		"""Per-model rows follow enum declaration order, and remaining_tokens/fits are
-		derived from the injected window size."""
+		derived from the safety-margined window minus the output reserve, not the raw
+		provider limit."""
 		chats_service = LLMChatsService(
 			gateway_factory=mock_gateway_factory,
 			message_service=mock_message_service,
@@ -657,11 +748,194 @@ class TestChatsService:
 		]
 		gemini, qwen = result.models
 		assert gemini.context_window_tokens == 10_000_000
-		assert gemini.remaining_tokens == 10_000_000 - result.total_tokens
+		assert gemini.usable_tokens == 9_000_000 - DEFAULT_OUTPUT_RESERVE_TOKENS
+		assert gemini.remaining_tokens == gemini.usable_tokens - result.total_tokens
 		assert gemini.fits is True
 		assert qwen.context_window_tokens == 12
-		assert qwen.remaining_tokens == 12 - result.total_tokens
+		assert qwen.usable_tokens == 10 - DEFAULT_OUTPUT_RESERVE_TOKENS
+		assert qwen.remaining_tokens == qwen.usable_tokens - result.total_tokens
 		assert qwen.fits is False
+		assert result.estimated is True
+		assert all(m.estimated is True for m in result.models)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_context_usage_safety_margin_flips_borderline_fit(
+		self,
+		mock_gateway_factory,
+		mock_message_service,
+		mock_chat_settings_gateway,
+		mock_chat_gateway,
+		mock_scene_gateway,
+		mock_character_gateway,
+		stub_token_counter,
+		mock_events,
+		sample_chat_id,
+		sample_user_id,
+	):
+		"""Token counts come from a single o200k_base estimate for every provider, so a
+		chat inside the raw window can still overflow the provider's own tokenizer.
+		fits is therefore decided against the margined window: a total within 10% of
+		the limit reports fits=False."""
+		big = Message(message="x" * 120_000, chat_id=sample_chat_id, role=ChatRoles.USER)
+		mock_message_service.search.return_value = Page[Message](items=[big], count=1, offset=0, limit=10)
+		chats_service = LLMChatsService(
+			gateway_factory=mock_gateway_factory,
+			message_service=mock_message_service,
+			chat_settings_gateway=mock_chat_settings_gateway,
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=mock_scene_gateway,
+			character_gateway=mock_character_gateway,
+			prompt_service=PromptService(),
+			token_counter=stub_token_counter,
+			authz=AuthorizationService(),
+			_events=mock_events,
+			context_windows={LLMModelType.glm_4_5: 128_000},
+		)
+
+		result = await chats_service.get_context_usage(sample_chat_id, sample_user_id)
+
+		glm = result.models[0]
+		assert glm.usable_tokens == int(128_000 * CONTEXT_WINDOW_SAFETY_FACTOR) - DEFAULT_OUTPUT_RESERVE_TOKENS
+		assert result.total_tokens < glm.context_window_tokens
+		assert result.total_tokens > glm.usable_tokens
+		assert glm.fits is False
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_send_message_rejects_prompt_above_context_window(
+		self,
+		mock_gateway_factory,
+		mock_message_service,
+		mock_chat_settings_gateway,
+		mock_chat_gateway,
+		mock_scene_gateway,
+		mock_character_gateway,
+		stub_token_counter,
+		mock_events,
+		sample_chat_id,
+		sample_user_id,
+		sample_user_message_dto,
+	):
+		"""A prompt that cannot fit the model's (margined, reserve-adjusted) window is
+		rejected with CONTEXT_WINDOW_EXCEEDED before anything is persisted or queued —
+		the recovery action for the client is to summarize messages."""
+		mock_message_service.search.return_value = Page[Message](items=[], count=0, offset=0, limit=10)
+		chats_service = LLMChatsService(
+			gateway_factory=mock_gateway_factory,
+			message_service=mock_message_service,
+			chat_settings_gateway=mock_chat_settings_gateway,
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=mock_scene_gateway,
+			character_gateway=mock_character_gateway,
+			prompt_service=PromptService(),
+			token_counter=stub_token_counter,
+			authz=AuthorizationService(),
+			_events=mock_events,
+			context_windows={LLMModelType.gemini_flash_preview: 500},
+		)
+		mock_gateway_factory.create_gateway.return_value = Mock()
+
+		with pytest.raises(ContextWindowExceededException) as exc:
+			await chats_service.send_message(sample_user_message_dto, sample_user_id)
+
+		assert exc.value.status_code == 413
+		assert exc.value.error_code == "CONTEXT_WINDOW_EXCEEDED"
+		assert "summarize" in str(exc.value).lower()
+		details = exc.value.details
+		assert details["llm_model"] == "gemini-3-flash-preview"
+		assert details["usable_tokens"] == int(500 * CONTEXT_WINDOW_SAFETY_FACTOR) - DEFAULT_OUTPUT_RESERVE_TOKENS
+
+		mock_message_service.send_message.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_send_message_allows_prompt_within_context_window(
+		self,
+		mock_gateway_factory,
+		mock_message_service,
+		mock_chat_settings_gateway,
+		mock_chat_gateway,
+		mock_scene_gateway,
+		mock_character_gateway,
+		stub_token_counter,
+		mock_events,
+		sample_user_message_dto,
+		sample_user_id,
+	):
+		"""A prompt inside the usable window passes the gate and is submitted as before."""
+		mock_gateway = AsyncMock(spec=ILLMChatGateway)
+		mock_gateway.submit.return_value = None
+		mock_gateway_factory.create_gateway.return_value = mock_gateway
+		chats_service = LLMChatsService(
+			gateway_factory=mock_gateway_factory,
+			message_service=mock_message_service,
+			chat_settings_gateway=mock_chat_settings_gateway,
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=mock_scene_gateway,
+			character_gateway=mock_character_gateway,
+			prompt_service=PromptService(),
+			token_counter=stub_token_counter,
+			authz=AuthorizationService(),
+			_events=mock_events,
+			context_windows={LLMModelType.gemini_flash_preview: 1_000_000},
+		)
+
+		result = await chats_service.send_message(sample_user_message_dto, sample_user_id)
+
+		assert result.role == ChatRoles.USER
+		mock_gateway.submit.assert_awaited_once()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_context_usage_honors_context_limit_override(
+		self,
+		mock_gateway_factory,
+		mock_message_service,
+		mock_chat_settings_gateway,
+		mock_chat_gateway,
+		mock_scene_gateway,
+		mock_character_gateway,
+		stub_token_counter,
+		mock_events,
+		sample_chat_id,
+		sample_user_id,
+	):
+		"""A chat's contextLimitOverride caps usable_tokens below the provider window:
+		the user-set spend limit wins over the model's raw capacity."""
+		mock_chat_settings_gateway.get_for_chat.return_value = ChatSettings(
+			aiControlBehavior=ControlBehavior.DONT_CONTROL,
+			continueBehavior=ControlBehavior.DONT_CONTROL,
+			perspective=Perspective.SECOND_PERSON,
+			temperature=TemperatureSettings(preset=Preset.MID, value=0.7),
+			responseLength=ResponseLength.MEDIUM,
+			responseTokenLimit=TokenLimit.CAPPED,
+			reasoning=Toggle.OFF,
+			reasoningEffort=ReasoningEffort.MID,
+			aiMediaPicker=Toggle.OFF,
+			contextLimitOverride=8_000,
+			functions=FunctionsSettings(),
+		)
+		chats_service = LLMChatsService(
+			gateway_factory=mock_gateway_factory,
+			message_service=mock_message_service,
+			chat_settings_gateway=mock_chat_settings_gateway,
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=mock_scene_gateway,
+			character_gateway=mock_character_gateway,
+			prompt_service=PromptService(),
+			token_counter=stub_token_counter,
+			authz=AuthorizationService(),
+			_events=mock_events,
+			context_windows={LLMModelType.claude_sonnet: 200_000},
+		)
+
+		result = await chats_service.get_context_usage(sample_chat_id, sample_user_id)
+
+		sonnet = result.models[0]
+		assert sonnet.context_window_tokens == 200_000
+		assert sonnet.usable_tokens == int(8_000 * CONTEXT_WINDOW_SAFETY_FACTOR) - 2048
+		assert sonnet.remaining_tokens == sonnet.usable_tokens - result.total_tokens
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -677,8 +951,9 @@ class TestChatsService:
 	async def test_context_usage_requires_persona(
 		self, mock_chat_gateway, mock_message_service, chats_service, sample_chat_id, sample_user_id
 	):
-		"""The persona section is part of the assembled prompt, so a chat without one is
-		rejected just like send_message."""
+		"""The persona section is part of the assembled prompt, so a chat without one
+		cannot be measured: _assemble_prompt raises before any counting, and nothing
+		is persisted."""
 		mock_chat_gateway.get_one.return_value = Chat(
 			title="chat",
 			user_id=sample_user_id,
@@ -711,7 +986,7 @@ class TestChatsService:
 
 		assert result.history_messages_count == 0
 		assert result.history_tokens == 0
-		assert result.total_tokens == result.system_prompt_tokens
+		assert result.total_tokens == result.cards_tokens
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
@@ -726,4 +1001,4 @@ class TestChatsService:
 			await chats_service.get_context_usage(sample_chat_id, uuid4())
 		assert exc.value.status_code == 403
 
-		mock_message_service.send_message.assert_not_called()
+		mock_message_service.search.assert_not_awaited()

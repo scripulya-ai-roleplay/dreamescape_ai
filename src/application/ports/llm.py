@@ -30,11 +30,21 @@ LLM_MODEL_CONTEXT_WINDOWS: dict[LLMModelType, int] = {
 	LLMModelType.claude_haiku: 200_000,
 	LLMModelType.qwen_plus: 1_000_000,
 	LLMModelType.qwen_turbo: 1_000_000,
-	LLMModelType.qwen_max: 32_768,
+	LLMModelType.qwen_max: 262_144,
 	LLMModelType.glm_5_2: 1_000_000,
 	LLMModelType.glm_4_6: 200_000,
 	LLMModelType.glm_4_5: 128_000,
 }
+
+CONTEXT_WINDOW_SAFETY_FACTOR = 0.9
+
+OUTPUT_RESERVE_BY_TOKEN_LIMIT: dict[str, int] = {
+	"Capped": 2048,
+	"High": 8192,
+	"Max": 16384,
+}
+
+DEFAULT_OUTPUT_RESERVE_TOKENS = 4096
 
 
 class ITokenCounter(abc.ABC):
@@ -66,18 +76,18 @@ class LLMRequest(BaseModel):
 
 
 class LLMErrorResponse(BaseModel):
-	error_code: str  # machine-readable snake_case, e.g. "model_is_inaccessible"
-	status: int  # HTTP-style status, e.g. 503
-	reason: str  # short human-readable reason phrase
-	message: str  # detailed message
+	error_code: str
+	status: int
+	reason: str
+	message: str
 	provider: str | None = None
 	details: dict = {}
 
 
 class LLMResult(BaseModel):
 	chat_id: UUID
-	message: UserMessageDTO | None = None  # the model's reply (role=MODEL) on success
-	error: LLMErrorResponse | None = None  # set on failure
+	message: UserMessageDTO | None = None
+	error: LLMErrorResponse | None = None
 
 
 class ILLMChatGateway(abc.ABC):

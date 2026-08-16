@@ -20,15 +20,18 @@ class ModelContextUsage(BaseModel):
 
 	llm_model: LLMModelType
 	context_window_tokens: int
+	usable_tokens: int
 	remaining_tokens: int
 	fits: bool
+	estimated: bool
 
 
 class ContextUsage(BaseModel):
 	model_config = ConfigDict(frozen=True)
 
-	system_prompt_tokens: int
+	cards_tokens: int
 	history_tokens: int
 	history_messages_count: int
 	total_tokens: int
+	estimated: bool
 	models: list[ModelContextUsage]

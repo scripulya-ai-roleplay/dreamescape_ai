@@ -1,5 +1,7 @@
 import pytest
 
+from src.application.ports.llm import LLM_MODEL_CONTEXT_WINDOWS
+
 
 @pytest.mark.e2e
 class TestChatsAPI:
@@ -434,18 +436,21 @@ class TestChatsAPI:
 		assert response.status_code == 200
 		result = response.json()["result"]
 
-		assert result["system_prompt_tokens"] > 0
+		assert result["cards_tokens"] > 0
 		assert result["history_tokens"] >= 0
 		assert result["history_messages_count"] >= 0
-		assert result["total_tokens"] == result["system_prompt_tokens"] + result["history_tokens"]
+		assert result["total_tokens"] == result["cards_tokens"] + result["history_tokens"]
 
 		models = result["models"]
-		assert len(models) == 10
+		assert len(models) == len(LLM_MODEL_CONTEXT_WINDOWS)
 		assert all(m["llm_model"] != "testing_mock" for m in models)
+		assert result["estimated"] is True
 		for m in models:
 			assert m["context_window_tokens"] > 0
-			assert m["remaining_tokens"] == m["context_window_tokens"] - result["total_tokens"]
-			assert m["fits"] == (result["total_tokens"] <= m["context_window_tokens"])
+			assert m["usable_tokens"] < m["context_window_tokens"]
+			assert m["estimated"] is True
+			assert m["remaining_tokens"] == m["usable_tokens"] - result["total_tokens"]
+			assert m["fits"] == (result["total_tokens"] <= m["usable_tokens"])
 
 	def test_context_usage_rejects_other_user(self, client, other_auth_headers):
 		response = client.get(f"/api/v1/chats/{self.E2E_TEST_CHAT_ID}/context-usage", headers=other_auth_headers)

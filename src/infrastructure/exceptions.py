@@ -78,6 +78,20 @@ class InitialMessageRequiredException(BaseAPIException):
 		)
 
 
+class ContextWindowExceededException(BaseAPIException):
+	def __init__(
+		self,
+		message: str = "The conversation has grown beyond the model's context window; summarize some messages to continue",
+		**kwargs,
+	):
+		super().__init__(
+			message=message,
+			status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+			error_code="CONTEXT_WINDOW_EXCEEDED",
+			**kwargs,
+		)
+
+
 class InvalidLorebookException(BaseAPIException):
 	def __init__(self, message: str = "Lorebook file is invalid", **kwargs):
 		super().__init__(
