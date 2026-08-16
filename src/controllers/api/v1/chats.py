@@ -6,9 +6,9 @@ from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 
-from src.application.chats.schemas import ChatFilterDTO
+from src.application.chats.schemas import ChatFilterDTO, ContextUsage
 from src.application.ports.characters import ICharacterService
-from src.application.ports.chats import IChatService
+from src.application.ports.chats import IChatService, IChatsService
 from src.application.ports.common import ApiResponse, Page
 from src.controllers.api.v1.auth_dependencies import get_current_user
 from src.domain.models import Chat, User
@@ -51,6 +51,17 @@ async def get_chat_details(
 	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[Chat]:
 	result = await chat_service.get_one(chat_id, current_user.id)
+	return ApiResponse(result=result, correlation_id=correlation_id.get())
+
+
+@router.get("/{chat_id}/context-usage")
+@inject
+async def get_chat_context_usage(
+	chats_service: FromDishka[IChatsService],
+	chat_id: UUID = Path(),
+	current_user: User = Depends(get_current_user),
+) -> ApiResponse[ContextUsage]:
+	result = await chats_service.get_context_usage(chat_id, current_user.id)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 

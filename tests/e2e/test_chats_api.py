@@ -1,5 +1,7 @@
 import pytest
 
+from src.application.ports.llm import LLM_MODEL_CONTEXT_WINDOWS
+
 
 @pytest.mark.e2e
 class TestChatsAPI:
@@ -423,6 +425,43 @@ class TestChatsAPI:
 		assert "result" in data
 		assert "correlation_id" in data
 		assert data["correlation_id"] is not None
+
+	E2E_TEST_CHAT_ID = "82dc4309-0ab2-4a9d-86c9-a49f8931494a"
+
+	def test_context_usage_returns_usage_for_all_models(self, client, auth_headers):
+		"""The seeded E2E Test Chat (persona + scene set) reports token totals and a
+		per-model usage row for every real model, excluding testing_mock."""
+		response = client.get(f"/api/v1/chats/{self.E2E_TEST_CHAT_ID}/context-usage", headers=auth_headers)
+
+		assert response.status_code == 200
+		result = response.json()["result"]
+
+		assert result["cards_tokens"] > 0
+		assert result["history_tokens"] >= 0
+		assert result["history_messages_count"] >= 0
+		assert result["total_tokens"] == result["cards_tokens"] + result["history_tokens"]
+
+		models = result["models"]
+		assert len(models) == len(LLM_MODEL_CONTEXT_WINDOWS)
+		assert all(m["llm_model"] != "testing_mock" for m in models)
+		assert result["estimated"] is True
+		for m in models:
+			assert m["context_window_tokens"] > 0
+			assert m["usable_tokens"] < m["context_window_tokens"]
+			assert m["estimated"] is True
+			assert m["remaining_tokens"] == m["usable_tokens"] - result["total_tokens"]
+			assert m["fits"] == (result["total_tokens"] <= m["usable_tokens"])
+
+	def test_context_usage_rejects_other_user(self, client, other_auth_headers):
+		response = client.get(f"/api/v1/chats/{self.E2E_TEST_CHAT_ID}/context-usage", headers=other_auth_headers)
+
+		assert response.status_code == 403
+
+	def test_context_usage_unknown_chat_returns_404(self, client, auth_headers):
+		response = client.get("/api/v1/chats/00000000-0000-0000-0000-000000000000/context-usage", headers=auth_headers)
+
+		assert response.status_code == 404
+		assert response.json()["error"]["code"] == "RESOURCE_NOT_FOUND"
 
 
 @pytest.fixture(scope="function")

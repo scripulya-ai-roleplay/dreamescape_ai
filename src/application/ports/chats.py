@@ -2,7 +2,7 @@ import abc
 import asyncio
 from uuid import UUID
 
-from src.application.chats.schemas import ChatFilterDTO
+from src.application.chats.schemas import ChatFilterDTO, ContextUsage
 from src.application.chats.settings import ChatSettings
 from src.application.ports.common import Page
 from src.application.ports.llm import UserMessageDTO
@@ -12,6 +12,9 @@ from src.domain.models import Chat, Message
 class IChatsService(abc.ABC):
 	@abc.abstractmethod
 	async def send_message(self, chat_dto: UserMessageDTO, actor_id: UUID) -> Message: ...
+
+	@abc.abstractmethod
+	async def get_context_usage(self, chat_id: UUID, actor_id: UUID) -> ContextUsage: ...
 
 
 class IChatGateway(abc.ABC):

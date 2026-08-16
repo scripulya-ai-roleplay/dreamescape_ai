@@ -32,7 +32,13 @@ from src.application.ports.chats import (
 	IChatsService,
 )
 from src.application.ports.imports import IImageFetcher, IImageImporter, IImportService, ILorebookParser
-from src.application.ports.llm import IGatewayFactory, IPromptService, IScripulyaAgentClient, LLMModelType
+from src.application.ports.llm import (
+	IGatewayFactory,
+	IPromptService,
+	IScripulyaAgentClient,
+	ITokenCounter,
+	LLMModelType,
+)
 from src.application.ports.media import IImageReader, IMediaGateway, IMediaService, IObjectStorageGateway
 from src.application.ports.messages import IGenerationHeartbeat, IMessageGateway, IMessageService, IServerEventsService
 from src.application.ports.scenes import IInitialMessageGateway, IInitialMessageService, ISceneGateway, ISceneService
@@ -60,6 +66,7 @@ from src.infrastructure.gateways.object_storage_gateway import MinioObjectStorag
 from src.infrastructure.gateways.redis_heartbeat import RedisGenerationHeartbeat
 from src.infrastructure.gateways.scenes_gateway import SceneGateway
 from src.infrastructure.gateways.scripulya_agent_gateway import ScripulyaAgentClient, ScripulyaAgentGateway
+from src.infrastructure.gateways.token_counter import TiktokenTokenCounter
 from src.infrastructure.gateways.user_gateway import UserGateway
 from src.infrastructure.gateways.visibility import VisibilityGateway
 from src.infrastructure.logging.logger import Logger
@@ -171,6 +178,10 @@ class GatewayProvider(Provider):
 	def provide_lorebook_parser(self) -> ILorebookParser:
 		return LorebookParser()
 
+	@provide(scope=Scope.APP)
+	def provide_token_counter(self) -> ITokenCounter:
+		return TiktokenTokenCounter()
+
 	@provide(scope=Scope.REQUEST)
 	async def provide_http_image_fetcher(self, logger: logging.Logger) -> AsyncGenerator[IImageFetcher]:
 		fetcher = HttpImageFetcher(max_bytes=settings.MEDIA_MAX_UPLOAD_BYTES, logger=logger)
@@ -242,6 +253,7 @@ class ServiceProvider(Provider):
 		scene_gateway: ISceneGateway,
 		character_gateway: ICharacterGateway,
 		prompt_service: IPromptService,
+		token_counter: ITokenCounter,
 		authorization_service: IAuthorizationService,
 		events: IChatEventGateway,
 		logger: logging.Logger,
@@ -254,6 +266,7 @@ class ServiceProvider(Provider):
 			scene_gateway=scene_gateway,
 			character_gateway=character_gateway,
 			prompt_service=prompt_service,
+			token_counter=token_counter,
 			authz=authorization_service,
 			_events=events,
 			logger=logger,
