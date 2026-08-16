@@ -4,10 +4,10 @@ from uuid import uuid4
 
 import pytest
 
-from src.application.imports.lorebook import LorebookParser
+from src.application.imports.lorebook import CARD_KEY, WHOLE_BOOK_KEY, LorebookParser
 from src.application.imports.service import ImportService
 from src.application.ports.imports import IImageImporter
-from src.domain.models import MediaEntityType
+from src.domain.models import Character, MediaEntityType
 from src.infrastructure.exceptions import InvalidLorebookException
 
 
@@ -270,3 +270,254 @@ class TestImportService:
 		assert result.scenes_created == 0
 		svc.scene_service.bulk_create.assert_not_awaited()
 		svc.scene_service.attach_characters.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestCardImport:
+	def _card(self) -> bytes:
+		return json.dumps(
+			{
+				"spec": "chara_card_v3",
+				"spec_version": "3.0",
+				"data": {
+					"name": "Azua",
+					"description": "Dragon rider.",
+					"personality": "Gruff.",
+					"scenario": "Aerie at dawn.",
+					"first_mes": "Hi.",
+					"character_book": {"entries": []},
+				},
+			}
+		).encode()
+
+	@pytest.mark.asyncio
+	async def test_card_preview_offers_card_character(self):
+		svc = _service()
+		preview = svc.preview_lorebook(self._card())
+		assert [c.name for c in preview.characters] == ["Azua"]
+		assert preview.characters[0].key == CARD_KEY
+		assert preview.scenes == []
+		assert "Dragon rider." in preview.characters[0].content_preview
+
+	@pytest.mark.asyncio
+	async def test_card_import_creates_character_from_card_body(self):
+		svc = _service()
+		cid = uuid4()
+		svc.character_service.create_character.return_value = cid
+		svc.scene_service.bulk_create.return_value = [uuid4()]
+
+		result = await svc.import_lorebook(
+			self._card(),
+			owner_id=uuid4(),
+			is_public=False,
+			import_images=False,
+			selected_keys=[CARD_KEY],
+			link_scenes=False,
+		)
+
+		assert result.characters_created == 1
+		assert result.character_ids == [cid]
+		created = svc.character_service.create_character.await_args.args[0]
+		assert created.name == "Azua"
+		assert "Dragon rider." in created.system_prompt
+		assert "Personality:" in created.system_prompt
+		assert "Scenario:" in created.system_prompt
+
+	@pytest.mark.asyncio
+	async def test_world_info_file_name_is_not_mistaken_for_a_card(self):
+		# A World Info file carries book metadata (name/description) at the top
+		# level — that must not surface as a character candidate.
+		svc = _service()
+		raw = json.dumps(
+			{
+				"name": "My World",
+				"description": "book metadata",
+				"entries": {"0": {"comment": "Amn", "content": "Nation.", "group": "location"}},
+			}
+		).encode()
+		preview = svc.preview_lorebook(raw)
+		assert preview.characters == []
+		assert [s.name for s in preview.scenes] == ["Amn"]
+
+
+@pytest.mark.unit
+class TestWholeBookScene:
+	def _world_book(self) -> bytes:
+		return json.dumps(
+			{
+				"name": "Sandbox_Lorebook",
+				"description": "Standing directives.",
+				"entries": {
+					"0": {"comment": "SANDBOX_STATE", "content": "Directive one.", "group": "Sandbox"},
+					"1": {"comment": "WORLD_PULSE", "content": "Directive two.", "group": "Sandbox"},
+				},
+			}
+		).encode()
+
+	@pytest.mark.asyncio
+	async def test_world_book_preview_offers_whole_book_scene(self):
+		svc = _service()
+		preview = svc.preview_lorebook(self._world_book())
+		assert preview.characters == []
+		assert len(preview.scenes) == 1
+		book = preview.scenes[0]
+		assert book.key == WHOLE_BOOK_KEY
+		assert book.name == "Sandbox_Lorebook"
+		assert book.content_length > len("Directive one.")
+
+	@pytest.mark.asyncio
+	async def test_world_book_import_creates_one_scene_with_full_content(self):
+		svc = _service()
+		svc.scene_service.bulk_create.return_value = [uuid4()]
+
+		result = await svc.import_lorebook(
+			self._world_book(),
+			owner_id=uuid4(),
+			is_public=False,
+			import_images=False,
+			selected_keys=[WHOLE_BOOK_KEY],
+			link_scenes=False,
+		)
+
+		assert result.scenes_created == 1
+		scene = svc.scene_service.bulk_create.await_args.args[0][0]
+		assert scene.title == "Sandbox_Lorebook"
+		assert "Directive one." in scene.background_prompt
+		assert "Directive two." in scene.background_prompt
+		assert "SANDBOX_STATE" in scene.background_prompt
+		svc.character_service.create_character.assert_not_called()
+
+	@pytest.mark.asyncio
+	async def test_whole_book_not_offered_when_selectable_entries_exist(self):
+		svc = _service()
+		raw = _lorebook(
+			{
+				"0": {"comment": "Amn", "content": "Nation.", "group": "location"},
+				"1": {"comment": "bard", "content": "Musician.", "group": "class"},
+			}
+		)
+		preview = svc.preview_lorebook(raw)
+		assert [s.key for s in preview.scenes] == ["0"]
+		assert all(s.key != WHOLE_BOOK_KEY for s in preview.scenes)
+
+
+@pytest.mark.unit
+class TestAttachToCharacter:
+	async def _prepared(self, existing_prompt: str = "You are Azua."):
+		svc = _service()
+		character_id, owner_id = uuid4(), uuid4()
+		svc.character_service.get_one.return_value = Character(
+			id=character_id,
+			owner_id=owner_id,
+			name="Azua",
+			system_prompt=existing_prompt,
+		)
+		return svc, character_id, owner_id
+
+	@pytest.mark.asyncio
+	async def test_appends_selected_entries_to_existing_character(self):
+		svc, character_id, owner_id = await self._prepared()
+		raw = _lorebook(
+			{
+				"0": {"comment": "Azua lore", "content": "Wing commander.", "group": "azua"},
+				"1": {"comment": "skipped", "content": "Not selected.", "group": "azua"},
+			}
+		)
+
+		result = await svc.import_lorebook(
+			raw,
+			owner_id,
+			is_public=False,
+			import_images=False,
+			selected_keys=["0"],
+			attach_to_character_id=character_id,
+		)
+
+		assert result.appended_to_character_id == character_id
+		assert result.characters_created == 0
+		assert result.scenes_created == 0
+		svc.character_service.create_character.assert_not_called()
+		svc.scene_service.bulk_create.assert_not_awaited()
+
+		target_id, updated, actor = svc.character_service.update.await_args.args
+		assert target_id == character_id
+		assert actor == owner_id
+		assert updated.system_prompt.startswith("You are Azua.")
+		assert "Azua lore:\nWing commander." in updated.system_prompt
+		assert "Not selected." not in updated.system_prompt
+
+	@pytest.mark.asyncio
+	async def test_appends_everything_when_no_keys_selected(self):
+		svc, character_id, owner_id = await self._prepared()
+		raw = _lorebook({"0": {"comment": "a", "content": "one", "group": "x"}})
+
+		await svc.import_lorebook(
+			raw, owner_id, is_public=False, import_images=False, attach_to_character_id=character_id
+		)
+
+		_, updated, _ = svc.character_service.update.await_args.args
+		assert "one" in updated.system_prompt
+
+	@pytest.mark.asyncio
+	async def test_attach_whole_world_book_to_character(self):
+		# The primary use case: a pure world-book (whole-book scene candidate)
+		# appended to a card-imported character.
+		svc, character_id, owner_id = await self._prepared()
+		raw = json.dumps(
+			{
+				"name": "Sandbox_Lorebook",
+				"entries": {
+					"0": {"comment": "SANDBOX_STATE", "content": "Directive one.", "group": "Sandbox"},
+					"1": {"comment": "WORLD_PULSE", "content": "Directive two.", "group": "Sandbox"},
+				},
+			}
+		).encode()
+
+		result = await svc.import_lorebook(
+			raw,
+			owner_id,
+			is_public=False,
+			import_images=False,
+			selected_keys=[WHOLE_BOOK_KEY],
+			attach_to_character_id=character_id,
+		)
+
+		assert result.appended_to_character_id == character_id
+		_, updated, _ = svc.character_service.update.await_args.args
+		assert "Directive one." in updated.system_prompt
+		assert "Directive two." in updated.system_prompt
+		assert "SANDBOX_STATE" in updated.system_prompt
+
+	@pytest.mark.asyncio
+	async def test_attach_card_candidate_is_ignored(self):
+		# The card candidate is a character body; attaching a card to a
+		# different character must not splice one character into another.
+		svc, character_id, owner_id = await self._prepared()
+		raw = json.dumps(
+			{
+				"spec": "chara_card_v3",
+				"data": {"name": "Azua", "description": "Dragon rider.", "character_book": {"entries": []}},
+			}
+		).encode()
+
+		with pytest.raises(InvalidLorebookException):
+			await svc.import_lorebook(
+				raw,
+				owner_id,
+				is_public=False,
+				import_images=False,
+				selected_keys=[CARD_KEY],
+				attach_to_character_id=character_id,
+			)
+
+	@pytest.mark.asyncio
+	async def test_attach_without_usable_content_raises(self):
+		svc, character_id, owner_id = await self._prepared()
+		with pytest.raises(InvalidLorebookException):
+			await svc.import_lorebook(
+				_lorebook({}),
+				owner_id,
+				is_public=False,
+				import_images=False,
+				attach_to_character_id=character_id,
+			)

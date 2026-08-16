@@ -2,7 +2,12 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.application.imports.lorebook import Lorebook, LorebookEntry
+from src.application.imports.lorebook import (
+	CARD_KEY,
+	WHOLE_BOOK_KEY,
+	LorebookEntry,
+	ParsedImportFile,
+)
 from src.application.imports.schemas import (
 	ImportCandidateDTO,
 	ImportLorebookResultDTO,
@@ -12,6 +17,7 @@ from src.application.ports.characters import ICharacterService
 from src.application.ports.imports import IImageImporter, IImportService, ILorebookParser
 from src.application.ports.scenes import ISceneService
 from src.domain.models import Character, InitialMessage, MediaEntityType, Scene
+from src.infrastructure.exceptions import InvalidLorebookException
 from src.infrastructure.logging.logger import Logger
 
 _PREVIEW_CONTENT_LIMIT = 300
@@ -44,9 +50,13 @@ class ImportService(IImportService):
 		import_images: bool,
 		selected_keys: list[str] | None = None,
 		link_scenes: bool = True,
+		attach_to_character_id: UUID | None = None,
 	) -> ImportLorebookResultDTO:
-		lorebook = self.parser.parse(raw)
-		entries = self._selected_entries(lorebook, selected_keys)
+		parsed = self.parser.parse_file(raw)
+		entries = self._selected_entries(parsed, selected_keys)
+
+		if attach_to_character_id is not None:
+			return await self._append_to_character(parsed, entries, attach_to_character_id, owner_id)
 
 		image_failures: list[str] = []
 
@@ -75,8 +85,67 @@ class ImportService(IImportService):
 			image_failures=image_failures,
 			character_ids=character_ids,
 			scene_ids=scene_ids,
-			skipped_entries=lorebook.skipped + char_skipped + scene_skipped,
+			skipped_entries=parsed.skipped + char_skipped + scene_skipped,
 		)
+
+	async def _append_to_character(
+		self,
+		parsed: ParsedImportFile,
+		entries: list[LorebookEntry],
+		character_id: UUID,
+		owner_id: UUID,
+	) -> ImportLorebookResultDTO:
+		"""Append the selected lorebook content to an existing character's prompt.
+
+		No new characters or scenes are created — the caller explicitly chose a
+		target character for this content (e.g. a character-lore lorebook that
+		belongs to a card-imported character).
+		"""
+		addition = self._entries_prompt(parsed, entries)
+		if not addition:
+			raise InvalidLorebookException(message="Nothing to import: no usable entries in this lorebook")
+
+		# get_one only checks *visibility*; the update enforces ownership —
+		# appending to someone else's character is a 403 either way.
+		character = await self.character_service.get_one(character_id, owner_id)
+		appended = character.system_prompt.rstrip() + "\n\n" + addition
+		await self.character_service.update(
+			character_id,
+			character.model_copy(update={"system_prompt": appended}),
+			owner_id,
+		)
+
+		return ImportLorebookResultDTO(
+			characters_created=0,
+			scenes_created=0,
+			images_imported=0,
+			image_failures=[],
+			character_ids=[character_id],
+			scene_ids=[],
+			skipped_entries=parsed.skipped,
+			appended_to_character_id=character_id,
+		)
+
+	def _entries_prompt(self, parsed: ParsedImportFile, entries: list[LorebookEntry]) -> str:
+		"""The selected lorebook content as a single prompt-sized text block.
+
+		Whatever the user kept is attached — no group-based filtering (the
+		whole-book candidate synthesizes to group "location", and character-lore
+		entries use per-character groups). Contents are kept whole: these
+		lorebooks are standing directives, not trivia; the world-context
+		truncation would break them.
+		"""
+		blocks: list[str] = []
+		for entry in entries:
+			if entry.key == CARD_KEY:
+				# The card candidate is the character body itself; it has its own
+				# import path and doesn't belong on another character's prompt.
+				continue
+			if entry.name:
+				blocks.append(f"{entry.name}:\n{entry.content}")
+			else:
+				blocks.append(entry.content)
+		return "\n\n---\n\n".join(blocks)
 
 	async def _create_characters(
 		self,
@@ -226,31 +295,55 @@ class ImportService(IImportService):
 		return scene_ids, images, skipped
 
 	def preview_lorebook(self, raw: bytes) -> ImportPreviewDTO:
-		lorebook = self.parser.parse(raw)
+		parsed = self.parser.parse_file(raw)
 		characters: list[ImportCandidateDTO] = []
 		scenes: list[ImportCandidateDTO] = []
 		other = 0
-		for entry in lorebook.entries:
+		for entry in parsed.entries:
 			if entry.is_character:
 				characters.append(self._candidate(entry))
 			elif entry.is_location:
 				scenes.append(self._candidate(entry))
 			else:
 				other += 1
+		# A bare character card (no embedded lorebook) imports as its card
+		# character; a pure world-book (no character/location groups) imports as
+		# one whole-book scene. Both are opt-in candidates the user can deselect.
+		card = self.parser.card_candidate(parsed)
+		if card is not None:
+			characters.append(self._candidate(card))
+		whole_book = self.parser.whole_book_scene(parsed)
+		if whole_book is not None:
+			scenes.append(self._candidate(whole_book))
 		return ImportPreviewDTO(
 			characters=characters,
 			scenes=scenes,
 			other_entries=other,
-			skipped_entries=lorebook.skipped,
-			world_context_preview=self.parser.world_context(lorebook.entries),
+			skipped_entries=parsed.skipped,
+			world_context_preview=self.parser.world_context(parsed.entries),
 		)
 
-	@staticmethod
-	def _selected_entries(lorebook: Lorebook, selected_keys: list[str] | None) -> list[LorebookEntry]:
+	def _selected_entries(self, parsed: ParsedImportFile, selected_keys: list[str] | None) -> list[LorebookEntry]:
+		"""The entries the user kept, with synthetic candidates expanded.
+
+		The card and whole-book candidates don't exist in [ParsedImportFile.entries];
+		selecting them materializes the synthesized entry so downstream creation
+		paths treat it like any other.
+		"""
+		entries = list(parsed.entries)
 		if selected_keys:
-			wanted = {k for k in selected_keys}
-			return [e for e in lorebook.entries if e.key in wanted]
-		return list(lorebook.entries)
+			wanted = set(selected_keys)
+			kept: list[LorebookEntry] = [e for e in entries if e.key in wanted]
+			if CARD_KEY in wanted:
+				card = self.parser.card_candidate(parsed)
+				if card is not None:
+					kept.append(card)
+			if WHOLE_BOOK_KEY in wanted:
+				whole = self.parser.whole_book_scene(parsed)
+				if whole is not None:
+					kept.append(whole)
+			return kept
+		return entries
 
 	def _scene(self, entry: LorebookEntry, *, background: str, owner_id: UUID, is_public: bool) -> Scene:
 		return Scene(

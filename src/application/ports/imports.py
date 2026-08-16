@@ -13,7 +13,7 @@ from src.application.imports.schemas import (
 from src.domain.models import MediaEntityType
 
 if TYPE_CHECKING:
-	from src.application.imports.lorebook import Lorebook, LorebookEntry
+	from src.application.imports.lorebook import Lorebook, LorebookEntry, ParsedImportFile
 
 
 class FetchedImage(BaseModel):
@@ -51,6 +51,7 @@ class IImportService(abc.ABC):
 		import_images: bool,
 		selected_keys: list[str] | None = None,
 		link_scenes: bool = True,
+		attach_to_character_id: UUID | None = None,
 	) -> ImportLorebookResultDTO: ...
 
 	@abc.abstractmethod
@@ -60,6 +61,15 @@ class IImportService(abc.ABC):
 class ILorebookParser(abc.ABC):
 	@abc.abstractmethod
 	def parse(self, raw: bytes) -> Lorebook: ...
+
+	@abc.abstractmethod
+	def parse_file(self, raw: bytes) -> ParsedImportFile: ...
+
+	@abc.abstractmethod
+	def card_candidate(self, parsed: ParsedImportFile) -> LorebookEntry | None: ...
+
+	@abc.abstractmethod
+	def whole_book_scene(self, parsed: ParsedImportFile) -> LorebookEntry | None: ...
 
 	@abc.abstractmethod
 	def greeting(self, name: str, content: str) -> str: ...
