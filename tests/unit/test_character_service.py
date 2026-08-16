@@ -266,6 +266,34 @@ class TestCharacterService:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
+	async def test_append_to_system_prompt_success(self, character_service, mock_character_gateway, sample_character):
+		# Arrange
+		character_uuid = sample_character.id
+		mock_character_gateway.get_one.return_value = sample_character
+
+		# Act
+		await character_service.append_to_system_prompt(character_uuid, "extra lore", sample_character.owner_id)
+
+		# Assert — single-column atomic append, delegated with the raw addition.
+		mock_character_gateway.append_to_system_prompt.assert_called_once_with(character_uuid, "extra lore")
+		# The full-row update is never used for appends (lost-update hazard).
+		mock_character_gateway.update.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_append_to_system_prompt_not_owner_raises_403(
+		self, character_service, mock_character_gateway, sample_character
+	):
+		mock_character_gateway.get_one.return_value = sample_character
+
+		with pytest.raises(HTTPException) as exc:
+			await character_service.append_to_system_prompt(sample_character.id, "lore", uuid4())
+		assert exc.value.status_code == 403
+
+		mock_character_gateway.append_to_system_prompt.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
 	async def test_update_gateway_error(self, character_service, mock_character_gateway, sample_character):
 		# Arrange
 		character_uuid = uuid4()

@@ -99,21 +99,16 @@ class ImportService(IImportService):
 
 		No new characters or scenes are created — the caller explicitly chose a
 		target character for this content (e.g. a character-lore lorebook that
-		belongs to a card-imported character).
+		belongs to a card-imported character). The append is a single-column
+		atomic SQL concatenation (see [ICharacterService.append_to_system_prompt]),
+		so a concurrent edit or a racing attach is never clobbered.
 		"""
 		addition = self._entries_prompt(parsed, entries)
 		if not addition:
 			raise InvalidLorebookException(message="Nothing to import: no usable entries in this lorebook")
 
-		# get_one only checks *visibility*; the update enforces ownership —
-		# appending to someone else's character is a 403 either way.
-		character = await self.character_service.get_one(character_id, owner_id)
-		appended = character.system_prompt.rstrip() + "\n\n" + addition
-		await self.character_service.update(
-			character_id,
-			character.model_copy(update={"system_prompt": appended}),
-			owner_id,
-		)
+		# append_to_system_prompt checks ownership and 404s on a missing id.
+		await self.character_service.append_to_system_prompt(character_id, addition, owner_id)
 
 		return ImportLorebookResultDTO(
 			characters_created=0,
@@ -249,6 +244,13 @@ class ImportService(IImportService):
 			return scene_ids, images, skipped
 
 		if all_entries:
+			# The generic fallback scene is for real lorebook content only: when
+			# the selection is synthetic-only (e.g. import-all on a bare card,
+			# whose only entry is the card character), a "Imported lorebook"
+			# scene with an empty background would be junk.
+			has_real_entries = any(e.key not in (CARD_KEY, WHOLE_BOOK_KEY) for e in all_entries)
+			if not has_real_entries:
+				return [], 0, 0
 			background = world_context or f"Imported lorebook containing {len(all_entries)} entries."
 			fallback = Scene(
 				title="Imported lorebook",
@@ -328,22 +330,27 @@ class ImportService(IImportService):
 
 		The card and whole-book candidates don't exist in [ParsedImportFile.entries];
 		selecting them materializes the synthesized entry so downstream creation
-		paths treat it like any other.
+		paths treat it like any other. The no-selection ("import all") path
+		must materialize them too: the preview contract offers them, so
+		import-all delivers exactly what preview promised — a bare card imports
+		its card character, a pure world book imports its whole-book scene.
 		"""
 		entries = list(parsed.entries)
+		card = self.parser.card_candidate(parsed)
+		whole_book = self.parser.whole_book_scene(parsed)
+
 		if selected_keys:
 			wanted = set(selected_keys)
 			kept: list[LorebookEntry] = [e for e in entries if e.key in wanted]
-			if CARD_KEY in wanted:
-				card = self.parser.card_candidate(parsed)
-				if card is not None:
-					kept.append(card)
-			if WHOLE_BOOK_KEY in wanted:
-				whole = self.parser.whole_book_scene(parsed)
-				if whole is not None:
-					kept.append(whole)
+			if CARD_KEY in wanted and card is not None:
+				kept.append(card)
+			if WHOLE_BOOK_KEY in wanted and whole_book is not None:
+				kept.append(whole_book)
 			return kept
-		return entries
+
+		# Import all: every real entry plus the synthetic candidates the
+		# preview offered (card + whole-book are None unless applicable).
+		return entries + [e for e in (card, whole_book) if e is not None]
 
 	def _scene(self, entry: LorebookEntry, *, background: str, owner_id: UUID, is_public: bool) -> Scene:
 		return Scene(

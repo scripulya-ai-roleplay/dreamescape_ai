@@ -152,6 +152,53 @@ class TestImportAPI:
 		for sid in result["scene_ids"]:
 			client.delete(f"/api/v1/scenes/{sid}", headers=auth_headers)
 
+	def test_import_all_on_card_creates_the_card_character(self, client, auth_headers):
+		# Regression: with selected_keys omitted ("import all"), the synthetic
+		# card candidate must still be created — previously a silent no-op.
+		payload = {
+			"spec": "chara_card_v3",
+			"data": {"name": "E2E Import All Card", "description": "Body.", "character_book": {"entries": []}},
+		}
+		files = {"file": ("card.json", json.dumps(payload), "application/json")}
+		data = {"is_public": "false", "import_images": "false", "link_scenes": "false"}
+
+		import_resp = client.post("/api/v1/import/lorebook", files=files, data=data, headers=auth_headers)
+		assert import_resp.status_code == 200, import_resp.text
+		result = import_resp.json()["result"]
+		assert result["characters_created"] == 1
+		assert result["scenes_created"] == 0
+
+		for cid in result["character_ids"]:
+			client.delete(f"/api/v1/characters/{cid}", headers=auth_headers)
+
+	def test_import_all_on_world_book_creates_full_content_scene(self, client, auth_headers):
+		# Regression: with selected_keys omitted ("import all"), the whole-book
+		# scene with FULL content must be created — previously fell through to
+		# the lossy fallback scene built from truncated world-context.
+		payload = {
+			"name": "E2E Import All Book",
+			"entries": {
+				"0": {"comment": "STATE", "content": "Directive one.", "group": "Sandbox"},
+			},
+		}
+		files = {"file": ("worldbook.json", json.dumps(payload), "application/json")}
+		data = {"is_public": "false", "import_images": "false", "link_scenes": "false"}
+
+		import_resp = client.post("/api/v1/import/lorebook", files=files, data=data, headers=auth_headers)
+		assert import_resp.status_code == 200, import_resp.text
+		result = import_resp.json()["result"]
+		assert result["scenes_created"] == 1
+		assert result["characters_created"] == 0
+
+		scene_id = result["scene_ids"][0]
+		get_resp = client.get(f"/api/v1/scenes/{scene_id}", headers=auth_headers)
+		scene = get_resp.json()["result"]
+		assert scene["title"] == "E2E Import All Book"
+		assert "Directive one." in scene["background_prompt"]
+		assert "Imported lorebook containing" not in scene["background_prompt"]
+
+		client.delete(f"/api/v1/scenes/{scene_id}", headers=auth_headers)
+
 	def test_attach_to_existing_character_appends_prompt(self, client, auth_headers):
 		# Create a character to attach to. Create returns no id, so list to find it.
 		create_resp = client.post(

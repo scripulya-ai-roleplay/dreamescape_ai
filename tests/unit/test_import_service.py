@@ -324,6 +324,27 @@ class TestCardImport:
 		assert "Scenario:" in created.system_prompt
 
 	@pytest.mark.asyncio
+	async def test_card_import_all_creates_the_card_character(self):
+		# "Import all" (no selected_keys) must deliver what preview promised:
+		# the card character — not a silent no-op.
+		svc = _service()
+		cid = uuid4()
+		svc.character_service.create_character.return_value = cid
+
+		result = await svc.import_lorebook(
+			self._card(),
+			owner_id=uuid4(),
+			is_public=False,
+			import_images=False,
+		)
+
+		assert result.characters_created == 1
+		assert result.character_ids == [cid]
+		# A bare card has no real lorebook entries — no junk fallback scene.
+		assert result.scenes_created == 0
+		svc.scene_service.bulk_create.assert_not_awaited()
+
+	@pytest.mark.asyncio
 	async def test_world_info_file_name_is_not_mistaken_for_a_card(self):
 		# A World Info file carries book metadata (name/description) at the top
 		# level — that must not surface as a character candidate.
@@ -388,6 +409,30 @@ class TestWholeBookScene:
 		svc.character_service.create_character.assert_not_called()
 
 	@pytest.mark.asyncio
+	async def test_world_book_import_all_creates_full_content_scene(self):
+		# "Import all" (no selected_keys) must deliver what preview promised:
+		# the whole-book scene with FULL content — not the lossy fallback
+		# scene built from truncated world-context text.
+		svc = _service()
+		svc.scene_service.bulk_create.return_value = [uuid4()]
+
+		result = await svc.import_lorebook(
+			self._world_book(),
+			owner_id=uuid4(),
+			is_public=False,
+			import_images=False,
+		)
+
+		assert result.scenes_created == 1
+		assert result.characters_created == 0
+		scene = svc.scene_service.bulk_create.await_args.args[0][0]
+		assert scene.title == "Sandbox_Lorebook"
+		assert "Directive one." in scene.background_prompt
+		assert "Directive two." in scene.background_prompt
+		# The fallback scene would have shown "Imported lorebook containing N entries."
+		assert "Imported lorebook containing" not in scene.background_prompt
+
+	@pytest.mark.asyncio
 	async def test_whole_book_not_offered_when_selectable_entries_exist(self):
 		svc = _service()
 		raw = _lorebook(
@@ -438,13 +483,15 @@ class TestAttachToCharacter:
 		assert result.scenes_created == 0
 		svc.character_service.create_character.assert_not_called()
 		svc.scene_service.bulk_create.assert_not_awaited()
+		# The append must go through the atomic single-column path, not the
+		# full-row update (which would clobber concurrent edits).
+		svc.character_service.update.assert_not_called()
 
-		target_id, updated, actor = svc.character_service.update.await_args.args
+		target_id, addition, actor = svc.character_service.append_to_system_prompt.await_args.args
 		assert target_id == character_id
 		assert actor == owner_id
-		assert updated.system_prompt.startswith("You are Azua.")
-		assert "Azua lore:\nWing commander." in updated.system_prompt
-		assert "Not selected." not in updated.system_prompt
+		assert "Azua lore:\nWing commander." in addition
+		assert "Not selected." not in addition
 
 	@pytest.mark.asyncio
 	async def test_appends_everything_when_no_keys_selected(self):
@@ -455,8 +502,8 @@ class TestAttachToCharacter:
 			raw, owner_id, is_public=False, import_images=False, attach_to_character_id=character_id
 		)
 
-		_, updated, _ = svc.character_service.update.await_args.args
-		assert "one" in updated.system_prompt
+		_, addition, _ = svc.character_service.append_to_system_prompt.await_args.args
+		assert "one" in addition
 
 	@pytest.mark.asyncio
 	async def test_attach_whole_world_book_to_character(self):
@@ -483,10 +530,10 @@ class TestAttachToCharacter:
 		)
 
 		assert result.appended_to_character_id == character_id
-		_, updated, _ = svc.character_service.update.await_args.args
-		assert "Directive one." in updated.system_prompt
-		assert "Directive two." in updated.system_prompt
-		assert "SANDBOX_STATE" in updated.system_prompt
+		_, addition, _ = svc.character_service.append_to_system_prompt.await_args.args
+		assert "Directive one." in addition
+		assert "Directive two." in addition
+		assert "SANDBOX_STATE" in addition
 
 	@pytest.mark.asyncio
 	async def test_attach_card_candidate_is_ignored(self):
