@@ -23,8 +23,10 @@ from src.application.ports.characters import ICharacterGateway
 from src.application.ports.chats import IChatEventGateway, IChatGateway, IChatSettingsGateway
 from src.application.ports.common import Page
 from src.application.ports.llm import (
+	CONTEXT_WINDOW_MIN_USABLE_TOKENS,
 	CONTEXT_WINDOW_SAFETY_FACTOR,
 	DEFAULT_OUTPUT_RESERVE_TOKENS,
+	OUTPUT_RESERVE_BY_TOKEN_LIMIT,
 	IGatewayFactory,
 	ILLMChatGateway,
 	ITokenCounter,
@@ -752,9 +754,9 @@ class TestChatsService:
 		assert gemini.remaining_tokens == gemini.usable_tokens - result.total_tokens
 		assert gemini.fits is True
 		assert qwen.context_window_tokens == 12
-		assert qwen.usable_tokens == 10 - DEFAULT_OUTPUT_RESERVE_TOKENS
+		assert qwen.usable_tokens == CONTEXT_WINDOW_MIN_USABLE_TOKENS
 		assert qwen.remaining_tokens == qwen.usable_tokens - result.total_tokens
-		assert qwen.fits is False
+		assert qwen.fits is True
 		assert result.estimated is True
 		assert all(m.estimated is True for m in result.models)
 
@@ -844,9 +846,62 @@ class TestChatsService:
 		assert "summarize" in str(exc.value).lower()
 		details = exc.value.details
 		assert details["llm_model"] == "gemini-3-flash-preview"
-		assert details["usable_tokens"] == int(500 * CONTEXT_WINDOW_SAFETY_FACTOR) - DEFAULT_OUTPUT_RESERVE_TOKENS
+		assert details["usable_tokens"] == CONTEXT_WINDOW_MIN_USABLE_TOKENS
+		assert details["prompt_tokens"] > details["usable_tokens"]
 
 		mock_message_service.send_message.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_usable_tokens_floor_prevents_negative_with_small_override(
+		self,
+		mock_gateway_factory,
+		mock_message_service,
+		mock_chat_settings_gateway,
+		mock_chat_gateway,
+		mock_scene_gateway,
+		mock_character_gateway,
+		stub_token_counter,
+		mock_events,
+		sample_chat_id,
+		sample_user_id,
+	):
+		"""A contextLimitOverride smaller than the output reserve must never drive
+		usable_tokens to zero or below: the gate would 413 every send — including
+		the summarize recovery message itself — permanently locking the chat."""
+		mock_chat_settings_gateway.get_for_chat.return_value = ChatSettings(
+			aiControlBehavior=ControlBehavior.DONT_CONTROL,
+			continueBehavior=ControlBehavior.DONT_CONTROL,
+			perspective=Perspective.SECOND_PERSON,
+			temperature=TemperatureSettings(preset=Preset.MID, value=0.7),
+			responseLength=ResponseLength.MEDIUM,
+			responseTokenLimit=TokenLimit.CAPPED,
+			reasoning=Toggle.OFF,
+			reasoningEffort=ReasoningEffort.MID,
+			aiMediaPicker=Toggle.OFF,
+			contextLimitOverride=2_000,
+			functions=FunctionsSettings(),
+		)
+		chats_service = LLMChatsService(
+			gateway_factory=mock_gateway_factory,
+			message_service=mock_message_service,
+			chat_settings_gateway=mock_chat_settings_gateway,
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=mock_scene_gateway,
+			character_gateway=mock_character_gateway,
+			prompt_service=PromptService(),
+			token_counter=stub_token_counter,
+			authz=AuthorizationService(),
+			_events=mock_events,
+			context_windows={LLMModelType.claude_sonnet: 200_000},
+		)
+
+		result = await chats_service.get_context_usage(sample_chat_id, sample_user_id)
+
+		sonnet = result.models[0]
+		assert int(2_000 * CONTEXT_WINDOW_SAFETY_FACTOR) - OUTPUT_RESERVE_BY_TOKEN_LIMIT[TokenLimit.CAPPED] < 0
+		assert sonnet.usable_tokens == CONTEXT_WINDOW_MIN_USABLE_TOKENS
+		assert sonnet.remaining_tokens == sonnet.usable_tokens - result.total_tokens
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio

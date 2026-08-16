@@ -12,6 +12,7 @@ from src.application.ports.characters import ICharacterGateway
 from src.application.ports.chats import IChatEventGateway, IChatGateway, IChatSettingsGateway, IChatsService
 from src.application.ports.common import Page
 from src.application.ports.llm import (
+	CONTEXT_WINDOW_MIN_USABLE_TOKENS,
 	CONTEXT_WINDOW_SAFETY_FACTOR,
 	DEFAULT_OUTPUT_RESERVE_TOKENS,
 	LLM_MODEL_CONTEXT_WINDOWS,
@@ -176,22 +177,25 @@ class LLMChatsService(IChatsService):
 		if window is None:
 			return
 		usable = self._usable_tokens(chat_dto.llm_model, chat_settings)
-		cards_tokens, history_tokens = await asyncio.to_thread(
-			self._count_parts, system_prompt, [m.message for m in history], chat_dto.message
+		prompt_tokens, _ = await asyncio.to_thread(
+			self._count_parts, system_prompt, [m.message for m in history], chat_dto.message, True
 		)
-		if cards_tokens + history_tokens > usable:
+		if prompt_tokens > usable:
 			raise ContextWindowExceededException(
 				details={
 					"llm_model": chat_dto.llm_model.value,
 					"context_window_tokens": window,
 					"usable_tokens": usable,
-					"prompt_tokens": cards_tokens + history_tokens,
+					"prompt_tokens": prompt_tokens,
 					"suggestion": "summarize some messages to continue",
 				}
 			)
 
-	def _count_parts(self, system_prompt: str, history_texts: list[str], new_message: str | None) -> tuple[int, int]:
-		cards = self.token_counter.count(system_prompt) - self._base_prompt_tokens()
+	def _count_parts(
+		self, system_prompt: str, history_texts: list[str], new_message: str | None, include_base_prompt: bool = False
+	) -> tuple[int, int]:
+		base = 0 if include_base_prompt else self._base_prompt_tokens()
+		cards = self.token_counter.count(system_prompt) - base
 		history_sum = sum(self.token_counter.count(text) for text in history_texts)
 		if new_message is not None:
 			history_sum += self.token_counter.count(new_message)
@@ -204,7 +208,10 @@ class LLMChatsService(IChatsService):
 		limit = window
 		if chat_settings is not None and chat_settings.contextLimitOverride is not None:
 			limit = min(limit, chat_settings.contextLimitOverride)
-		return int(limit * self.safety_factor) - self._output_reserve(chat_settings)
+		return max(
+			int(limit * self.safety_factor) - self._output_reserve(chat_settings),
+			CONTEXT_WINDOW_MIN_USABLE_TOKENS,
+		)
 
 	@staticmethod
 	def _output_reserve(chat_settings: ChatSettings | None) -> int:

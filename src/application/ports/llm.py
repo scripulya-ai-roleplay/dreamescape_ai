@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from src.application.chats.settings import ChatSettings
+from src.application.chats.settings import ChatSettings, TokenLimit
 from src.domain.models import Character, ChatRoles, Scene
 
 
@@ -38,10 +38,12 @@ LLM_MODEL_CONTEXT_WINDOWS: dict[LLMModelType, int] = {
 
 CONTEXT_WINDOW_SAFETY_FACTOR = 0.9
 
-OUTPUT_RESERVE_BY_TOKEN_LIMIT: dict[str, int] = {
-	"Capped": 2048,
-	"High": 8192,
-	"Max": 16384,
+CONTEXT_WINDOW_MIN_USABLE_TOKENS = 1024
+
+OUTPUT_RESERVE_BY_TOKEN_LIMIT: dict[TokenLimit, int] = {
+	TokenLimit.CAPPED: 2048,
+	TokenLimit.HIGH: 8192,
+	TokenLimit.MAX: 16384,
 }
 
 DEFAULT_OUTPUT_RESERVE_TOKENS = 4096
