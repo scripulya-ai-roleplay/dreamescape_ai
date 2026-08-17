@@ -58,15 +58,31 @@ class TestImageReaderRead:
 		assert image.size == len(PNG_BYTES)
 
 	async def test_rejects_unsupported_declared_type(self):
-		# SVG is dropped from the allowlist entirely -> 415 before any sniffing.
+		# SVG is dropped from the allowlist entirely: not sniffable as an image.
 		with pytest.raises(UnsupportedImageTypeException) as exc:
 			await _reader().read(_FakeUpload(b"<svg onload=alert(1)></svg>", "image/svg+xml"))
 		assert exc.value.status_code == 415
 
-	async def test_rejects_sniff_vs_claim_mismatch(self):
-		# Claims JPEG, ships PNG -> valid image, wrong type.
+	async def test_falls_back_to_sniff_when_part_has_no_content_type(self):
+		# Multipart parts often carry no per-part Content-Type; the magic bytes decide.
+		image = await _reader().read(_FakeUpload(PNG_BYTES, ""))
+		assert image.content_type == "image/png"
+
+	async def test_falls_back_to_sniff_for_nonstandard_subtype(self):
+		# "image/jpg" is not in the allowlist, but the bytes are a real PNG.
+		image = await _reader().read(_FakeUpload(PNG_BYTES, "image/jpg"))
+		assert image.content_type == "image/png"
+
+	async def test_rejects_sniffable_image_with_lied_about_content_type(self):
+		# A real PNG declared as JPEG is still a mismatch -> 415 (no silent retype).
 		with pytest.raises(UnsupportedImageTypeException) as exc:
 			await _reader().read(_FakeUpload(PNG_BYTES, "image/jpeg"))
+		assert exc.value.status_code == 415
+
+	async def test_rejects_sniff_vs_claim_mismatch(self):
+		# Claims JPEG, ships HTML -> sniff catches the lie.
+		with pytest.raises(UnsupportedImageTypeException) as exc:
+			await _reader().read(_FakeUpload(HTML_BYTES, "image/jpeg"))
 		assert exc.value.status_code == 415
 
 	async def test_rejects_non_image_bytes(self):

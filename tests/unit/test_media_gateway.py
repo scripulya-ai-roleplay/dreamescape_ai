@@ -116,7 +116,7 @@ class TestMediaGateway:
 		mock_result.scalars.return_value = mock_scalars
 		mock_session.execute.return_value = mock_result
 
-		result = await media_gateway.get_for_entity(MediaEntityType.SCENE, sample_model.entity_id)
+		result = await media_gateway.get_for_entity(MediaEntityType.SCENE, sample_model.entity_id, actor_id=None)
 
 		assert isinstance(result, list)
 		assert len(result) == 1

@@ -77,14 +77,19 @@ class MediaGateway(IMediaGateway):
 		result = await self.session.execute(select(owner_col).where(model.id == entity_id))
 		return result.scalar_one_or_none()
 
-	async def get_for_entity(self, entity_type: MediaEntityType, entity_id: UUID) -> list[MediaAsset]:
-		self.logger.info("Getting media for %s/%s", entity_type, entity_id)
+	async def get_for_entity(
+		self, entity_type: MediaEntityType, entity_id: UUID, actor_id: UUID | None
+	) -> list[MediaAsset]:
+		self.logger.info("Getting media for %s/%s (actor=%s)", entity_type, entity_id, actor_id)
 
 		result = await self.session.execute(
-			select(MediaAssetModel).where(
+			select(MediaAssetModel)
+			.where(
 				MediaAssetModel.entity_type == entity_type.value,
 				MediaAssetModel.entity_id == entity_id,
+				self.visibility.public_or_owned(MediaAssetModel.is_public, MediaAssetModel.owner_id, actor_id),
 			)
+			.order_by(MediaAssetModel.created_at.desc(), MediaAssetModel.id.desc())
 		)
 		return [self._to_domain(model) for model in result.scalars().all()]
 
@@ -114,7 +119,12 @@ class MediaGateway(IMediaGateway):
 			self.logger.info("limit=0 -> returning no items out of %s total", total)
 			return Page[MediaAsset](items=[], count=total, offset=dto.offset, limit=dto.limit)
 
-		query = select(MediaAssetModel).where(where_clause).limit(dto.limit)
+		query = (
+			select(MediaAssetModel)
+			.where(where_clause)
+			.order_by(MediaAssetModel.created_at.desc(), MediaAssetModel.id.desc())
+			.limit(dto.limit)
+		)
 		if dto.offset > 0:
 			query = query.offset(dto.offset)
 

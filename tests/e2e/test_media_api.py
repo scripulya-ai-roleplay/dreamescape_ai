@@ -130,6 +130,62 @@ class TestMediaAPI:
 		response = client.get(f"/api/v1/media/{UNKNOWN_MEDIA_ID}", headers=auth_headers)
 		assert response.status_code == 404
 
+	def test_get_media_for_character_entity(self, client, auth_headers):
+		"""GET /media/entity/{type}/{id} returns the character's assets, newest first."""
+		response = client.get(f"/api/v1/media/entity/character/{ADMIN_CHARACTER_ID}", headers=auth_headers)
+
+		assert response.status_code == 200
+		items = response.json()["result"]
+		assert isinstance(items, list)
+		assert items, "seeded character should have at least one portrait"
+		for item in items:
+			assert item["entity_type"] == "character"
+			assert item["entity_id"] == ADMIN_CHARACTER_ID
+			assert item["url"]
+
+	def test_upload_then_entity_listing_newest_first(self, client, auth_headers):
+		"""After an upload, the fresh asset must come back first for the entity."""
+		before = client.get(f"/api/v1/media/entity/character/{ADMIN_CHARACTER_ID}", headers=auth_headers)
+		assert before.status_code == 200
+		before_ids = [item["id"] for item in before.json()["result"]]
+
+		uploaded = _upload(client, auth_headers, is_public=True)
+		assert uploaded.status_code == 200, uploaded.text
+		media_id = uploaded.json()["result"]["id"]
+
+		try:
+			after = client.get(f"/api/v1/media/entity/character/{ADMIN_CHARACTER_ID}", headers=auth_headers)
+			assert after.status_code == 200
+			items = after.json()["result"]
+			assert items[0]["id"] == media_id
+			assert len(items) == len(before_ids) + 1
+		finally:
+			client.delete(f"/api/v1/media/{media_id}", headers=auth_headers)
+
+	def test_entity_listing_hides_private_media_of_others(self, client, auth_headers, other_auth_headers):
+		"""A private upload is invisible to anyone but its owner via the entity listing."""
+		uploaded = _upload(client, auth_headers, is_public=False)
+		assert uploaded.status_code == 200, uploaded.text
+		media_id = uploaded.json()["result"]["id"]
+
+		try:
+			mine = client.get(f"/api/v1/media/entity/character/{ADMIN_CHARACTER_ID}", headers=auth_headers)
+			assert mine.status_code == 200
+			assert media_id in [item["id"] for item in mine.json()["result"]]
+
+			theirs = client.get(f"/api/v1/media/entity/character/{ADMIN_CHARACTER_ID}", headers=other_auth_headers)
+			assert theirs.status_code == 200
+			assert media_id not in [item["id"] for item in theirs.json()["result"]]
+		finally:
+			client.delete(f"/api/v1/media/{media_id}", headers=auth_headers)
+
+	def test_entity_listing_anonymous_sees_only_public(self, client):
+		response = client.get(f"/api/v1/media/entity/character/{ADMIN_CHARACTER_ID}")
+
+		assert response.status_code == 200
+		for item in response.json()["result"]:
+			assert item["is_public"] is True
+
 	def test_search_media_invalid_uuid_filter_returns_422(self, client, auth_headers):
 		response = client.get("/api/v1/media/?entity_id=not-a-uuid", headers=auth_headers)
 		assert response.status_code == 422

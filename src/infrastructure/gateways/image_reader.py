@@ -54,9 +54,6 @@ class ImageReader(IImageReader):
 
 	async def read(self, file: UploadFile) -> UploadedImage:
 		content_type = (file.content_type or "").lower()
-		if content_type not in _CONTENT_TYPE_EXT:
-			self.logger.warning("Rejected upload: unsupported content_type=%s", content_type)
-			raise UnsupportedImageTypeException(f"Unsupported image content type: {content_type or 'unknown'}")
 
 		buf = bytearray()
 		while True:

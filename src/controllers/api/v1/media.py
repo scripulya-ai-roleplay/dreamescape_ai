@@ -58,6 +58,19 @@ async def upload_media(
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 
+@router.get("/entity/{entity_type}/{entity_id}")
+@inject
+async def get_media_for_entity(
+	media_service: FromDishka[IMediaService],
+	entity_type: MediaEntityType = Path(),
+	entity_id: UUID = Path(),
+	current_user: User | None = Depends(get_optional_user),
+) -> ApiResponse[list[MediaAssetDTO]]:
+	actor_id = current_user.id if current_user else None
+	result = await media_service.get_for_entity(entity_type, entity_id, actor_id=actor_id)
+	return ApiResponse(result=result, correlation_id=correlation_id.get())
+
+
 @router.get("/{media_id}")
 @inject
 async def get_media(
