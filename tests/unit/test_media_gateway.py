@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.media.schemas import MediaFilterDTO
 from src.application.ports.common import Page
-from src.domain.models import MediaAsset, MediaEntityType
+from src.domain.models import MediaAsset, MediaEntityType, MediaLayer
 from src.infrastructure.gateways.media_gateway import MediaGateway
 from src.infrastructure.gateways.visibility import VisibilityGateway
 
@@ -38,6 +38,9 @@ class TestMediaGateway:
 		m.entity_type = "character"
 		m.entity_id = uuid4()
 		m.is_public = True
+		m.sort_order = 0
+		m.caption = None
+		m.layer = "background"
 		m.owner_id = uuid4()
 		m.created_at = None
 		return m
@@ -178,3 +181,6 @@ class TestMediaGateway:
 		assert result.bucket == sample_model.bucket
 		assert result.entity_type == MediaEntityType.CHARACTER
 		assert result.owner_id == sample_model.owner_id
+		assert result.sort_order == 0
+		assert result.caption is None
+		assert result.layer == MediaLayer.BACKGROUND
