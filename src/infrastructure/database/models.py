@@ -2,7 +2,19 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, ForeignKey, Index, Integer, String, Table, Text
+from sqlalchemy import (
+	BigInteger,
+	Boolean,
+	CheckConstraint,
+	Column,
+	DateTime,
+	ForeignKey,
+	Index,
+	Integer,
+	String,
+	Table,
+	Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
@@ -17,6 +29,7 @@ character_scene = Table(
 	Base.metadata,
 	Column("character_id", UUID(as_uuid=True), ForeignKey("characters.id", ondelete="CASCADE"), primary_key=True),
 	Column("scene_id", UUID(as_uuid=True), ForeignKey("scenes.id", ondelete="CASCADE"), primary_key=True),
+	Column("attached_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
 )
 
 character_likes = Table(
@@ -176,6 +189,7 @@ class MediaAsset(Base):
 	__table_args__ = (
 		Index("idx_media_entity", "entity_type", "entity_id"),
 		CheckConstraint("object_key IS NOT NULL OR file_url IS NOT NULL", name="check_media_has_location"),
+		CheckConstraint("layer IN ('background', 'foreground')", name="check_media_layer_valid"),
 	)
 
 	id: Mapped[uuid.UUID] = mapped_column(
@@ -189,5 +203,8 @@ class MediaAsset(Base):
 	entity_type: Mapped[str] = mapped_column(String(100))
 	entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
 	is_public: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
+	sort_order: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+	caption: Mapped[str | None] = mapped_column(String(200))
+	layer: Mapped[str] = mapped_column(String(20), server_default="background", default="background")
 	owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 	created_at: Mapped[datetime] = mapped_column(server_default=func.now())

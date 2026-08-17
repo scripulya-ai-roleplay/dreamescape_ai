@@ -144,32 +144,11 @@ class TestMediaServiceUpload:
 @pytest.mark.unit
 @pytest.mark.asyncio
 class TestMediaServiceGetForEntity:
-	@pytest.fixture
-	def owner_id(self):
-		return uuid4()
-
-	@pytest.fixture
-	def gateway(self):
-		return AsyncMock()
-
-	@pytest.fixture
-	def storage(self):
-		st = AsyncMock()
-		st.public_url = Mock(return_value="http://test/scripulya-public/character/abc.png")
-		return st
-
-	@pytest.fixture
-	def service(self, gateway, storage):
-		return MediaService(
-			storage=storage,
-			gateway=gateway,
-			reader=AsyncMock(),
-			uow=AsyncMock(),
-			authz=AuthorizationService(),
-		)
-
-	async def test_maps_domain_assets_to_dtos(self, gateway, service, owner_id):
+	@pytest.mark.parametrize("actor_id", [None, uuid4()])
+	async def test_maps_domain_assets_and_passes_actor_through(self, actor_id):
+		owner_id = uuid4()
 		entity_id = uuid4()
+		gateway = AsyncMock()
 		gateway.get_for_entity.return_value = [
 			MediaAsset(
 				id=uuid4(),
@@ -191,18 +170,13 @@ class TestMediaServiceGetForEntity:
 				owner_id=owner_id,
 			),
 		]
+		storage = AsyncMock()
+		storage.public_url = Mock(return_value="http://test/scripulya-public/character/abc.png")
+		service = _service(storage=storage, gateway=gateway)
 
-		result = await service.get_for_entity(MediaEntityType.CHARACTER, entity_id, actor_id=None)
+		result = await service.get_for_entity(MediaEntityType.CHARACTER, entity_id, actor_id=actor_id)
 
-		gateway.get_for_entity.assert_awaited_once_with(MediaEntityType.CHARACTER, entity_id, None)
+		gateway.get_for_entity.assert_awaited_once_with(MediaEntityType.CHARACTER, entity_id, actor_id)
 		assert len(result) == 2
 		assert all(isinstance(item, MediaAssetDTO) for item in result)
-
-	async def test_passes_actor_through(self, gateway, service):
-		entity_id = uuid4()
-		actor_id = uuid4()
-		gateway.get_for_entity.return_value = []
-
-		await service.get_for_entity(MediaEntityType.SCENE, entity_id, actor_id=actor_id)
-
-		gateway.get_for_entity.assert_awaited_once_with(MediaEntityType.SCENE, entity_id, actor_id)
+		assert all(item.url for item in result)

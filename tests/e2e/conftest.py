@@ -31,6 +31,9 @@ def client():
 		def delete(self, path, **kwargs):
 			return self.session.delete(f"{self.base_url}{path}", timeout=30.0, **kwargs)
 
+		def patch(self, path, **kwargs):
+			return self.session.patch(f"{self.base_url}{path}", timeout=30.0, **kwargs)
+
 		def put(self, path, **kwargs):
 			return self.session.put(f"{self.base_url}{path}", timeout=30.0, **kwargs)
 

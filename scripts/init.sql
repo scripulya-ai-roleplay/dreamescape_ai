@@ -53,6 +53,7 @@ CREATE INDEX idx_scene_initial_messages_scene_id ON scene_initial_messages(scene
 CREATE TABLE character_scene (
     character_id UUID NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
     scene_id UUID NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+    attached_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),  -- attachment order: "first attached character" = lowest attached_at
     PRIMARY KEY (character_id, scene_id)
 );
 
@@ -126,6 +127,9 @@ CREATE TABLE media_assets (
     entity_type VARCHAR(100) NOT NULL,                  -- 'character' | 'scene' | 'user'
     entity_id UUID NOT NULL,
     is_public BOOLEAN NOT NULL DEFAULT false,
+    sort_order INTEGER NOT NULL DEFAULT 0,              -- user-defined position within the entity (renumbered 0..n-1 by clients)
+    caption VARCHAR(200),                               -- short user annotation
+    layer VARCHAR(20) NOT NULL DEFAULT 'background' CHECK (layer IN ('background', 'foreground')),
     owner_id UUID REFERENCES users(id) ON DELETE SET NULL,  -- uploader (NULL for legacy/seeded rows)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     CHECK (object_key IS NOT NULL OR file_url IS NOT NULL)
@@ -367,3 +371,14 @@ UNION ALL
 SELECT 'messages', COUNT(*) FROM messages
 UNION ALL
 SELECT 'media_assets', COUNT(*) FROM media_assets;
+-- ── Migration ledger ─────────────────────────────────────────────────────────
+-- Fresh databases already contain everything scripts/migrations/ has shipped
+-- so far (the schema above IS the current state). Record that baseline so
+-- scripts/apply_migrations.sh does not try to re-apply old files. When you add
+-- a new migration, also change its schema DDL above and append it here.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename   TEXT PRIMARY KEY,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO schema_migrations (filename) VALUES
+    ('2026-08-media-ordering.sql');

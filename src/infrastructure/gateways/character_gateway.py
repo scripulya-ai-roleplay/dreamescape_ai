@@ -21,6 +21,7 @@ from src.infrastructure.database.models import (
 from src.infrastructure.database.models import (
 	character_bookmarks,
 	character_likes,
+	character_scene,
 )
 from src.infrastructure.logging.logger import Logger
 
@@ -47,7 +48,13 @@ class CharacterGateway(ICharacterGateway):
 	async def get_for_scene(self, scene_id: UUID) -> list[Character]:
 		self.logger.info(f"Getting characters for scene: {scene_id}")
 
-		query = select(CharacterModel).join(CharacterModel.scenes).where(SceneModel.id == scene_id)
+		query = (
+			select(CharacterModel)
+			.join(character_scene, character_scene.c.character_id == CharacterModel.id)
+			.join(SceneModel, SceneModel.id == character_scene.c.scene_id)
+			.where(SceneModel.id == scene_id)
+			.order_by(character_scene.c.attached_at.asc(), character_scene.c.character_id.asc())
+		)
 
 		result = await self.session.execute(query)
 		character_models = result.scalars().all()
@@ -78,12 +85,6 @@ class CharacterGateway(ICharacterGateway):
 		self.logger.info(f"Successfully updated character: {target_character_uuid}")
 
 	async def append_to_system_prompt(self, character_uuid: UUID, addition: str) -> None:
-		"""Concatenate [addition] onto the stored system_prompt, SQL-side.
-
-		A read-modify-write through [update] would write the whole stale row
-		back (name, is_public included) and lose any concurrent edit; this
-		touches only system_prompt, and two racing appends both survive.
-		"""
 		self.logger.info(f"Appending to character prompt: {character_uuid}")
 
 		query = (
