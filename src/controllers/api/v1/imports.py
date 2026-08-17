@@ -1,4 +1,5 @@
 import logging
+from uuid import UUID
 
 from asgi_correlation_id import correlation_id
 from dishka import FromDishka
@@ -56,6 +57,12 @@ async def import_lorebook(
 	import_images: bool = Form(True),
 	selected_keys: list[str] = Form(default=[], description="Entry keys to import; omit to import all"),
 	link_scenes: bool = Form(True, description="Link every created character to each created scene"),
+	attach_to_character_id: UUID | None = Form(
+		default=None,
+		description=(
+			"Append the lorebook to this existing character's system prompt instead of creating new characters/scenes"
+		),
+	),
 	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[ImportLorebookResultDTO]:
 	raw = await _read_bounded(file, settings.LOREBOOK_MAX_UPLOAD_BYTES)
@@ -66,5 +73,6 @@ async def import_lorebook(
 		import_images=import_images,
 		selected_keys=selected_keys or None,
 		link_scenes=link_scenes,
+		attach_to_character_id=attach_to_character_id,
 	)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())

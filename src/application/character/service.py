@@ -80,6 +80,22 @@ class CharacterService(ICharacterService):
 			await self.gateway.update(target_character_uuid, new_character_data)
 		self.logger.info(f"Successfully updated character: {target_character_uuid}")
 
+	async def append_to_system_prompt(self, character_uuid: UUID, addition: str, actor_id: UUID):
+		"""Concatenate [addition] onto the character's system_prompt, atomically.
+
+		Used by the lorebook attach import. Unlike [update], this is a
+		single-column SQL-side concatenation — concurrent edits to name or
+		visibility, or a racing attach, are never clobbered.
+		"""
+		self.logger.info(f"Appending to character prompt: {character_uuid}")
+
+		character = await self.gateway.get_one(character_uuid)
+		self.authz.require_owned(owner_id=character.owner_id, actor_id=actor_id, noun="character")
+
+		async with self.uow:
+			await self.gateway.append_to_system_prompt(character_uuid, addition)
+		self.logger.info(f"Successfully appended to character prompt: {character_uuid}")
+
 	async def like(self, character_uuid: UUID, user_id: UUID) -> LikeState:
 		self.logger.info(f"User {user_id} liking character {character_uuid}")
 

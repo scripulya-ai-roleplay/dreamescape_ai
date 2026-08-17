@@ -26,6 +26,9 @@ class ICharacterService(abc.ABC):
 	async def update(self, target_scene_uuid: UUID, new_scene_data: Character, actor_id: UUID): ...
 
 	@abc.abstractmethod
+	async def append_to_system_prompt(self, character_uuid: UUID, addition: str, actor_id: UUID): ...
+
+	@abc.abstractmethod
 	async def like(self, character_uuid: UUID, user_id: UUID) -> LikeState: ...
 
 	@abc.abstractmethod
@@ -62,6 +65,9 @@ class ICharacterGateway(abc.ABC):
 
 	@abc.abstractmethod
 	async def update(self, target_scene_uuid: UUID, new_character_data: Character): ...
+
+	@abc.abstractmethod
+	async def append_to_system_prompt(self, character_uuid: UUID, addition: str): ...
 
 	@abc.abstractmethod
 	async def set_like(self, character_id: UUID, user_id: UUID) -> None: ...

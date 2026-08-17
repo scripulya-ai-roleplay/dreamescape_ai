@@ -13,6 +13,9 @@ class ImportLorebookResultDTO(BaseModel):
 	character_ids: list[UUID]
 	scene_ids: list[UUID]
 	skipped_entries: int
+	# Set when the lorebook was appended to an existing character instead of
+	# creating new entities.
+	appended_to_character_id: UUID | None = None
 
 
 class ImportCandidateDTO(BaseModel):

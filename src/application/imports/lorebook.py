@@ -12,6 +12,12 @@ _GREETING_CONTENT_LIMIT = 300
 _WORLD_CONTEXT_PER_ENTRY = 400
 _MAX_WORLD_CONTEXT_CHARS = 8000
 
+# Sentinel candidate keys. Entry keys in a SillyTavern file are the raw
+# `entries` object keys (or list indices), which are always digits — these
+# literals can never collide with real entry keys.
+CARD_KEY = "__card__"
+WHOLE_BOOK_KEY = "__whole_book__"
+
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\((https?://[^\s)]+?)(?:\s+\"[^\"]*\")?\)")
 _BARE_IMAGE_RE = re.compile(
 	r"https?://[^\s)\"']+\.(?:png|jpe?g|webp|gif|bmp|tiff|ico)(?:[?#][^\s)\"']*)?",
@@ -41,17 +47,51 @@ class LorebookEntry:
 class Lorebook:
 	entries: list[LorebookEntry]
 	skipped: int = 0
+	name: str | None = None
+	card_description: str | None = None
+
+
+@dataclass(frozen=True)
+class ParsedImportFile:
+	entries: list[LorebookEntry]
+	skipped: int = 0
+	card_name: str | None = None
+	card_description: str | None = None
+	file_title: str | None = None
+
+	@property
+	def has_card(self) -> bool:
+		return bool(self.card_name and self.card_description)
 
 
 class LorebookParser(ILorebookParser):
 	def parse(self, raw: bytes) -> Lorebook:
+		parsed = self.parse_file(raw)
+		return Lorebook(
+			entries=parsed.entries,
+			skipped=parsed.skipped,
+			name=parsed.file_title,
+			card_description=parsed.card_description if parsed.card_name else None,
+		)
+
+	def parse_file(self, raw: bytes) -> ParsedImportFile:
 		try:
 			payload = json.loads(raw.decode("utf-8"))
 		except (UnicodeDecodeError, json.JSONDecodeError) as exc:
 			raise InvalidLorebookException(message=f"Lorebook is not valid JSON: {exc}")
 
+		card_name, card_description = self._extract_card(payload)
+		file_title = self._as_text(payload.get("name")) if isinstance(payload, dict) else None
+
 		entries_obj = self._extract_entries(payload)
 		if entries_obj is None:
+			if card_name and card_description:
+				return ParsedImportFile(
+					entries=[],
+					card_name=card_name,
+					card_description=card_description,
+					file_title=file_title,
+				)
 			raise InvalidLorebookException(message="Lorebook JSON has no 'entries' object or array")
 
 		if isinstance(entries_obj, dict):
@@ -73,7 +113,13 @@ class LorebookParser(ILorebookParser):
 				continue
 			entries.append(entry)
 
-		return Lorebook(entries=entries, skipped=skipped)
+		return ParsedImportFile(
+			entries=entries,
+			skipped=skipped,
+			card_name=card_name,
+			card_description=card_description,
+			file_title=file_title,
+		)
 
 	def greeting(self, name: str, content: str) -> str:
 		snippet = content[:_GREETING_CONTENT_LIMIT].strip()
@@ -94,6 +140,35 @@ class LorebookParser(ILorebookParser):
 			return ""
 		return "\n\nWorld context:\n" + "\n".join(lines)
 
+	def card_candidate(self, parsed: ParsedImportFile) -> LorebookEntry | None:
+		if not (parsed.card_name and parsed.card_description):
+			return None
+		image_urls = self._extract_image_urls(f"{parsed.card_name}\n{parsed.card_description}")
+		return LorebookEntry(
+			key=CARD_KEY,
+			uid=None,
+			name=parsed.card_name,
+			content=parsed.card_description,
+			group=_CHARACTER_GROUP,
+			image_urls=image_urls,
+		)
+
+	def whole_book_scene(self, parsed: ParsedImportFile) -> LorebookEntry | None:
+		if not parsed.entries:
+			return None
+		if any(e.is_character or e.is_location for e in parsed.entries):
+			return None
+		title = parsed.file_title or parsed.entries[0].name
+		image_urls = self._extract_image_urls(f"{title}\n" + "\n".join(e.content for e in parsed.entries))
+		return LorebookEntry(
+			key=WHOLE_BOOK_KEY,
+			uid=None,
+			name=title,
+			content="\n\n---\n\n".join(f"{e.name}:\n{e.content}" if e.name else e.content for e in parsed.entries),
+			group=_LOCATION_GROUP,
+			image_urls=image_urls,
+		)
+
 	def _extract_entries(self, payload: object) -> dict | list | None:
 		if not isinstance(payload, dict):
 			return None
@@ -108,6 +183,42 @@ class LorebookParser(ILorebookParser):
 				if isinstance(entries, (dict, list)):
 					return entries
 		return None
+
+	def _extract_card(self, payload: object) -> tuple[str | None, str | None]:
+		if not isinstance(payload, dict):
+			return None, None
+		data = payload.get("data")
+		if isinstance(data, dict):
+			source: dict | None = data
+		elif self._looks_like_v1_card(payload):
+			source = payload
+		else:
+			return None, None
+		name = self._as_text(source.get("name"))
+		if not name:
+			return None, None
+		description = self._as_text(source.get("description"))
+		if not description:
+			return None, None
+		sections: list[tuple[str, str]] = [("Description", description)]
+		personality = self._as_text(source.get("personality"))
+		if personality:
+			sections.append(("Personality", personality))
+		scenario = self._as_text(source.get("scenario"))
+		if scenario:
+			sections.append(("Scenario", scenario))
+		body = "\n\n".join(f"{title}:\n{text}" for title, text in sections)
+		return name, body
+
+	@classmethod
+	def _looks_like_v1_card(cls, payload: dict) -> bool:
+		entries = payload.get("entries")
+		if isinstance(entries, (dict, list)):
+			return False
+		return any(
+			isinstance(payload.get(field), str) and payload.get(field)
+			for field in ("first_mes", "mes_example", "personality", "scenario")
+		)
 
 	def _to_entry(self, key: str, raw_entry: dict) -> LorebookEntry | None:
 		name = self._as_text(raw_entry.get("comment")) or self._as_text(raw_entry.get("name"))

@@ -170,6 +170,33 @@ class TestCharacterGateway:
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
+	async def test_append_to_system_prompt_is_single_column_concatenation(self, character_gateway, mock_session):
+		"""The append must touch only system_prompt, SQL-side.
+
+		A read-modify-write through update() would write the whole stale row
+		back (name, is_public included) and lose concurrent edits; two racing
+		appends would each overwrite the other. The compiled UPDATE must
+		therefore reference only the id and system_prompt columns.
+		"""
+		character_uuid = uuid4()
+
+		await character_gateway.append_to_system_prompt(character_uuid, "added lore")
+
+		mock_session.execute.assert_called_once()
+		query = mock_session.execute.await_args.args[0]
+		compiled = query.compile(dialect=postgresql.dialect())
+		sql = str(compiled)
+
+		assert "rtrim" in sql.lower()
+		# Only the target column is assigned — name/is_public/owner_id untouched.
+		assert sql.count("SET ") == 1
+		assert "SET system_prompt" in sql
+		# The addition is a bind parameter, not inlined SQL text.
+		assert "added lore" not in sql
+		assert "added lore" in compiled.params.values()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
 	async def test_search_success(
 		self, character_gateway, mock_session, sample_character_model, sample_character_filter_dto
 	):
