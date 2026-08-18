@@ -105,6 +105,16 @@ class MessageGateway(IMessageGateway):
 		)
 		return await self._session.scalar(stmt)
 
+	async def get_chat_scene_for_message(self, message_uuid: UUID) -> UUID | None:
+		self.logger.info(f"Resolving chat scene for message: {message_uuid}")
+
+		stmt = (
+			select(ChatModel.scene_id)
+			.join(MessageModel, MessageModel.chat_id == ChatModel.id)
+			.where(MessageModel.id == message_uuid)
+		)
+		return await self._session.scalar(stmt)
+
 	async def update(self, message_uuid: UUID, updated_text: str) -> UUID:
 		self.logger.info(f"Updating message {message_uuid} with new text")
 

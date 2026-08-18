@@ -78,6 +78,16 @@ class InitialMessageRequiredException(BaseAPIException):
 		)
 
 
+class ChatReadOnlyException(BaseAPIException):
+	def __init__(self, message: str = "This chat is read-only because its scene was deleted", **kwargs):
+		super().__init__(
+			message=message,
+			status_code=status.HTTP_400_BAD_REQUEST,
+			error_code="CHAT_READ_ONLY",
+			**kwargs,
+		)
+
+
 class ContextWindowExceededException(BaseAPIException):
 	def __init__(
 		self,

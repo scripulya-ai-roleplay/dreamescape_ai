@@ -12,6 +12,7 @@ from src.application.ports.common import IUnitOfWork, Page
 from src.application.ports.messages import IMessageGateway
 from src.application.ports.scenes import IInitialMessageGateway
 from src.domain.models import Chat, ChatRoles, InitialMessage, Message, MessageStatus
+from src.infrastructure.exceptions import ChatReadOnlyException
 
 
 class TestChatService:
@@ -192,6 +193,51 @@ class TestChatService:
 		assert exc.value.status_code == 403
 
 		mock_chat_gateway.set_persona.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_start_chat_without_scene_rejected(self, chat_service, mock_chat_gateway, sample_chat):
+		sceneless = Chat(id=sample_chat.id, title=sample_chat.title, user_id=sample_chat.user_id)
+
+		with pytest.raises(ChatReadOnlyException):
+			await chat_service.start_chat(sceneless)
+
+		mock_chat_gateway.create.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_set_persona_read_only_chat_rejected(self, chat_service, mock_chat_gateway, sample_chat):
+		chat = Chat(
+			id=sample_chat.id,
+			title=sample_chat.title,
+			user_id=sample_chat.user_id,
+			scene_id=None,
+		)
+		mock_chat_gateway.get_one.return_value = chat
+
+		with pytest.raises(ChatReadOnlyException):
+			await chat_service.set_persona(sample_chat.id, uuid4(), chat.user_id)
+
+		mock_chat_gateway.set_persona.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_choose_initial_message_read_only_chat_rejected(
+		self, chat_service, mock_chat_gateway, mock_initial_message_gateway, mock_message_gateway, sample_chat
+	):
+		chat = Chat(
+			id=sample_chat.id,
+			title=sample_chat.title,
+			user_id=sample_chat.user_id,
+			scene_id=None,
+		)
+		mock_chat_gateway.get_one.return_value = chat
+
+		with pytest.raises(ChatReadOnlyException):
+			await chat_service.choose_initial_message(sample_chat.id, uuid4(), chat.user_id)
+
+		mock_initial_message_gateway.get_one.assert_not_called()
+		mock_message_gateway.create.assert_not_called()
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio

@@ -8,6 +8,7 @@ from src.application.ports.common import IUnitOfWork, Page
 from src.application.ports.llm import LLMResult
 from src.application.ports.messages import IMessageGateway, IMessageService
 from src.domain.models import ChatRoles, Message, MessageStatus
+from src.infrastructure.exceptions import ChatReadOnlyException
 from src.infrastructure.logging.logger import Logger
 
 
@@ -36,6 +37,11 @@ class MessageService(IMessageService):
 		self.authz.require_owned(owner_id=owner, actor_id=actor_id, noun="message")
 		return message
 
+	async def _require_writable_chat(self, message_uuid: UUID) -> None:
+		scene_id = await self.message_gateway.get_chat_scene_for_message(message_uuid)
+		if scene_id is None:
+			raise ChatReadOnlyException()
+
 	async def get_one(self, message_uuid: UUID, actor_id: UUID) -> Message:
 		self.logger.info(f"Getting message: {message_uuid}")
 		return await self._require_owned(message_uuid, actor_id)
@@ -43,12 +49,14 @@ class MessageService(IMessageService):
 	async def update(self, message_uuid: UUID, updated_text: str, actor_id: UUID) -> UUID:
 		self.logger.info(f"Updating message: {message_uuid}")
 		await self._require_owned(message_uuid, actor_id)
+		await self._require_writable_chat(message_uuid)
 		async with self._uow:
 			return await self.message_gateway.update(message_uuid, updated_text)
 
 	async def delete(self, message_uuid: UUID, actor_id: UUID) -> UUID:
 		self.logger.info(f"Deleting message: {message_uuid}")
 		await self._require_owned(message_uuid, actor_id)
+		await self._require_writable_chat(message_uuid)
 		async with self._uow:
 			return await self.message_gateway.delete(message_uuid)
 

@@ -83,7 +83,7 @@ class Chat(BaseModel):
 	id: None | UUID = None
 	title: str
 	user_id: UUID
-	scene_id: UUID
+	scene_id: None | UUID = None
 	user_character_id: None | UUID = None
 	initial_message_id: None | UUID = None
 

@@ -23,6 +23,9 @@ class IMessageGateway(abc.ABC):
 	async def get_chat_owner_for_message(self, message_uuid: UUID) -> UUID | None: ...
 
 	@abc.abstractmethod
+	async def get_chat_scene_for_message(self, message_uuid: UUID) -> UUID | None: ...
+
+	@abc.abstractmethod
 	async def update(self, message_uuid: UUID, updated_text: str) -> UUID: ...
 
 	@abc.abstractmethod
