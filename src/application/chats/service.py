@@ -9,6 +9,7 @@ from src.application.ports.common import IUnitOfWork, Page
 from src.application.ports.messages import IMessageGateway
 from src.application.ports.scenes import IInitialMessageGateway
 from src.domain.models import Chat, ChatRoles, Message, MessageStatus
+from src.infrastructure.exceptions import ChatReadOnlyException
 from src.infrastructure.logging.logger import Logger
 
 
@@ -23,6 +24,8 @@ class ChatService(IChatService):
 
 	async def start_chat(self, chat: Chat) -> UUID:
 		self.logger.info(f"Starting chat: {chat.title}")
+		if chat.scene_id is None:
+			raise ValueError("Chat must reference a scene")
 
 		async with self.uow:
 			chat_id = await self.chat_gateway.create(chat)
@@ -33,6 +36,10 @@ class ChatService(IChatService):
 		chat = await self.chat_gateway.get_one(chat_uuid)
 		self.authz.require_owned(owner_id=chat.user_id, actor_id=actor_id, noun="chat")
 		return chat
+
+	def _require_writable(self, chat: Chat) -> None:
+		if chat.scene_id is None:
+			raise ChatReadOnlyException()
 
 	async def get_one(self, chat_uuid: UUID, actor_id: UUID) -> Chat:
 		self.logger.info(f"Getting chat: {chat_uuid}")
@@ -50,13 +57,13 @@ class ChatService(IChatService):
 
 	async def update(self, target_chat_uuid: UUID, chat_name: str, actor_id: UUID) -> UUID:
 		self.logger.info(f"Updating chat {target_chat_uuid} with name: {chat_name}")
-		await self._require_owned(target_chat_uuid, actor_id)
+		self._require_writable(await self._require_owned(target_chat_uuid, actor_id))
 		async with self.uow:
 			return await self.chat_gateway.update(target_chat_uuid, chat_name)
 
 	async def set_persona(self, chat_uuid: UUID, user_character_id: UUID, actor_id: UUID) -> UUID:
 		self.logger.info(f"Setting persona {user_character_id} on chat {chat_uuid}")
-		await self._require_owned(chat_uuid, actor_id)
+		self._require_writable(await self._require_owned(chat_uuid, actor_id))
 		async with self.uow:
 			return await self.chat_gateway.set_persona(chat_uuid, user_character_id)
 
@@ -65,6 +72,7 @@ class ChatService(IChatService):
 
 		chat = await self.chat_gateway.get_one(chat_uuid)
 		self.authz.require_owned(owner_id=chat.user_id, actor_id=actor_id, noun="chat")
+		self._require_writable(chat)
 
 		initial_message = await self.initial_message_gateway.get_one(initial_message_uuid)
 		# The chosen initial message must belong to the scene the chat was started

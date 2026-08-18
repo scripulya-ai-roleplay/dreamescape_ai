@@ -3,14 +3,16 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from src.application.chats.settings import ChatSettings
-from src.application.ports.chats import IChatSettingsGateway, IChatSettingsService
+from src.application.ports.chats import IChatGateway, IChatSettingsGateway, IChatSettingsService
 from src.application.ports.common import IUnitOfWork
+from src.infrastructure.exceptions import ChatReadOnlyException
 from src.infrastructure.logging.logger import Logger
 
 
 @dataclass
 class ChatSettingsService(IChatSettingsService):
 	chat_settings_gateway: IChatSettingsGateway
+	chat_gateway: IChatGateway
 	uow: IUnitOfWork
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
@@ -22,6 +24,9 @@ class ChatSettingsService(IChatSettingsService):
 
 	async def upsert(self, chat_uuid: UUID, settings: ChatSettings) -> ChatSettings:
 		self.logger.info(f"Upserting chat settings: {chat_uuid}")
+		chat = await self.chat_gateway.get_one(chat_uuid)
+		if chat.scene_id is None:
+			raise ChatReadOnlyException()
 		async with self.uow:
 			result = await self.chat_settings_gateway.upsert(chat_uuid, settings)
 		self.logger.info(f"Successfully upserted chat settings: {chat_uuid}")

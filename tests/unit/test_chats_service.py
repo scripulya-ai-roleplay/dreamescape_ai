@@ -39,6 +39,7 @@ from src.application.ports.scenes import ISceneGateway
 from src.conf import settings
 from src.domain.models import Character, Chat, ChatRoles, Message, MessageStatus, Scene
 from src.infrastructure.exceptions import (
+	ChatReadOnlyException,
 	ContextWindowExceededException,
 	InitialMessageRequiredException,
 	LLMGatewayException,
@@ -333,6 +334,89 @@ class TestChatsService:
 
 		mock_message_service.send_message.assert_not_called()
 		mock_gateway.submit.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_send_message_read_only_chat_rejected(
+		self,
+		mock_chat_gateway,
+		mock_message_service,
+		mock_gateway,
+		stub_token_counter,
+		sample_user_message_dto,
+		sample_user_id,
+	):
+		"""A chat whose scene was deleted (scene_id NULL) is read-only: sending is
+		rejected with CHAT_READ_ONLY before any persistence or LLM call."""
+		mock_chat_gateway.get_one.return_value = Chat(
+			title="orphaned chat",
+			user_id=sample_user_id,
+			scene_id=None,
+			user_character_id=uuid4(),
+			initial_message_id=uuid4(),
+		)
+		service = LLMChatsService(
+			gateway_factory=MagicMock(spec=IGatewayFactory, create_gateway=Mock(return_value=mock_gateway)),
+			message_service=mock_message_service,
+			chat_settings_gateway=AsyncMock(spec=IChatSettingsGateway),
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=AsyncMock(spec=ISceneGateway),
+			character_gateway=AsyncMock(spec=ICharacterGateway),
+			prompt_service=PromptService(),
+			token_counter=stub_token_counter,
+			authz=AuthorizationService(),
+			_events=Mock(spec=IChatEventGateway),
+		)
+
+		with pytest.raises(ChatReadOnlyException):
+			await service.send_message(sample_user_message_dto, sample_user_id)
+
+		mock_message_service.send_message.assert_not_called()
+		mock_gateway.submit.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_get_context_usage_read_only_chat_allowed(
+		self,
+		mock_chat_gateway,
+		mock_message_service,
+		mock_chat_settings_gateway,
+		mock_scene_gateway,
+		mock_character_gateway,
+		stub_token_counter,
+		mock_events,
+		mock_gateway_factory,
+		sample_chat_id,
+		sample_user_id,
+	):
+		"""Reading context usage stays available on a read-only chat: no scene
+		lookup, no chat-scene gate, and the prompt assembles without a scene."""
+		mock_chat_gateway.get_one.return_value = Chat(
+			id=sample_chat_id,
+			title="orphaned chat",
+			user_id=sample_user_id,
+			scene_id=None,
+			user_character_id=uuid4(),
+			initial_message_id=uuid4(),
+		)
+		chats_service = LLMChatsService(
+			gateway_factory=mock_gateway_factory,
+			message_service=mock_message_service,
+			chat_settings_gateway=mock_chat_settings_gateway,
+			chat_gateway=mock_chat_gateway,
+			scene_gateway=mock_scene_gateway,
+			character_gateway=mock_character_gateway,
+			prompt_service=PromptService(),
+			token_counter=stub_token_counter,
+			authz=AuthorizationService(),
+			_events=mock_events,
+		)
+
+		usage = await chats_service.get_context_usage(sample_chat_id, sample_user_id)
+
+		mock_scene_gateway.get_one.assert_not_called()
+		mock_character_gateway.get_for_scene.assert_not_called()
+		assert usage.total_tokens >= 0
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio

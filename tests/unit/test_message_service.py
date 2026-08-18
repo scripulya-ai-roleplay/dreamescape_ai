@@ -11,6 +11,7 @@ from src.application.ports.common import IUnitOfWork, Page
 from src.application.ports.llm import LLMErrorResponse, LLMResult, UserMessageDTO
 from src.application.ports.messages import IMessageGateway
 from src.domain.models import ChatRoles, Message, MessageStatus
+from src.infrastructure.exceptions import ChatReadOnlyException
 
 
 class TestMessageService:
@@ -125,6 +126,30 @@ class TestMessageService:
 		# Assert
 		assert result == message_id
 		mock_message_gateway.update.assert_called_once_with(message_id, updated_text)
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_update_read_only_chat_rejected(self, message_service, mock_message_gateway, sample_message):
+		actor_id = uuid4()
+		self._stub_owned(mock_message_gateway, sample_message, actor_id)
+		mock_message_gateway.get_chat_scene_for_message.return_value = None
+
+		with pytest.raises(ChatReadOnlyException):
+			await message_service.update(sample_message.id, "x", actor_id)
+
+		mock_message_gateway.update.assert_not_called()
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_delete_read_only_chat_rejected(self, message_service, mock_message_gateway, sample_message):
+		actor_id = uuid4()
+		self._stub_owned(mock_message_gateway, sample_message, actor_id)
+		mock_message_gateway.get_chat_scene_for_message.return_value = None
+
+		with pytest.raises(ChatReadOnlyException):
+			await message_service.delete(sample_message.id, actor_id)
+
+		mock_message_gateway.delete.assert_not_called()
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio

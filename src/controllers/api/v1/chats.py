@@ -6,7 +6,7 @@ from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 
-from src.application.chats.schemas import ChatFilterDTO, ContextUsage
+from src.application.chats.schemas import ChatFilterDTO, ContextUsage, CreateChatRequest
 from src.application.ports.characters import ICharacterService
 from src.application.ports.chats import IChatService, IChatsService
 from src.application.ports.common import ApiResponse, Page
@@ -24,21 +24,27 @@ router = APIRouter(prefix="/api/v1/chats", tags=["chats"])
 async def create_chat(
 	chat_service: FromDishka[IChatService],
 	character_service: FromDishka[ICharacterService],
-	chat: Chat = Body(),
+	chat_request: CreateChatRequest = Body(),
 	current_user: User = Depends(get_current_user),
 ) -> ApiResponse:
 	user_id = current_user.id
 	logger.debug("create_chat user=%s role=%s", current_user.id, current_user.role)
 
-	if chat.user_id != user_id:
-		logger.warning(f"User ID mismatch: chat.user_id={chat.user_id}, user_id={user_id}")
+	if chat_request.user_id != user_id:
+		logger.warning(f"User ID mismatch: chat.user_id={chat_request.user_id}, user_id={user_id}")
 		raise HTTPException(status_code=403, detail="Chat user_id must match authenticated user")
 
 	# A persona chosen at creation must be visible to the caller (same gate as
 	# set_persona: no pinning another user's private character to leak its prompt).
-	if chat.user_character_id is not None:
-		await character_service.get_one(chat.user_character_id, user_id)
+	if chat_request.user_character_id is not None:
+		await character_service.get_one(chat_request.user_character_id, user_id)
 
+	chat = Chat(
+		title=chat_request.title,
+		user_id=chat_request.user_id,
+		scene_id=chat_request.scene_id,
+		user_character_id=chat_request.user_character_id,
+	)
 	chat_id = await chat_service.start_chat(chat)
 	return ApiResponse(result={"id": str(chat_id)}, correlation_id=correlation_id.get())
 

@@ -47,6 +47,13 @@ class TestChatGateway:
 			scene_id=uuid4(),
 		)
 
+	def test_to_domain_chat_maps_null_scene_id(self, chat_gateway, sample_chat_model):
+		sample_chat_model.scene_id = None
+
+		chat = chat_gateway._to_domain_chat(sample_chat_model)
+
+		assert chat.scene_id is None
+
 	@pytest.mark.unit
 	@pytest.mark.asyncio
 	async def test_create_success(self, chat_gateway, mock_session, sample_domain_chat):

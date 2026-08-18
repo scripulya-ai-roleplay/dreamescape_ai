@@ -31,6 +31,7 @@ from src.conf import settings
 from src.domain.models import Chat, ChatRoles, Message, MessageStatus
 from src.infrastructure.exceptions import (
 	BaseAPIException,
+	ChatReadOnlyException,
 	ContextWindowExceededException,
 	InitialMessageRequiredException,
 	PersonaRequiredException,
@@ -65,6 +66,8 @@ class LLMChatsService(IChatsService):
 
 		chat = await self.chat_gateway.get_one(chat_dto.chat_id)
 		self.authz.require_owned(owner_id=chat.user_id, actor_id=actor_id, noun="chat")
+		if chat.scene_id is None:
+			raise ChatReadOnlyException()
 		history_page = await self._search_history(chat_dto.chat_id, chat.user_id)
 		history = self._page_to_history(history_page, chat_dto.chat_id, chat_dto.llm_model)
 		if not history and chat.initial_message_id is None:
@@ -237,8 +240,11 @@ class LLMChatsService(IChatsService):
 		]
 
 	async def _assemble_prompt(self, chat: Chat) -> tuple[str, ChatSettings | None]:
-		scene = await self.scene_gateway.get_one(chat.scene_id)
-		characters = await self.character_gateway.get_for_scene(chat.scene_id)
+		scene = None
+		characters = []
+		if chat.scene_id is not None:
+			scene = await self.scene_gateway.get_one(chat.scene_id)
+			characters = await self.character_gateway.get_for_scene(chat.scene_id)
 		if chat.user_character_id is None:
 			raise PersonaRequiredException()
 		user_character = await self.character_gateway.get_one(chat.user_character_id)
