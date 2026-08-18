@@ -29,7 +29,7 @@ character_scene = Table(
 	Base.metadata,
 	Column("character_id", UUID(as_uuid=True), ForeignKey("characters.id", ondelete="CASCADE"), primary_key=True),
 	Column("scene_id", UUID(as_uuid=True), ForeignKey("scenes.id", ondelete="CASCADE"), primary_key=True),
-	Column("attached_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
+	Column("attached_at", DateTime(timezone=True), server_default=func.clock_timestamp(), nullable=False),
 )
 
 character_likes = Table(

@@ -86,7 +86,7 @@ for file in "$MIGRATIONS_DIR"/*.sql; do
     docker exec -i "$CONTAINER" sh -c "$PSQL -q" < "$file"
 
     docker exec "$CONTAINER" sh -c \
-        "$PSQL -q -c \"INSERT INTO schema_migrations (filename) VALUES ('$name')\""
+        "$PSQL -q -c \"INSERT INTO schema_migrations (filename) VALUES ('$name') ON CONFLICT (filename) DO NOTHING\""
     applied=$((applied + 1))
 done
 

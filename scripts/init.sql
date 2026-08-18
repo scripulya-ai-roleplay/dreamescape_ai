@@ -53,7 +53,7 @@ CREATE INDEX idx_scene_initial_messages_scene_id ON scene_initial_messages(scene
 CREATE TABLE character_scene (
     character_id UUID NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
     scene_id UUID NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
-    attached_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),  -- attachment order: "first attached character" = lowest attached_at
+    attached_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),  -- attachment order: "first attached character" = lowest attached_at; clock_timestamp() (per-statement wall clock), not NOW() (per-transaction), so same-transaction batch attachments order correctly
     PRIMARY KEY (character_id, scene_id)
 );
 

@@ -20,5 +20,7 @@ class AuthorizationService(IAuthorizationService):
 		raise HTTPException(status.HTTP_403_FORBIDDEN, detail=f"Not allowed to access this {noun}")
 
 	def require_owned(self, *, owner_id: UUID | None, actor_id: UUID, noun: str) -> None:
+		if owner_id is None:
+			raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"This {noun} has no owner and cannot be managed")
 		if owner_id != actor_id:
 			raise HTTPException(status.HTTP_403_FORBIDDEN, detail=f"Not allowed to access this {noun}")

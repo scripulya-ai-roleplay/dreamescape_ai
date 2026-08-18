@@ -4,6 +4,12 @@
 -- when missing). init.sql already includes these columns for fresh volumes;
 -- this file upgrades databases initialized before the change. All columns
 -- are nullable or defaulted, so it is safe to run on a live database.
+--
+-- attached_at caveat: pre-existing character_scene rows are backfilled with
+-- the migration-run clock_timestamp(); their historical attachment order was
+-- never recorded and cannot be preserved, so for legacy rows ordering falls
+-- back to the character_id tiebreak. The attached_at ordering invariant
+-- (see init.sql) only holds for rows attached after this migration runs.
 
 ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS caption VARCHAR(200);
@@ -21,4 +27,5 @@ BEGIN
     END IF;
 END $$;
 
-ALTER TABLE character_scene ADD COLUMN IF NOT EXISTS attached_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE character_scene ADD COLUMN IF NOT EXISTS attached_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp();
+ALTER TABLE character_scene ALTER COLUMN attached_at SET DEFAULT clock_timestamp();

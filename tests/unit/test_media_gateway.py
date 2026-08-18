@@ -184,3 +184,40 @@ class TestMediaGateway:
 		assert result.sort_order == 0
 		assert result.caption is None
 		assert result.layer == MediaLayer.BACKGROUND
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_update_setattrs_and_round_trips(self, media_gateway, mock_session, sample_model):
+		mock_result = Mock()
+		mock_result.scalar_one.return_value = sample_model
+		mock_session.execute.return_value = mock_result
+
+		result = await media_gateway.update(
+			sample_model.id,
+			sort_order=5,
+			caption="hello",
+			layer="foreground",
+		)
+
+		assert sample_model.sort_order == 5
+		assert sample_model.caption == "hello"
+		assert sample_model.layer == "foreground"
+		mock_session.flush.assert_awaited_once()
+		mock_session.refresh.assert_awaited_once()
+		assert result.sort_order == 5
+		assert result.caption == "hello"
+		assert result.layer == MediaLayer.FOREGROUND
+		assert result.id == sample_model.id
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_update_not_found_raises(self, media_gateway, mock_session):
+		from sqlalchemy.exc import NoResultFound
+
+		mock_result = Mock()
+		mock_result.scalar_one.side_effect = NoResultFound()
+		mock_session.execute.return_value = mock_result
+
+		with pytest.raises(NoResultFound):
+			await media_gateway.update(uuid4(), sort_order=1)
+		mock_session.flush.assert_not_awaited()

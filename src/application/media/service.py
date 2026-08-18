@@ -108,12 +108,12 @@ class MediaService(IMediaService):
 		self, entity_type: MediaEntityType, entity_id: UUID, actor_id: UUID | None
 	) -> list[MediaAssetDTO]:
 		assets = await self.gateway.get_for_entity(entity_type, entity_id, actor_id)
-		return list(await asyncio.gather(*(self._to_dto(asset) for asset in assets)))
+		return await self._to_dtos(assets)
 
 	async def search(self, dto: MediaFilterDTO, actor_id: UUID | None) -> Page[MediaAssetDTO]:
 		page = await self.gateway.search(dto, actor_id=actor_id)
 		return Page[MediaAssetDTO](
-			items=list(await asyncio.gather(*(self._to_dto(item) for item in page.items))),
+			items=await self._to_dtos(page.items),
 			count=page.count,
 			offset=page.offset,
 			limit=page.limit,
@@ -153,6 +153,13 @@ class MediaService(IMediaService):
 
 		self.logger.info("Updated media %s (%s)", media_id, sorted(changes))
 		return await self._to_dto(asset)
+
+	async def _to_dtos(self, assets: list[MediaAsset]) -> list[MediaAssetDTO]:
+		results = await asyncio.gather(*(self._to_dto(asset) for asset in assets), return_exceptions=True)
+		for result in results:
+			if isinstance(result, BaseException):
+				raise result
+		return results  # type: ignore[return-value]
 
 	async def _url_for(self, asset: MediaAsset) -> str:
 		# Legacy / external URL: return as-is.

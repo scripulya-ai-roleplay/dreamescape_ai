@@ -85,6 +85,12 @@ class CharacterGateway(ICharacterGateway):
 		self.logger.info(f"Successfully updated character: {target_character_uuid}")
 
 	async def append_to_system_prompt(self, character_uuid: UUID, addition: str) -> None:
+		"""Concatenate [addition] onto the stored system_prompt, SQL-side.
+
+		A read-modify-write through [update] would write the whole stale row
+		back (name, is_public included) and lose any concurrent edit; this
+		touches only system_prompt, and two racing appends both survive.
+		"""
 		self.logger.info(f"Appending to character prompt: {character_uuid}")
 
 		query = (

@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import pytest
 
 # Auth headers authenticate as admin (5dbdc924-...), who owns these seeded entities.
@@ -310,8 +312,9 @@ class TestMediaAPI:
 
 	def test_scene_characters_ordered_by_attachment(self, client, auth_headers):
 		"""GET /scenes/{id}/characters returns characters in attachment order."""
-		character_names = ("Attach Order A", "Attach Order B")
-		scene_title = "Attach Order Scene"
+		suffix = uuid4().hex[:8]
+		character_names = tuple(f"Attach Order {label} {suffix}" for label in ("A", "B"))
+		scene_title = f"Attach Order Scene {suffix}"
 		created_characters = []
 		scene_id = None
 		try:
@@ -341,7 +344,8 @@ class TestMediaAPI:
 
 			# Create endpoints return no id: recover both via search (same as the app).
 			found = client.get(
-				"/api/v1/characters/?owner_ids=5dbdc924-968a-4c50-94a8-44cdd165e460&limit=50",
+				"/api/v1/characters/",
+				params={"names": list(character_names)},
 				headers=auth_headers,
 			)
 			assert found.status_code == 200, found.text
@@ -355,7 +359,8 @@ class TestMediaAPI:
 			)
 			assert found_scene.status_code == 200, found_scene.text
 			scene_items = found_scene.json()["result"]["items"]
-			scene_id = next(item["id"] for item in scene_items if item["title"] == scene_title)
+			scene_id = next((item["id"] for item in scene_items if item["title"] == scene_title), None)
+			assert scene_id is not None, "created scene should be found"
 
 			# Attach in two separate calls so attached_at differs deterministically.
 			for character_id in created_characters:
