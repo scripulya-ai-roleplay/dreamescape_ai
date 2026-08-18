@@ -106,6 +106,11 @@ class MediaEntityType(StrEnum):
 	USER = "user"
 
 
+class MediaLayer(StrEnum):
+	BACKGROUND = "background"
+	FOREGROUND = "foreground"
+
+
 class MediaAsset(BaseModel):
 	model_config = ConfigDict(frozen=True)
 
@@ -118,5 +123,8 @@ class MediaAsset(BaseModel):
 	entity_type: MediaEntityType
 	entity_id: UUID
 	is_public: bool = False
+	sort_order: int = 0
+	caption: None | str = None
+	layer: MediaLayer = MediaLayer.BACKGROUND
 	owner_id: None | UUID = None
 	created_at: None | datetime = None

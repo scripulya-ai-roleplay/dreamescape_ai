@@ -8,10 +8,10 @@ from pydantic import ValidationError
 from starlette.datastructures import Headers
 
 from src.application.auth.authz import AuthorizationService
-from src.application.media.schemas import MediaFilterDTO, MediaUploadDTO
+from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUpdateDTO, MediaUploadDTO
 from src.application.media.service import MediaService
 from src.application.ports.media import UploadedImage
-from src.domain.models import MediaAsset, MediaEntityType
+from src.domain.models import MediaAsset, MediaEntityType, MediaLayer
 
 
 class _FakeUpload(UploadFile):
@@ -139,3 +139,154 @@ class TestMediaServiceUpload:
 		args, _ = storage.delete_object.call_args
 		assert args[0] == "scripulya-public"
 		assert args[1].startswith("character/") and args[1].endswith(".png")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestMediaServiceGetForEntity:
+	@pytest.mark.parametrize("actor_id", [None, uuid4()])
+	async def test_maps_domain_assets_and_passes_actor_through(self, actor_id):
+		owner_id = uuid4()
+		entity_id = uuid4()
+		gateway = AsyncMock()
+		gateway.get_for_entity.return_value = [
+			MediaAsset(
+				id=uuid4(),
+				object_key="character/abc.png",
+				bucket="scripulya-public",
+				content_type="image/png",
+				entity_type=MediaEntityType.CHARACTER,
+				entity_id=entity_id,
+				is_public=True,
+				owner_id=owner_id,
+			),
+			MediaAsset(
+				id=uuid4(),
+				file_url="https://example.com/x.png",
+				content_type="image/png",
+				entity_type=MediaEntityType.CHARACTER,
+				entity_id=entity_id,
+				is_public=True,
+				owner_id=owner_id,
+			),
+		]
+		storage = AsyncMock()
+		storage.public_url = Mock(return_value="http://test/scripulya-public/character/abc.png")
+		service = _service(storage=storage, gateway=gateway)
+
+		result = await service.get_for_entity(MediaEntityType.CHARACTER, entity_id, actor_id=actor_id)
+
+		gateway.get_for_entity.assert_awaited_once_with(MediaEntityType.CHARACTER, entity_id, actor_id)
+		assert len(result) == 2
+		assert all(isinstance(item, MediaAssetDTO) for item in result)
+		assert all(item.url for item in result)
+
+
+class _FakeUOW:
+	def __init__(self):
+		self.entered = False
+
+	async def __aenter__(self):
+		self.entered = True
+		return self
+
+	async def __aexit__(self, exc_type, exc, tb):
+		return False
+
+
+def _asset(owner_id):
+	return MediaAsset(
+		id=uuid4(),
+		object_key="character/abc.png",
+		bucket="scripulya-public",
+		content_type="image/png",
+		size_bytes=123,
+		entity_type=MediaEntityType.CHARACTER,
+		entity_id=uuid4(),
+		is_public=True,
+		owner_id=owner_id,
+	)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestMediaServiceUpdate:
+	@pytest.fixture
+	def owner_id(self):
+		return uuid4()
+
+	@pytest.fixture
+	def uow(self):
+		return _FakeUOW()
+
+	@pytest.fixture
+	def gateway(self, owner_id):
+		gw = AsyncMock()
+		gw.get_one.return_value = _asset(owner_id)
+		gw.update.return_value = _asset(owner_id)
+		return gw
+
+	@pytest.fixture
+	def storage(self):
+		st = AsyncMock()
+		st.public_url = Mock(return_value="http://test/scripulya-public/character/abc.png")
+		return st
+
+	@pytest.fixture
+	def service(self, gateway, storage, uow):
+		return _service(storage=storage, gateway=gateway, uow=uow)
+
+	async def test_sort_order_passes_through(self, service, gateway, uow, owner_id):
+		media_id = gateway.get_one.return_value.id
+		await service.update(media_id, MediaUpdateDTO(sort_order=7), actor_id=owner_id)
+		gateway.update.assert_awaited_once_with(media_id, sort_order=7)
+		assert uow.entered
+
+	async def test_layer_enum_converted_to_value(self, service, gateway, owner_id):
+		media_id = gateway.get_one.return_value.id
+		await service.update(media_id, MediaUpdateDTO(layer=MediaLayer.FOREGROUND), actor_id=owner_id)
+		gateway.update.assert_awaited_once_with(media_id, layer="foreground")
+
+	async def test_caption_stripped(self, service, gateway, owner_id):
+		media_id = gateway.get_one.return_value.id
+		await service.update(media_id, MediaUpdateDTO(caption="  x  "), actor_id=owner_id)
+		gateway.update.assert_awaited_once_with(media_id, caption="x")
+
+	async def test_empty_caption_clears_to_none(self, service, gateway, owner_id):
+		media_id = gateway.get_one.return_value.id
+		await service.update(media_id, MediaUpdateDTO(caption="   "), actor_id=owner_id)
+		gateway.update.assert_awaited_once_with(media_id, caption=None)
+
+	async def test_all_none_is_noop(self, service, gateway, uow, owner_id):
+		media_id = gateway.get_one.return_value.id
+		dto = await service.update(media_id, MediaUpdateDTO(), actor_id=owner_id)
+		gateway.update.assert_not_awaited()
+		assert not uow.entered
+		assert isinstance(dto, MediaAssetDTO)
+		assert dto.id == media_id
+
+	async def test_rejects_different_owner(self, service, gateway, owner_id):
+		with pytest.raises(HTTPException) as exc:
+			await service.update(uuid4(), MediaUpdateDTO(sort_order=1), actor_id=uuid4())
+		assert exc.value.status_code == 403
+		gateway.update.assert_not_awaited()
+
+	async def test_rejects_missing_owner_with_404(self, gateway, storage, uow):
+		gateway.get_one.return_value = _asset(None)
+		svc = _service(storage=storage, gateway=gateway, uow=uow)
+		with pytest.raises(HTTPException) as exc:
+			await svc.update(uuid4(), MediaUpdateDTO(sort_order=1), actor_id=uuid4())
+		assert exc.value.status_code == 404
+		gateway.update.assert_not_awaited()
+
+	async def test_mixed_fields_forwarded_as_kwargs(self, service, gateway, owner_id):
+		media_id = gateway.get_one.return_value.id
+		dto = MediaUpdateDTO(sort_order=3, layer=MediaLayer.FOREGROUND, caption="")
+		result = await service.update(media_id, dto, actor_id=owner_id)
+		gateway.update.assert_awaited_once_with(
+			media_id,
+			sort_order=3,
+			layer="foreground",
+			caption=None,
+		)
+		assert isinstance(result, MediaAssetDTO)

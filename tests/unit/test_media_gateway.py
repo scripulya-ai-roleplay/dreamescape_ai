@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.media.schemas import MediaFilterDTO
 from src.application.ports.common import Page
-from src.domain.models import MediaAsset, MediaEntityType
+from src.domain.models import MediaAsset, MediaEntityType, MediaLayer
 from src.infrastructure.gateways.media_gateway import MediaGateway
 from src.infrastructure.gateways.visibility import VisibilityGateway
 
@@ -38,6 +38,9 @@ class TestMediaGateway:
 		m.entity_type = "character"
 		m.entity_id = uuid4()
 		m.is_public = True
+		m.sort_order = 0
+		m.caption = None
+		m.layer = "background"
 		m.owner_id = uuid4()
 		m.created_at = None
 		return m
@@ -116,7 +119,7 @@ class TestMediaGateway:
 		mock_result.scalars.return_value = mock_scalars
 		mock_session.execute.return_value = mock_result
 
-		result = await media_gateway.get_for_entity(MediaEntityType.SCENE, sample_model.entity_id)
+		result = await media_gateway.get_for_entity(MediaEntityType.SCENE, sample_model.entity_id, actor_id=None)
 
 		assert isinstance(result, list)
 		assert len(result) == 1
@@ -178,3 +181,43 @@ class TestMediaGateway:
 		assert result.bucket == sample_model.bucket
 		assert result.entity_type == MediaEntityType.CHARACTER
 		assert result.owner_id == sample_model.owner_id
+		assert result.sort_order == 0
+		assert result.caption is None
+		assert result.layer == MediaLayer.BACKGROUND
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_update_setattrs_and_round_trips(self, media_gateway, mock_session, sample_model):
+		mock_result = Mock()
+		mock_result.scalar_one.return_value = sample_model
+		mock_session.execute.return_value = mock_result
+
+		result = await media_gateway.update(
+			sample_model.id,
+			sort_order=5,
+			caption="hello",
+			layer="foreground",
+		)
+
+		assert sample_model.sort_order == 5
+		assert sample_model.caption == "hello"
+		assert sample_model.layer == "foreground"
+		mock_session.flush.assert_awaited_once()
+		mock_session.refresh.assert_awaited_once()
+		assert result.sort_order == 5
+		assert result.caption == "hello"
+		assert result.layer == MediaLayer.FOREGROUND
+		assert result.id == sample_model.id
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_update_not_found_raises(self, media_gateway, mock_session):
+		from sqlalchemy.exc import NoResultFound
+
+		mock_result = Mock()
+		mock_result.scalar_one.side_effect = NoResultFound()
+		mock_session.execute.return_value = mock_result
+
+		with pytest.raises(NoResultFound):
+			await media_gateway.update(uuid4(), sort_order=1)
+		mock_session.flush.assert_not_awaited()

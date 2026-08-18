@@ -7,7 +7,7 @@ from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Depends, File, Form, Path, Query, UploadFile
 
-from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadDTO
+from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUpdateDTO, MediaUploadDTO
 from src.application.ports.common import ApiResponse, Page
 from src.application.ports.media import IMediaService
 from src.controllers.api.v1.auth_dependencies import get_current_user, get_optional_user
@@ -58,6 +58,19 @@ async def upload_media(
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 
+@router.get("/entity/{entity_type}/{entity_id}")
+@inject
+async def get_media_for_entity(
+	media_service: FromDishka[IMediaService],
+	entity_type: MediaEntityType = Path(),
+	entity_id: UUID = Path(),
+	current_user: User | None = Depends(get_optional_user),
+) -> ApiResponse[list[MediaAssetDTO]]:
+	actor_id = current_user.id if current_user else None
+	result = await media_service.get_for_entity(entity_type, entity_id, actor_id=actor_id)
+	return ApiResponse(result=result, correlation_id=correlation_id.get())
+
+
 @router.get("/{media_id}")
 @inject
 async def get_media(
@@ -79,6 +92,20 @@ async def search_media(
 ) -> ApiResponse[Page[MediaAssetDTO]]:
 	actor_id = current_user.id
 	result = await media_service.search(dto, actor_id=actor_id)
+	return ApiResponse(result=result, correlation_id=correlation_id.get())
+
+
+@router.patch("/{media_id}")
+@inject
+async def update_media(
+	media_service: FromDishka[IMediaService],
+	dto: MediaUpdateDTO,
+	media_id: UUID = Path(),
+	current_user: User = Depends(get_current_user),
+) -> ApiResponse[MediaAssetDTO]:
+	actor_id = current_user.id
+	logger.info("Update request from user %s for media %s", actor_id, media_id)
+	result = await media_service.update(media_id, dto, actor_id=actor_id)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 

@@ -1,4 +1,5 @@
 from io import BytesIO
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import UploadFile
@@ -58,22 +59,43 @@ class TestImageReaderRead:
 		assert image.size == len(PNG_BYTES)
 
 	async def test_rejects_unsupported_declared_type(self):
-		# SVG is dropped from the allowlist entirely -> 415 before any sniffing.
 		with pytest.raises(UnsupportedImageTypeException) as exc:
 			await _reader().read(_FakeUpload(b"<svg onload=alert(1)></svg>", "image/svg+xml"))
 		assert exc.value.status_code == 415
 
-	async def test_rejects_sniff_vs_claim_mismatch(self):
-		# Claims JPEG, ships PNG -> valid image, wrong type.
+	async def test_falls_back_to_sniff_when_part_has_no_content_type(self):
+		image = await _reader().read(_FakeUpload(PNG_BYTES, ""))
+		assert image.content_type == "image/png"
+
+	async def test_falls_back_to_sniff_for_nonstandard_subtype(self):
+		image = await _reader().read(_FakeUpload(PNG_BYTES, "image/jpg"))
+		assert image.content_type == "image/png"
+
+	async def test_rejects_sniffable_image_with_lied_about_content_type(self):
 		with pytest.raises(UnsupportedImageTypeException) as exc:
 			await _reader().read(_FakeUpload(PNG_BYTES, "image/jpeg"))
 		assert exc.value.status_code == 415
 
+	async def test_parameter_suffix_cannot_bypass_declared_type_check(self):
+		with pytest.raises(UnsupportedImageTypeException) as exc:
+			await _reader().read(_FakeUpload(JPEG_BYTES, "image/png; charset=utf-8"))
+		assert exc.value.status_code == 415
+
+	async def test_strips_content_type_parameters(self):
+		image = await _reader().read(_FakeUpload(PNG_BYTES, "Image/PNG; charset=binary"))
+		assert image.content_type == "image/png"
+
 	async def test_rejects_non_image_bytes(self):
-		# Claims PNG, ships HTML -> sniff must catch the lie.
 		with pytest.raises(UnsupportedImageTypeException) as exc:
 			await _reader().read(_FakeUpload(HTML_BYTES, "image/png"))
 		assert exc.value.status_code == 415
+
+	async def test_rejects_non_image_bytes_before_reading_whole_body(self):
+		file = _FakeUpload(HTML_BYTES + PNG_BYTES * 1000, "image/png")
+		file.read = AsyncMock(wraps=file.read)
+		with pytest.raises(UnsupportedImageTypeException):
+			await _reader().read(file)
+		assert file.read.await_count == 1
 
 	async def test_rejects_oversize(self):
 		# Cap smaller than payload -> 413 during the streaming read.

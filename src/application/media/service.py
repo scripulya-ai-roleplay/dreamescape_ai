@@ -1,3 +1,4 @@
+import asyncio
 import io
 import logging
 from dataclasses import dataclass
@@ -6,7 +7,13 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 from starlette import status
 
-from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadBytesDTO, MediaUploadDTO
+from src.application.media.schemas import (
+	MediaAssetDTO,
+	MediaFilterDTO,
+	MediaUpdateDTO,
+	MediaUploadBytesDTO,
+	MediaUploadDTO,
+)
 from src.application.ports.authorization import IAuthorizationService
 from src.application.ports.common import IUnitOfWork, Page
 from src.application.ports.media import IImageReader, IMediaGateway, IMediaService, IObjectStorageGateway, UploadedImage
@@ -97,10 +104,16 @@ class MediaService(IMediaService):
 		self.authz.require_visible(is_public=asset.is_public, owner_id=asset.owner_id, actor_id=actor_id, noun="media")
 		return await self._to_dto(asset)
 
+	async def get_for_entity(
+		self, entity_type: MediaEntityType, entity_id: UUID, actor_id: UUID | None
+	) -> list[MediaAssetDTO]:
+		assets = await self.gateway.get_for_entity(entity_type, entity_id, actor_id)
+		return await self._to_dtos(assets)
+
 	async def search(self, dto: MediaFilterDTO, actor_id: UUID | None) -> Page[MediaAssetDTO]:
 		page = await self.gateway.search(dto, actor_id=actor_id)
 		return Page[MediaAssetDTO](
-			items=[await self._to_dto(item) for item in page.items],
+			items=await self._to_dtos(page.items),
 			count=page.count,
 			offset=page.offset,
 			limit=page.limit,
@@ -118,6 +131,35 @@ class MediaService(IMediaService):
 				except Exception:
 					self.logger.exception("Failed to delete object %s/%s", asset.bucket, asset.object_key)
 			await self.gateway.delete(media_id)
+
+	async def update(self, media_id: UUID, dto: MediaUpdateDTO, actor_id: UUID) -> MediaAssetDTO:
+		asset = await self.gateway.get_one(media_id)  # NoResultFound -> 404
+		self.authz.require_owned(owner_id=asset.owner_id, actor_id=actor_id, noun="media")
+
+		# None fields mean "leave unchanged"; an empty caption clears it.
+		changes: dict[str, object] = {}
+		if dto.sort_order is not None:
+			changes["sort_order"] = dto.sort_order
+		if dto.layer is not None:
+			changes["layer"] = dto.layer.value
+		if dto.caption is not None:
+			changes["caption"] = dto.caption.strip() or None
+
+		if not changes:
+			return await self._to_dto(asset)
+
+		async with self.uow:
+			asset = await self.gateway.update(media_id, **changes)
+
+		self.logger.info("Updated media %s (%s)", media_id, sorted(changes))
+		return await self._to_dto(asset)
+
+	async def _to_dtos(self, assets: list[MediaAsset]) -> list[MediaAssetDTO]:
+		results = await asyncio.gather(*(self._to_dto(asset) for asset in assets), return_exceptions=True)
+		for result in results:
+			if isinstance(result, BaseException):
+				raise result
+		return results  # type: ignore[return-value]
 
 	async def _url_for(self, asset: MediaAsset) -> str:
 		# Legacy / external URL: return as-is.
@@ -139,5 +181,8 @@ class MediaService(IMediaService):
 			entity_type=asset.entity_type,
 			entity_id=asset.entity_id,
 			is_public=asset.is_public,
+			sort_order=asset.sort_order,
+			caption=asset.caption,
+			layer=asset.layer,
 			created_at=asset.created_at,
 		)

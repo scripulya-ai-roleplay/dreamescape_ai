@@ -1,0 +1,186 @@
+name: MIGRATE
+
+# Applies pending SQL migrations (scripts/migrations/) to a stand's Postgres
+# over the same WireGuard + SSH path the deploy workflow uses. Manual button
+# only — migrations are deliberate, never automatic.
+#
+# The runner rsyncs scripts/migrations/ + apply_migrations.sh to the stand,
+# then runs the applier inside the postgres container via docker exec. The
+# applier tracks applied files in the schema_migrations table, so pressing the
+# button when nothing is pending is a no-op.
+#
+# Environment choice (input `stand`):
+#   devstand (default) → DEVSTAND_* secrets, container scripulya-postgres-1
+#   prod               → VPS_* secrets (shared with the deploy repo's deploy),
+#                        container name scripulya-postgres-1 on the VPS
+#
+# The `production` GitHub environment is expected to be configured in repo
+# settings with required reviewers — that environment gate is what enforces
+# the "deliberate, never automatic" rule for prod; devstand needs no gate.
+#
+# One-time setup is the same as docs/DEPLOY.md steps 2–3, but with a peer for
+# the dev stand: add the runner's WireGuard peer AllowedIPs on the stand, put
+# the stand's SSH public key in DEVSTAND_SSH_PRIVATE_KEY, and set DEVSTAND_WG_*
+# secrets.
+
+on:
+  workflow_dispatch:
+    inputs:
+      stand:
+        description: "Which stand to migrate"
+        type: choice
+        default: devstand
+        options: [devstand, prod]
+      dry_run:
+        description: "Only list pending migrations (applies nothing)"
+        type: boolean
+        default: false
+
+concurrency:
+  # One migration at a time per stand.
+  group: migrate-${{ inputs.stand }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.stand == 'prod' && 'production' || 'devstand' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select stand connection
+        id: stand
+        env:
+          CHOICE: ${{ inputs.stand }}
+        run: |
+          case "$CHOICE" in
+            devstand)
+              echo "wg_ip_var=DEVSTAND_WG_IP"        >> "$GITHUB_OUTPUT"
+              echo "ssh_user_var=DEVSTAND_SSH_USER"  >> "$GITHUB_OUTPUT"
+              echo "ssh_port_var=DEVSTAND_SSH_PORT"  >> "$GITHUB_OUTPUT"
+              echo "ssh_key_var=DEVSTAND_SSH_PRIVATE_KEY" >> "$GITHUB_OUTPUT"
+              echo "wg_key_var=DEVSTAND_WG_PRIVATE_KEY"   >> "$GITHUB_OUTPUT"
+              echo "wg_addr_var=DEVSTAND_WG_ADDRESS"      >> "$GITHUB_OUTPUT"
+              echo "wg_peer_key_var=DEVSTAND_WG_PEER_PUBLIC_KEY" >> "$GITHUB_OUTPUT"
+              echo "wg_psk_var=DEVSTAND_WG_PRESHARED_KEY"        >> "$GITHUB_OUTPUT"
+              echo "wg_endpoint_var=DEVSTAND_WG_ENDPOINT"        >> "$GITHUB_OUTPUT"
+              echo "wg_allowed_var=DEVSTAND_WG_PEER_ALLOWED_IPS" >> "$GITHUB_OUTPUT"
+              ;;
+            prod)
+              echo "wg_ip_var=VPS_WG_IP"             >> "$GITHUB_OUTPUT"
+              echo "ssh_user_var=VPS_SSH_USER"       >> "$GITHUB_OUTPUT"
+              echo "ssh_port_var=VPS_SSH_PORT"       >> "$GITHUB_OUTPUT"
+              echo "ssh_key_var=SSH_PRIVATE_KEY"     >> "$GITHUB_OUTPUT"
+              echo "wg_key_var=WG_PRIVATE_KEY"       >> "$GITHUB_OUTPUT"
+              echo "wg_addr_var=WG_ADDRESS"          >> "$GITHUB_OUTPUT"
+              echo "wg_peer_key_var=WG_PEER_PUBLIC_KEY" >> "$GITHUB_OUTPUT"
+              echo "wg_psk_var=WG_PRESHARED_KEY"        >> "$GITHUB_OUTPUT"
+              echo "wg_endpoint_var=WG_ENDPOINT"        >> "$GITHUB_OUTPUT"
+              echo "wg_allowed_var=WG_PEER_ALLOWED_IPS" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      # ── 1. WireGuard tunnel (same shape as the deploy workflow) ────────────
+      - name: Bring up WireGuard tunnel
+        env:
+          WG_PRIVATE_KEY:      ${{ secrets[steps.stand.outputs.wg_key_var] }}
+          WG_ADDRESS:          ${{ secrets[steps.stand.outputs.wg_addr_var] }}
+          WG_PEER_PUBLIC_KEY:  ${{ secrets[steps.stand.outputs.wg_peer_key_var] }}
+          WG_PRESHARED_KEY:    ${{ secrets[steps.stand.outputs.wg_psk_var] }}
+          WG_ENDPOINT:         ${{ secrets[steps.stand.outputs.wg_endpoint_var] }}
+          WG_PEER_ALLOWED_IPS: ${{ secrets[steps.stand.outputs.wg_allowed_var] }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq wireguard-tools >/dev/null
+          cat > /tmp/wg0.conf <<EOF
+          [Interface]
+          PrivateKey = ${WG_PRIVATE_KEY}
+          Address = ${WG_ADDRESS}
+
+          [Peer]
+          PublicKey = ${WG_PEER_PUBLIC_KEY}
+          $(if [ -n "${WG_PRESHARED_KEY}" ]; then echo "PresharedKey = ${WG_PRESHARED_KEY}"; fi)
+          AllowedIPs = ${WG_PEER_ALLOWED_IPS}
+          Endpoint = ${WG_ENDPOINT}
+          PersistentKeepalive = 25
+          EOF
+          sudo chmod 600 /tmp/wg0.conf
+          sudo wg-quick up /tmp/wg0.conf
+          sudo wg show
+
+      - name: Verify tunnel reachability
+        env:
+          WG_IP: ${{ secrets[steps.stand.outputs.wg_ip_var] }}
+        run: ping -c 3 -W 3 "$WG_IP"
+
+      # ── 2. SSH config ───────────────────────────────────────────────────────
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets[steps.stand.outputs.ssh_key_var] }}
+          WG_IP:           ${{ secrets[steps.stand.outputs.wg_ip_var] }}
+          SSH_PORT:        ${{ secrets[steps.stand.outputs.ssh_port_var] }}
+          SSH_USER:        ${{ secrets[steps.stand.outputs.ssh_user_var] }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          cat > ~/.ssh/config <<EOF
+          Host stand
+            HostName ${WG_IP}
+            Port ${SSH_PORT:-22}
+            User ${SSH_USER:-deploy}
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+            StrictHostKeyChecking accept-new
+            UserKnownHostsFile ~/.ssh/known_hosts
+          EOF
+          chmod 600 ~/.ssh/config
+
+      # ── 3. Ship the migrations + applier ───────────────────────────────────
+      - name: Sync migrations to stand
+        run: |
+          set -euo pipefail
+          ssh stand "mkdir -p ~/scripulya-migrate"
+          rsync -az --delete scripts/migrations/ stand:scripulya-migrate/migrations/
+          rsync -az scripts/apply_migrations.sh stand:scripulya-migrate/
+
+      # ── 4. Run (or preview) ─────────────────────────────────────────────────
+      # The postgres container has the exact same name on both stands
+      # (scripulya-postgres-1), so it is matched by exact name — never by an
+      # image substring, which could pick e.g. a postgres-exporter sidecar.
+      # `docker ps -a` lets us tell "exists but stopped" from "missing", and
+      # pg_isready confirms the server accepts connections before any DDL.
+      - name: Apply migrations
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          CONTAINER=$(ssh stand 'set -eu
+            if ! docker ps -a --format "{{.Names}}" | grep -qx "scripulya-postgres-1"; then
+              echo "!! container scripulya-postgres-1 not found on stand" >&2
+              exit 1
+            fi
+            if [ "$(docker inspect -f "{{.State.Running}}" scripulya-postgres-1)" != "true" ]; then
+              echo "!! container scripulya-postgres-1 exists but is not running" >&2
+              exit 1
+            fi
+            docker exec scripulya-postgres-1 sh -c "pg_isready -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\"" >/dev/null
+            echo scripulya-postgres-1')
+          echo "==> Postgres container: $CONTAINER"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "==> Dry run: pending migrations are the ones the applier would print 'apply' for"
+            ssh stand "cd ~/scripulya-migrate && bash apply_migrations.sh '$CONTAINER' --dry-run" || true
+          else
+            ssh stand "cd ~/scripulya-migrate && bash apply_migrations.sh '$CONTAINER'"
+          fi
+
+      # ── 5. Always tear the tunnel down ──────────────────────────────────────
+      - name: Tear down WireGuard tunnel
+        if: always()
+        run: |
+          sudo wg-quick down /tmp/wg0.conf 2>/dev/null || true
+          sudo rm -f /tmp/wg0.conf

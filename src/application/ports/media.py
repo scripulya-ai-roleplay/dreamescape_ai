@@ -5,7 +5,13 @@ from uuid import UUID
 from fastapi import UploadFile
 from pydantic import BaseModel, ConfigDict
 
-from src.application.media.schemas import MediaAssetDTO, MediaFilterDTO, MediaUploadBytesDTO, MediaUploadDTO
+from src.application.media.schemas import (
+	MediaAssetDTO,
+	MediaFilterDTO,
+	MediaUpdateDTO,
+	MediaUploadBytesDTO,
+	MediaUploadDTO,
+)
 from src.application.ports.common import Page
 from src.domain.models import MediaAsset, MediaEntityType
 
@@ -56,13 +62,18 @@ class IMediaGateway(abc.ABC):
 	async def create(self, asset: MediaAsset) -> MediaAsset: ...
 
 	@abc.abstractmethod
+	async def update(self, media_id: UUID, **changes) -> MediaAsset: ...
+
+	@abc.abstractmethod
 	async def get_one(self, media_id: UUID) -> MediaAsset: ...
 
 	@abc.abstractmethod
 	async def get_entity_owner(self, entity_type: MediaEntityType, entity_id: UUID) -> UUID | None: ...
 
 	@abc.abstractmethod
-	async def get_for_entity(self, entity_type: MediaEntityType, entity_id: UUID) -> list[MediaAsset]: ...
+	async def get_for_entity(
+		self, entity_type: MediaEntityType, entity_id: UUID, actor_id: UUID | None
+	) -> list[MediaAsset]: ...
 
 	@abc.abstractmethod
 	async def search(self, dto: MediaFilterDTO, actor_id: UUID | None = None) -> Page[MediaAsset]: ...
@@ -82,7 +93,15 @@ class IMediaService(abc.ABC):
 	async def get_one(self, media_id: UUID, actor_id: UUID | None) -> MediaAssetDTO: ...
 
 	@abc.abstractmethod
+	async def get_for_entity(
+		self, entity_type: MediaEntityType, entity_id: UUID, actor_id: UUID | None
+	) -> list[MediaAssetDTO]: ...
+
+	@abc.abstractmethod
 	async def search(self, dto: MediaFilterDTO, actor_id: UUID | None) -> Page[MediaAssetDTO]: ...
+
+	@abc.abstractmethod
+	async def update(self, media_id: UUID, dto: MediaUpdateDTO, actor_id: UUID) -> MediaAssetDTO: ...
 
 	@abc.abstractmethod
 	async def delete(self, media_id: UUID, actor_id: UUID) -> None: ...

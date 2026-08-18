@@ -7,11 +7,10 @@ from src.application.ports.media import IImageReader, UploadedImage
 from src.infrastructure.exceptions import ImageTooLargeException, UnsupportedImageTypeException
 from src.infrastructure.logging.logger import Logger
 
-# Image content types accepted on upload. The extension is derived from the
-# sniffed type (not the client-supplied filename) and doubles as the allowlist.
-# image/svg+xml is intentionally NOT accepted: it is XML text that can carry an
-# inline <script>, so an SVG served from the anonymous-readable public bucket is
-# a stored-XSS vector. See _sniff_image_type.
+# Image content types accepted on upload, with the file extension each one
+# stores as. image/svg+xml is intentionally NOT accepted: it is XML text that
+# can carry an inline <script>, so an SVG served from the anonymous-readable
+# public bucket is a stored-XSS vector.
 _CONTENT_TYPE_EXT: dict[str, str] = {
 	"image/png": "png",
 	"image/jpeg": "jpg",
@@ -23,7 +22,8 @@ _CONTENT_TYPE_EXT: dict[str, str] = {
 }
 
 # Magic-number signatures used to determine the real type from the file bytes.
-# The client-supplied Content-Type header is untrusted and must agree with this.
+# The client-supplied Content-Type is advisory: a known image type must agree
+# with the sniffed type; any other label is replaced by it.
 _IMAGE_SIGNATURES: tuple[tuple[bytes, str], ...] = (
 	(b"\x89PNG\r\n\x1a\n", "image/png"),
 	(b"\xff\xd8\xff", "image/jpeg"),
@@ -36,6 +36,7 @@ _IMAGE_SIGNATURES: tuple[tuple[bytes, str], ...] = (
 )
 
 _READ_CHUNK = 64 * 1024
+_SNIFF_MIN_BYTES = 12
 
 
 def _sniff_image_type(data: bytes | bytearray | memoryview) -> str | None:
@@ -53,10 +54,7 @@ class ImageReader(IImageReader):
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def read(self, file: UploadFile) -> UploadedImage:
-		content_type = (file.content_type or "").lower()
-		if content_type not in _CONTENT_TYPE_EXT:
-			self.logger.warning("Rejected upload: unsupported content_type=%s", content_type)
-			raise UnsupportedImageTypeException(f"Unsupported image content type: {content_type or 'unknown'}")
+		declared = (file.content_type or "").split(";")[0].strip().lower()
 
 		buf = bytearray()
 		while True:
@@ -64,11 +62,14 @@ class ImageReader(IImageReader):
 			if not chunk:
 				break
 			buf += chunk
+			if len(buf) >= _SNIFF_MIN_BYTES and _sniff_image_type(buf) is None:
+				self.logger.warning("Rejected upload: bytes are not a recognized image type")
+				raise UnsupportedImageTypeException("File contents are not a recognized image type")
 			if len(buf) > self.max_bytes:
 				self.logger.warning("Rejected upload: size exceeds %s bytes", self.max_bytes)
 				raise ImageTooLargeException(f"Image exceeds the {self.max_bytes}-byte limit")
 
-		return self._finalize(content_type, buf)
+		return self._finalize(declared, buf)
 
 	async def read_bytes(self, data: bytes, content_type: str | None = None) -> UploadedImage:
 		if len(data) > self.max_bytes:
