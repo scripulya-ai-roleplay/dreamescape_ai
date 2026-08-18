@@ -25,7 +25,7 @@ class ChatService(IChatService):
 	async def start_chat(self, chat: Chat) -> UUID:
 		self.logger.info(f"Starting chat: {chat.title}")
 		if chat.scene_id is None:
-			raise ChatReadOnlyException()
+			raise ValueError("Chat must reference a scene")
 
 		async with self.uow:
 			chat_id = await self.chat_gateway.create(chat)
@@ -57,7 +57,7 @@ class ChatService(IChatService):
 
 	async def update(self, target_chat_uuid: UUID, chat_name: str, actor_id: UUID) -> UUID:
 		self.logger.info(f"Updating chat {target_chat_uuid} with name: {chat_name}")
-		await self._require_owned(target_chat_uuid, actor_id)
+		self._require_writable(await self._require_owned(target_chat_uuid, actor_id))
 		async with self.uow:
 			return await self.chat_gateway.update(target_chat_uuid, chat_name)
 

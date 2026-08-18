@@ -15,6 +15,15 @@ class ChatFilterDTO(BaseModel):
 	offset: int = Field(default=0, ge=0)
 
 
+class CreateChatRequest(BaseModel):
+	model_config = ConfigDict(extra="forbid")
+
+	title: str
+	user_id: UUID
+	scene_id: UUID
+	user_character_id: None | UUID = None
+
+
 class ModelContextUsage(BaseModel):
 	model_config = ConfigDict(frozen=True)
 
