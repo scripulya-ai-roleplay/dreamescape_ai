@@ -50,7 +50,13 @@ class TraceAndLogRequestsMiddleware(BaseHTTPMiddleware):
 		# request (propagated into the route running inside call_next).
 		await self._resolve_caller(request)
 
-		logger.info("Request started: %s %s from %s", request.method, request.url.path, client_host)
+		logger.info(
+			"Request started: %s %s from %s",
+			request.method,
+			request.url.path,
+			client_host,
+			extra={"http_method": request.method, "path": request.url.path, "client_host": client_host},
+		)
 
 		try:
 			response = await call_next(request)
@@ -63,6 +69,12 @@ class TraceAndLogRequestsMiddleware(BaseHTTPMiddleware):
 				process_time,
 				e,
 				exc_info=True,
+				extra={
+					"http_method": request.method,
+					"path": request.url.path,
+					"client_host": client_host,
+					"duration_ms": round(process_time * 1000, 1),
+				},
 			)
 			raise e
 
@@ -76,5 +88,11 @@ class TraceAndLogRequestsMiddleware(BaseHTTPMiddleware):
 			request.url.path,
 			response.status_code,
 			process_time,
+			extra={
+				"http_method": request.method,
+				"path": request.url.path,
+				"status_code": response.status_code,
+				"duration_ms": round(process_time * 1000, 1),
+			},
 		)
 		return response
