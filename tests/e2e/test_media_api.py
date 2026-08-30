@@ -191,6 +191,13 @@ class TestMediaAPI:
 		finally:
 			client.delete(f"/api/v1/media/{media_id}", headers=auth_headers)
 
+	def test_entity_listing_invalid_token_returns_401_not_empty(self, client):
+		response = client.get(
+			f"/api/v1/media/entity/character/{ADMIN_CHARACTER_ID}",
+			headers={"Authorization": "Bearer not.a.valid.token"},
+		)
+		assert response.status_code == 401
+
 	def test_search_media_invalid_uuid_filter_returns_422(self, client, auth_headers):
 		response = client.get("/api/v1/media/?entity_id=not-a-uuid", headers=auth_headers)
 		assert response.status_code == 422

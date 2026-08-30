@@ -381,4 +381,5 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 INSERT INTO schema_migrations (filename) VALUES
-    ('2026-08-media-ordering.sql');
+    ('2026-08-media-ordering.sql'),
+    ('2026-08-30-mobile-login.sql');
