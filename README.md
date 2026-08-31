@@ -257,6 +257,23 @@ The REST API is versioned under `/api/v1`.
 | `/api/v1/media` | Image upload and media access |
 | `/health` | Service health information |
 
+### Authentication contract for public content routes
+
+Some read routes are optionally authenticated — they return public content when
+no `Authorization` header is sent, while the caller's identity widens the result
+set to their private items: the scene, character, and initial-message routes and
+the media lookup routes (`GET /api/v1/scenes/`, `GET /api/v1/scenes/{id}`,
+`GET /api/v1/scenes/{id}/initial-messages`, `GET /api/v1/characters/`,
+`GET /api/v1/characters/{id}`, `GET /api/v1/media/entity/{type}/{id}`,
+`GET /api/v1/media/{id}`).
+
+Since GITHUB-125 a token that fails verification — expired, tampered, or
+otherwise invalid — is rejected with **401** on these routes. It no longer
+degrades to anonymous access. A client holding a stale access token gets 401
+instead of public content: treat any 401 from these routes as a signal to
+refresh the token or log in again, not as "this content is public". An absent
+header still means anonymous public access.
+
 After starting the application, interactive API documentation is available at:
 
 - Swagger UI: `http://localhost:8000/docs`
@@ -318,6 +335,27 @@ MINIO_ROOT_PASSWORD=minioadmin
 ```
 
 Never use the example credentials or JWT secret in production.
+
+The seeded accounts (`mobile`, `admin`, `api`, `developer`) start with no
+password. To make `POST /api/v1/auth/login` work on the Compose stand (the
+Android client logs in as `mobile`), set argon2 hashes in the environment
+before the first `up` — Compose passes them to the postgres container, where
+the mounted `scripts/seed_passwords.sh` applies them to the fresh volume:
+
+```dotenv
+ADMIN_PASSWORD_HASH=$argon2id$...
+DEV_PASSWORD_HASH=$argon2id$...
+```
+
+Generate a hash with:
+
+```bash
+python -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('YOUR-PASSWORD'))"
+```
+
+They are only read on a fresh volume (or by `scripts/apply_migrations.sh`
+against an existing stand); changing them later does not re-seed an initialized
+database.
 
 ### Start with Docker Compose
 

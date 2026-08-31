@@ -32,11 +32,17 @@ services:
       - POSTGRES_DB=dbname
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
+      # Seeded by zz-seed-passwords.sh on a fresh volume (init.sql inserts the
+      # users with a NULL password_hash). Empty values leave the accounts
+      # password-less, which locks the mobile client out of /auth/login.
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-}
+      - DEV_PASSWORD_HASH=${DEV_PASSWORD_HASH:-}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ../scripts/seed_passwords.sh:/docker-entrypoint-initdb.d/zz-seed-passwords.sh:ro
     networks:
       - app-network
     restart: unless-stopped

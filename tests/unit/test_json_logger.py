@@ -1,5 +1,6 @@
 import json
 import logging
+import logging.config
 
 import pytest
 
@@ -130,3 +131,56 @@ class TestLoggerConfigure:
 		root = logging.getLogger()
 		for handler in root.handlers:
 			assert any(isinstance(f, RequestContextFilter) for f in handler.filters)
+
+
+@pytest.mark.unit
+class TestUvicornLogConfig:
+	@pytest.fixture(autouse=True)
+	def restore_root_logging(self):
+		root = logging.getLogger()
+		snapshot = (list(root.handlers), root.level)
+		saved = {
+			name: (
+				list(logging.getLogger(name).handlers),
+				logging.getLogger(name).propagate,
+				logging.getLogger(name).level,
+			)
+			for name in ("uvicorn", "uvicorn.error", "uvicorn.access")
+		}
+		yield
+		root.handlers = snapshot[0]
+		root.setLevel(snapshot[1])
+		for name, (handlers, propagate, level) in saved.items():
+			named = logging.getLogger(name)
+			named.handlers = handlers
+			named.propagate = propagate
+			named.setLevel(level)
+
+	def test_text_mode_defers_to_uvicorn_defaults(self, monkeypatch):
+		monkeypatch.setattr("src.conf.settings.LOG_FORMAT_JSON", False, raising=False)
+		assert Logger.uvicorn_log_config() is None
+
+	def test_json_mode_routes_uvicorn_loggers_through_root(self, monkeypatch):
+		monkeypatch.setattr("src.conf.settings.LOG_FORMAT_JSON", True, raising=False)
+		Logger.configure()
+		logging.config.dictConfig(Logger.uvicorn_log_config())
+
+		access = logging.getLogger("uvicorn.access")
+		assert access.handlers == []
+		assert access.propagate is True
+		assert logging.getLogger("uvicorn.error").propagate is True
+
+		root = logging.getLogger()
+		assert root.handlers
+		assert any(isinstance(h.formatter, JsonFormatter) for h in root.handlers)
+
+	def test_json_mode_access_line_is_one_json_object(self, monkeypatch, capsys):
+		monkeypatch.setattr("src.conf.settings.LOG_FORMAT_JSON", True, raising=False)
+		Logger.configure()
+		logging.config.dictConfig(Logger.uvicorn_log_config())
+
+		logging.getLogger("uvicorn.access").info('%s - "%s" %d', "127.0.0.1:1", "GET /health HTTP/1.1", 200)
+		payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+		assert payload["logger"] == "uvicorn.access"
+		assert payload["trace_id"] == "-"
+		assert payload["user_id"] == "-"

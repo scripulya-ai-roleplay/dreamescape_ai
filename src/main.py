@@ -33,6 +33,7 @@ def run_http_server() -> None:
 		host=settings.HOST,
 		port=settings.PORT,
 		log_level=uvicorn_logging_level,
+		log_config=Logger.uvicorn_log_config(),
 	)
 
 

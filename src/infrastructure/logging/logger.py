@@ -32,3 +32,27 @@ class Logger:
 		ctx_filter = RequestContextFilter()
 		for configured_handler in logging.getLogger().handlers:
 			configured_handler.addFilter(ctx_filter)
+
+	@classmethod
+	def uvicorn_log_config(cls) -> dict | None:
+		"""log_config for uvicorn.run so it does not override the JSON setup.
+
+		By default uvicorn applies its own dictConfig after Logger.configure():
+		uvicorn.access gets a plain-text stdout handler with propagate=False,
+		which breaks the one-JSON-object-per-line contract when
+		LOG_FORMAT_JSON=true. Returning None keeps uvicorn's defaults for text
+		mode; in JSON mode this config strips every uvicorn logger's own
+		handlers and lets records propagate to the root handler installed by
+		Logger.configure() (same JsonFormatter, same RequestContextFilter).
+		"""
+		if not settings.LOG_FORMAT_JSON:
+			return None
+		return {
+			"version": 1,
+			"disable_existing_loggers": False,
+			"loggers": {
+				"uvicorn": {"propagate": True},
+				"uvicorn.error": {"level": "INFO"},
+				"uvicorn.access": {"propagate": True},
+			},
+		}
