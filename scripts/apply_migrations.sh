@@ -16,6 +16,10 @@
 # Environment (read inside the container):
 #   POSTGRES_USER / POSTGRES_DB — standard postgres image vars; the container
 #   has them set, so credentials never appear in this script or in CI logs.
+#   ADMIN_PASSWORD_HASH / DEV_PASSWORD_HASH — optional argon2 hashes handed to
+#   migrations as the psql variables admin_hash / dev_hash (referenced in SQL
+#   as :'admin_hash' / :'dev_hash'). Empty/unset means any guarded UPDATE in a
+#   migration is a no-op; hash values never appear in this script or in logs.
 #
 # Exits non-zero on the first failure; each file runs statement-by-statement in
 # psql autocommit, so a mid-file failure leaves earlier statements applied —
@@ -49,8 +53,13 @@ MIGRATIONS_DIR="${MIGRATIONS_DIR:-$(cd "$(dirname "$0")" && pwd)/migrations}"
 [ -d "$MIGRATIONS_DIR" ] || { echo "!! migrations dir not found: $MIGRATIONS_DIR" >&2; exit 1; }
 
 # psql invocation inside the container (uses the container's own env for
-# user/db so this works identically on the dev stand and the VPS).
-PSQL="psql -U \$POSTGRES_USER -d \$POSTGRES_DB -v ON_ERROR_STOP=1"
+# user/db so this works identically on the dev stand and the VPS). $PSQL is
+# spliced into an `sh -c "..."` argument, so variable NAMES must cross the
+# outer shell and let the inner shell expand them once from the container env.
+# Expanding a value at the outer level instead would splice an argon2 hash
+# (`$argon2id$v=19$m=...`) into a command string the inner shell parses inside
+# double quotes — its dollars would be expanded away and the hash destroyed.
+PSQL='psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1'
 
 echo "==> Creating schema_migrations ledger if missing"
 docker exec -i "$CONTAINER" sh -c "$PSQL -q" <<'SQL'
@@ -83,7 +92,8 @@ for file in "$MIGRATIONS_DIR"/*.sql; do
     fi
 
     echo "    apply $name"
-    docker exec -i "$CONTAINER" sh -c "$PSQL -q" < "$file"
+    docker exec -i "$CONTAINER" sh -c \
+        "$PSQL -q -v admin_hash=\"\$ADMIN_PASSWORD_HASH\" -v dev_hash=\"\$DEV_PASSWORD_HASH\"" < "$file"
 
     docker exec "$CONTAINER" sh -c \
         "$PSQL -q -c \"INSERT INTO schema_migrations (filename) VALUES ('$name') ON CONFLICT (filename) DO NOTHING\""
