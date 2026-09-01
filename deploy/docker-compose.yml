@@ -32,11 +32,14 @@ services:
       - POSTGRES_DB=dbname
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
-      # Seeded by zz-seed-passwords.sh on a fresh volume (init.sql inserts the
-      # users with a NULL password_hash). Empty values leave the accounts
-      # password-less, which locks the mobile client out of /auth/login.
-      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-}
-      - DEV_PASSWORD_HASH=${DEV_PASSWORD_HASH:-}
+    # ADMIN/DEV_PASSWORD_HASH are seeded by zz-seed-passwords.sh on a fresh
+    # volume (init.sql inserts the users with a NULL password_hash). They come
+    # from the repo-root .env; format: raw is load-bearing — default env_file
+    # interpolation eats the `$` signs of an argon2 hash.
+    env_file:
+      - path: ../.env
+        required: false
+        format: raw
     ports:
       - "5432:5432"
     volumes:
