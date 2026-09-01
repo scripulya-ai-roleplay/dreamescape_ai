@@ -363,7 +363,14 @@ python -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('YOUR-
 
 They are only read on a fresh volume (or by `scripts/apply_migrations.sh`
 against an existing stand); changing them later does not re-seed an initialized
-database.
+database. On an existing stand the postgres container must be **recreated**
+(`docker compose -f deploy/docker-compose.yml up -d postgres`) after adding
+the seeds file and before running the applier: `docker exec` only sees the
+container's creation-time env, and the fail-closed rotation migration NULLs
+the seeded passwords when the hash variables are empty (a plain `restart`
+is not enough — it keeps the old env). If the rotation already ran with empty
+variables, re-apply it with `scripts/apply_migrations.sh <container>
+--redo=2026-08-31-password-env.sql` after the recreation.
 
 ### Start with Docker Compose
 
