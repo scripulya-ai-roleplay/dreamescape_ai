@@ -338,15 +338,19 @@ Never use the example credentials or JWT secret in production.
 
 The seeded accounts (`mobile`, `admin`, `api`, `developer`) start with no
 password. To make `POST /api/v1/auth/login` work on the Compose stand (the
-Android client logs in as `mobile`), put argon2 hashes in the repository-root
-`.env` (the file created from `.env.example` above) before the first `up` —
-Compose feeds that file into the postgres container (`env_file` in
-`deploy/docker-compose.yml`), where the mounted `scripts/seed_passwords.sh`
-applies them to the fresh volume. This needs Docker Compose v2.32+ (the
-`format: raw` env_file attribute; plain `export` in the shell is not enough
-with this file):
+Android client logs in as `mobile`), put argon2 hashes in
+`deploy/postgres-seeds.env` (copy it from `deploy/postgres-seeds.env.example`)
+before the first `up` — Compose feeds that file into the postgres container
+(`env_file` in `deploy/docker-compose.yml`), where the mounted
+`scripts/seed_passwords.sh` applies them to the fresh volume. The file holds
+only these two variables on purpose: everything in it becomes postgres
+container environment, so app-wide secrets from the root `.env` must not land
+there. This needs Docker Compose v2.32+ (the `format: raw` env_file
+attribute; plain `export` in the shell is not enough with this file):
 
 ```dotenv
+# deploy/postgres-seeds.env — paste each hash UNQUOTED (format: raw keeps
+# quotes literally)
 ADMIN_PASSWORD_HASH=$argon2id$...
 DEV_PASSWORD_HASH=$argon2id$...
 ```

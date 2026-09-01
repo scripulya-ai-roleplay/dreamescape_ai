@@ -34,10 +34,12 @@ services:
       - POSTGRES_PASSWORD=password
     # ADMIN/DEV_PASSWORD_HASH are seeded by zz-seed-passwords.sh on a fresh
     # volume (init.sql inserts the users with a NULL password_hash). They come
-    # from the repo-root .env; format: raw is load-bearing — default env_file
-    # interpolation eats the `$` signs of an argon2 hash.
+    # from deploy/postgres-seeds.env — a dedicated file holding ONLY these two
+    # hashes, so no app-wide secret (JWT/provider keys, MinIO creds) leaks
+    # into the postgres container env. format: raw is load-bearing — default
+    # env_file interpolation eats the `$` signs of an argon2 hash.
     env_file:
-      - path: ../.env
+      - path: ./postgres-seeds.env
         required: false
         format: raw
     ports:
