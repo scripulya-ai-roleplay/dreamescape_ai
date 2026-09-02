@@ -15,6 +15,9 @@ class Settings(BaseSettings):
 	HOST: str = "0.0.0.0"
 	PORT: int = 8000
 
+	LOG_FORMAT_JSON: bool = False
+	LOG_SERVICE_NAME: str = "scripulya-ai"
+
 	GEMINI_API_KEY: str = ""
 	ANTHROPIC_API_KEY: str = ""
 	QWEN_API_KEY: str = ""

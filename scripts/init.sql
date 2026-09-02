@@ -151,9 +151,6 @@ INSERT INTO users (id, username, google_id, role, crystal_balance) VALUES
     ('53c41979-a116-4bb7-8281-57fadfd89a13', 'inactive',  'inactive@google.com', 'api',       2500);
 
 
-UPDATE users SET password_hash = '$argon2id$v=19$m=65536,t=3,p=4$qXUelaeIrpiI270hrsHowQ$G5DMjlQlJYB354uQujZoptA6LKecJ9UBdznlm/1ZOiY'
-WHERE username IN ('mobile', 'admin', 'api', 'developer');
-
 INSERT INTO characters (id, owner_id, name, system_prompt, is_public) VALUES
     ('43341001-4ea1-4f03-b315-811d3264b6a3', '5dbdc924-968a-4c50-94a8-44cdd165e460', 'Helpful Assistant', 'A warm, endlessly patient companion who delights in helping others. Cheerful and encouraging, she explains things simply and never condescendingly, always leaving people feeling capable and cared for.', true),
     ('1a0fca84-996c-43b5-976a-0c676c61dde5', 'f5ac5447-d562-4d7b-91fb-dc4d5bcc4395', 'Code Mentor', 'A seasoned software engineer with decades of war stories. Speaks with calm authority, sprinkles in dry humor, and guides others to the answer rather than handing it over. Never impatient, always curious.', true),
@@ -381,4 +378,6 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 INSERT INTO schema_migrations (filename) VALUES
-    ('2026-08-media-ordering.sql');
+    ('2026-08-media-ordering.sql'),
+    ('2026-08-30-mobile-login.sql'),
+    ('2026-08-31-password-env.sql');

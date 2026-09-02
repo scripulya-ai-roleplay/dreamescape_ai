@@ -123,11 +123,19 @@ jobs:
 
       # WORKAROUND: Initialize DB
       # Since we cannot mount init.sql in the services block, apply it now.
+      # init.sql inserts the users with NULL password_hash; the seed script
+      # then sets hashes generated per-run (argon2 is in the app image, not on
+      # the runner), so no hash is ever committed and test_auth_login's
+      # mobile/"password" still works.
       - name: Initialize PostgreSQL Database
         env:
           PGPASSWORD: password
         run: |
           psql -h 127.0.0.1 -U user -d dbname -f ./scripts/init.sql
+          HASH="$(docker run --rm main-app python -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('password'))")"
+          export ADMIN_PASSWORD_HASH="$HASH" DEV_PASSWORD_HASH="$HASH"
+          export PSQL_ARGS="-h 127.0.0.1 -U user -d dbname"
+          bash scripts/seed_passwords.sh
 
       # WORKAROUND: Mock API Build & Alias
       - name: Map Google API alias to localhost

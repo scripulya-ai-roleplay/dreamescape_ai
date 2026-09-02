@@ -72,4 +72,15 @@ async def get_optional_user(
 	request: Request,
 	jwt_service: FromDishka[IJWTService],
 ) -> User | None:
-	return _verify_credentials(getattr(request.state, "credentials", None), jwt_service)
+	credentials: HTTPAuthorizationCredentials | None = getattr(request.state, "credentials", None)
+	if credentials is None:
+		return None
+	user = _verify_credentials(credentials, jwt_service)
+	if user is None:
+		logger.warning("Rejecting invalid credentials on optionally-authed route")
+		raise HTTPException(
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			detail="Invalid authentication credentials",
+			headers={"WWW-Authenticate": "Bearer"},
+		)
+	return user

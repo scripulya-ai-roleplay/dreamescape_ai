@@ -32,11 +32,22 @@ services:
       - POSTGRES_DB=dbname
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
+    # ADMIN/DEV_PASSWORD_HASH are seeded by zz-seed-passwords.sh on a fresh
+    # volume (init.sql inserts the users with a NULL password_hash). They come
+    # from deploy/postgres-seeds.env — a dedicated file holding ONLY these two
+    # hashes, so no app-wide secret (JWT/provider keys, MinIO creds) leaks
+    # into the postgres container env. format: raw is load-bearing — default
+    # env_file interpolation eats the `$` signs of an argon2 hash.
+    env_file:
+      - path: ./postgres-seeds.env
+        required: false
+        format: raw
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ../scripts/seed_passwords.sh:/docker-entrypoint-initdb.d/zz-seed-passwords.sh:ro
     networks:
       - app-network
     restart: unless-stopped

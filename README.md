@@ -257,6 +257,23 @@ The REST API is versioned under `/api/v1`.
 | `/api/v1/media` | Image upload and media access |
 | `/health` | Service health information |
 
+### Authentication contract for public content routes
+
+Some read routes are optionally authenticated — they return public content when
+no `Authorization` header is sent, while the caller's identity widens the result
+set to their private items: the scene, character, and initial-message routes and
+the media lookup routes (`GET /api/v1/scenes/`, `GET /api/v1/scenes/{id}`,
+`GET /api/v1/scenes/{id}/initial-messages`, `GET /api/v1/characters/`,
+`GET /api/v1/characters/{id}`, `GET /api/v1/media/entity/{type}/{id}`,
+`GET /api/v1/media/{id}`).
+
+Since GITHUB-125 a token that fails verification — expired, tampered, or
+otherwise invalid — is rejected with **401** on these routes. It no longer
+degrades to anonymous access. A client holding a stale access token gets 401
+instead of public content: treat any 401 from these routes as a signal to
+refresh the token or log in again, not as "this content is public". An absent
+header still means anonymous public access.
+
 After starting the application, interactive API documentation is available at:
 
 - Swagger UI: `http://localhost:8000/docs`
@@ -318,6 +335,42 @@ MINIO_ROOT_PASSWORD=minioadmin
 ```
 
 Never use the example credentials or JWT secret in production.
+
+The seeded accounts (`mobile`, `admin`, `api`, `developer`) start with no
+password. To make `POST /api/v1/auth/login` work on the Compose stand (the
+Android client logs in as `mobile`), put argon2 hashes in
+`deploy/postgres-seeds.env` (copy it from `deploy/postgres-seeds.env.example`)
+before the first `up` — Compose feeds that file into the postgres container
+(`env_file` in `deploy/docker-compose.yml`), where the mounted
+`scripts/seed_passwords.sh` applies them to the fresh volume. The file holds
+only these two variables on purpose: everything in it becomes postgres
+container environment, so app-wide secrets from the root `.env` must not land
+there. This needs Docker Compose v2.32+ (the `format: raw` env_file
+attribute; plain `export` in the shell is not enough with this file):
+
+```dotenv
+# deploy/postgres-seeds.env — paste each hash UNQUOTED (format: raw keeps
+# quotes literally)
+ADMIN_PASSWORD_HASH=$argon2id$...
+DEV_PASSWORD_HASH=$argon2id$...
+```
+
+Generate a hash with:
+
+```bash
+python -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('YOUR-PASSWORD'))"
+```
+
+They are only read on a fresh volume (or by `scripts/apply_migrations.sh`
+against an existing stand); changing them later does not re-seed an initialized
+database. On an existing stand the postgres container must be **recreated**
+(`docker compose -f deploy/docker-compose.yml up -d postgres`) after adding
+the seeds file and before running the applier: `docker exec` only sees the
+container's creation-time env, and the fail-closed rotation migration NULLs
+the seeded passwords when the hash variables are empty (a plain `restart`
+is not enough — it keeps the old env). If the rotation already ran with empty
+variables, re-apply it with `scripts/apply_migrations.sh <container>
+--redo=2026-08-31-password-env.sql` after the recreation.
 
 ### Start with Docker Compose
 

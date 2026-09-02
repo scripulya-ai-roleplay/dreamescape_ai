@@ -1,5 +1,6 @@
 # Environments
 .env
+deploy/postgres-seeds.env
 .venv
 env/
 venv/
