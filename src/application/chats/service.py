@@ -2,8 +2,10 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
+from src.application.chats.prompt_service import substitute_placeholders
 from src.application.chats.schemas import ChatFilterDTO
 from src.application.ports.authorization import IAuthorizationService
+from src.application.ports.characters import ICharacterGateway
 from src.application.ports.chats import IChatGateway, IChatService
 from src.application.ports.common import IUnitOfWork, Page
 from src.application.ports.messages import IMessageGateway
@@ -20,6 +22,7 @@ class ChatService(IChatService):
 	message_gateway: IMessageGateway
 	uow: IUnitOfWork
 	authz: IAuthorizationService
+	character_gateway: ICharacterGateway
 	logger: logging.Logger = logging.getLogger(Logger.LOGGER_NAME)
 
 	async def start_chat(self, chat: Chat) -> UUID:
@@ -83,6 +86,12 @@ class ChatService(IChatService):
 		if chat.initial_message_id is not None:
 			raise ValueError("Chat already has an initial message")
 
+		# The persona is fixed at chat creation, so the greeting is personalized
+		# once here — the persisted row and the LLM history read the actual name.
+		greeting_text = substitute_placeholders(
+			initial_message.text, user_name=await self._persona_name(chat.user_character_id)
+		)
+
 		# Seed the greeting as a real model message and record the choice on the
 		# chat in one transaction; the message then behaves like any other
 		# (editable/deletable) and flows through to the LLM as history.
@@ -90,7 +99,7 @@ class ChatService(IChatService):
 			await self.chat_gateway.set_initial_message(chat_uuid, initial_message_uuid)
 			seeded = await self.message_gateway.create(
 				Message(
-					message=initial_message.text,
+					message=greeting_text,
 					chat_id=chat_uuid,
 					role=ChatRoles.MODEL,
 					status=MessageStatus.COMPLETED,
@@ -98,3 +107,9 @@ class ChatService(IChatService):
 			)
 		self.logger.info(f"Successfully seeded initial message for chat: {chat_uuid}")
 		return seeded
+
+	async def _persona_name(self, user_character_id: UUID | None) -> str | None:
+		if user_character_id is None:
+			return None
+		character = await self.character_gateway.get_one(user_character_id)
+		return character.name

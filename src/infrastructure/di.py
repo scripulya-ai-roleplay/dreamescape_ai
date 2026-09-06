@@ -308,6 +308,7 @@ class ServiceProvider(Provider):
 		message_gateway: IMessageGateway,
 		uow: PostgresqlUOW,
 		authorization_service: IAuthorizationService,
+		character_gateway: ICharacterGateway,
 		logger: logging.Logger,
 	) -> IChatService:
 		return ChatService(
@@ -316,6 +317,7 @@ class ServiceProvider(Provider):
 			message_gateway=message_gateway,
 			uow=uow,
 			authz=authorization_service,
+			character_gateway=character_gateway,
 			logger=logger,
 		)
 
