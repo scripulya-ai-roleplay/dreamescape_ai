@@ -2,6 +2,8 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
+from sqlalchemy.exc import NoResultFound
+
 from src.application.chats.prompt_service import substitute_placeholders
 from src.application.chats.schemas import ChatFilterDTO
 from src.application.ports.authorization import IAuthorizationService
@@ -89,7 +91,9 @@ class ChatService(IChatService):
 		# The persona is fixed at chat creation, so the greeting is personalized
 		# once here — the persisted row and the LLM history read the actual name.
 		greeting_text = substitute_placeholders(
-			initial_message.text, user_name=await self._persona_name(chat.user_character_id)
+			initial_message.text,
+			user_name=await self._persona_name(chat.user_character_id),
+			char_name=await self._scene_char_name(chat.scene_id),
 		)
 
 		# Seed the greeting as a real model message and record the choice on the
@@ -111,5 +115,14 @@ class ChatService(IChatService):
 	async def _persona_name(self, user_character_id: UUID | None) -> str | None:
 		if user_character_id is None:
 			return None
-		character = await self.character_gateway.get_one(user_character_id)
+		try:
+			character = await self.character_gateway.get_one(user_character_id)
+		except NoResultFound:
+			return None
 		return character.name
+
+	async def _scene_char_name(self, scene_id: UUID | None) -> str | None:
+		if scene_id is None:
+			return None
+		characters = await self.character_gateway.get_for_scene(scene_id)
+		return characters[0].name if characters else None
