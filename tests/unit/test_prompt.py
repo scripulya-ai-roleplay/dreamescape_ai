@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.application.chats.prompt_service import PromptService
+from src.application.chats.prompt_service import PromptService, substitute_placeholders
 from src.application.chats.settings import (
 	ChatSettings,
 	ControlBehavior,
@@ -226,3 +226,67 @@ class TestStorytellingSettings:
 			None, [], chat_settings=_settings(continueBehavior=ControlBehavior.DONT_CONTROL)
 		)
 		assert "WITHOUT writing the Player Character's actions or dialogue" in prompt
+
+
+@pytest.mark.unit
+class TestSubstitutePlaceholders:
+	def test_user_placeholder_replaced_with_persona_name(self):
+		result = substitute_placeholders("Hello, {{user}}!", user_name="Kael")
+		assert result == "Hello, Kael!"
+
+	def test_user_placeholder_defaults_to_you_without_persona(self):
+		result = substitute_placeholders("Hello, {{user}}!", user_name=None)
+		assert result == "Hello, You!"
+
+	def test_char_placeholder_replaced_with_char_name(self):
+		result = substitute_placeholders("{{char}} greets {{user}}.", user_name="Kael", char_name="Aria")
+		assert result == "Aria greets Kael."
+
+	def test_char_placeholder_falls_back_to_user(self):
+		result = substitute_placeholders("{{char}} nods.", user_name="Kael", char_name=None)
+		assert result == "Kael nods."
+
+	def test_placeholder_is_case_insensitive(self):
+		result = substitute_placeholders("{{User}} and {{CHAR}}", user_name="Kael", char_name="Aria")
+		assert result == "Kael and Aria"
+
+	def test_text_without_placeholders_unchanged(self):
+		result = substitute_placeholders("Just prose, no macros.", user_name="Kael")
+		assert result == "Just prose, no macros."
+
+	def test_repeated_placeholders_all_replaced(self):
+		result = substitute_placeholders("{{user}} said {{user}} would go.", user_name="Kael")
+		assert result == "Kael said Kael would go."
+
+	def test_blank_persona_name_falls_back_to_you(self):
+		result = substitute_placeholders("{{user}}", user_name="   ")
+		assert result == "You"
+
+
+@pytest.mark.unit
+class TestPlaceholderSubstitutionInPrompt:
+	def test_character_system_prompt_user_macro_rendered(self, service):
+		character = _character(name="Aria", system_prompt="Aria tends to {{user}}'s wounds.")
+		prompt = service.build_system_prompt(None, [character], _character(name="Kael", system_prompt="A bard."))
+		assert "{{user}}" not in prompt
+		assert "Aria tends to Kael's wounds." in prompt
+
+	def test_character_system_prompt_macro_defaults_to_you(self, service):
+		character = _character(name="Aria", system_prompt="Aria knows {{user}} well.")
+		prompt = service.build_system_prompt(None, [character], None)
+		assert "Aria knows You well." in prompt
+
+	def test_scene_text_macros_rendered(self, service):
+		scene = _scene(title="Tavern", background="Misty {{user}} enters.")
+		prompt = service.build_system_prompt(scene, [], _character(name="Kael", system_prompt="A bard."))
+		assert "Misty Kael enters." in prompt
+
+	def test_scene_description_macros_rendered(self, service):
+		scene = _scene(description="The innkeeper recognizes {{user}}.")
+		prompt = service.build_system_prompt(scene, [], _character(name="Kael", system_prompt="A bard."))
+		assert "The innkeeper recognizes Kael." in prompt
+
+	def test_char_macro_rendered_in_character_prompt(self, service):
+		character = _character(name="Aria", system_prompt="{{char}} is a knight.")
+		prompt = service.build_system_prompt(None, [character], None)
+		assert "Aria is a knight." in prompt

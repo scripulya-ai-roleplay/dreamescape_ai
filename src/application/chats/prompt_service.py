@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 
 from src.application.chats.settings import (
@@ -48,6 +49,20 @@ _CONTINUE_INSTRUCTIONS = {
 	),
 }
 
+DEFAULT_USER_PLACEHOLDER = "You"
+
+_PLACEHOLDER_RE = re.compile(r"\{\{(user|char)\}\}", re.IGNORECASE)
+
+
+def substitute_placeholders(text: str, user_name: str | None = None, char_name: str | None = None) -> str:
+	user = (user_name or "").strip() or DEFAULT_USER_PLACEHOLDER
+	char = (char_name or "").strip() or user
+
+	def replace(match: re.Match) -> str:
+		return user if match.group(1).lower() == "user" else char
+
+	return _PLACEHOLDER_RE.sub(replace, text)
+
 
 @dataclass
 class PromptService(IPromptService):
@@ -59,6 +74,7 @@ class PromptService(IPromptService):
 		chat_settings: ChatSettings | None = None,
 	) -> str:
 		storytelling = chat_settings or DEFAULT_CHAT_SETTINGS
+		user_name = user_character.name if user_character is not None else None
 		parts: list[str] = []
 		if characters:
 			character_lines = [
@@ -68,12 +84,23 @@ class PromptService(IPromptService):
 			if storytelling.aiControlBehavior == ControlBehavior.DONT_CONTROL:
 				character_lines.append("NEVER act, speak, or think for the Player Character.")
 			for character in characters:
-				character_lines.append(f"## {character.name}\n{character.system_prompt}".rstrip())
+				rendered = substitute_placeholders(
+					f"## {character.name}\n{character.system_prompt}",
+					user_name=user_name,
+					char_name=character.name,
+				).rstrip()
+				character_lines.append(rendered)
 			parts.append("\n\n".join(character_lines))
 		if scene is not None:
-			scene_lines = ["# Scene", f"## {scene.title}\n{scene.background_prompt}".rstrip()]
+			scene_lines = ["# Scene"]
+			rendered = substitute_placeholders(
+				f"## {scene.title}\n{scene.background_prompt}",
+				user_name=user_name,
+				char_name=characters[0].name if characters else None,
+			).rstrip()
+			scene_lines.append(rendered)
 			if scene.description:
-				scene_lines.append(scene.description.strip())
+				scene_lines.append(substitute_placeholders(scene.description.strip(), user_name=user_name).rstrip())
 			parts.append("\n\n".join(scene_lines))
 		if user_character is not None:
 			persona_lines = [

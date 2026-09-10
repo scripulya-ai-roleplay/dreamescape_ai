@@ -3,15 +3,17 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.exc import NoResultFound
 
 from src.application.auth.authz import AuthorizationService
 from src.application.chats.schemas import ChatFilterDTO
 from src.application.chats.service import ChatService
+from src.application.ports.characters import ICharacterGateway
 from src.application.ports.chats import IChatGateway
 from src.application.ports.common import IUnitOfWork, Page
 from src.application.ports.messages import IMessageGateway
 from src.application.ports.scenes import IInitialMessageGateway
-from src.domain.models import Chat, ChatRoles, InitialMessage, Message, MessageStatus
+from src.domain.models import Character, Chat, ChatRoles, InitialMessage, Message, MessageStatus
 from src.infrastructure.exceptions import ChatReadOnlyException
 
 
@@ -33,6 +35,10 @@ class TestChatService:
 		return AsyncMock(spec=IMessageGateway)
 
 	@pytest.fixture
+	def mock_character_gateway(self):
+		return AsyncMock(spec=ICharacterGateway)
+
+	@pytest.fixture
 	def mock_uow(self):
 		uow = AsyncMock(spec=IUnitOfWork)
 		uow.__aenter__ = AsyncMock()
@@ -40,13 +46,22 @@ class TestChatService:
 		return uow
 
 	@pytest.fixture
-	def chat_service(self, mock_chat_gateway, mock_initial_message_gateway, mock_message_gateway, mock_uow, authz):
+	def chat_service(
+		self,
+		mock_chat_gateway,
+		mock_initial_message_gateway,
+		mock_message_gateway,
+		mock_character_gateway,
+		mock_uow,
+		authz,
+	):
 		return ChatService(
 			chat_gateway=mock_chat_gateway,
 			initial_message_gateway=mock_initial_message_gateway,
 			message_gateway=mock_message_gateway,
 			uow=mock_uow,
 			authz=authz,
+			character_gateway=mock_character_gateway,
 		)
 
 	@pytest.fixture
@@ -339,6 +354,113 @@ class TestChatService:
 		assert created.role == ChatRoles.MODEL
 		assert created.status == MessageStatus.COMPLETED
 		assert created.chat_id == sample_chat.id
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_choose_initial_message_seeds_greeting_with_persona_substitution(
+		self,
+		chat_service,
+		mock_chat_gateway,
+		mock_initial_message_gateway,
+		mock_message_gateway,
+		mock_character_gateway,
+		sample_chat,
+	):
+		persona_id = uuid4()
+		chat = Chat(
+			id=sample_chat.id,
+			title=sample_chat.title,
+			user_id=sample_chat.user_id,
+			scene_id=sample_chat.scene_id,
+			user_character_id=persona_id,
+		)
+		mock_chat_gateway.get_one.return_value = chat
+		mock_character_gateway.get_one.return_value = Character(name="Kael", system_prompt="A bard.")
+		mock_character_gateway.get_for_scene.return_value = []
+		initial_message = InitialMessage(id=uuid4(), scene_id=chat.scene_id, text="Welcome home, {{user}}.")
+		mock_initial_message_gateway.get_one.return_value = initial_message
+
+		await chat_service.choose_initial_message(chat.id, initial_message.id, chat.user_id)
+
+		mock_character_gateway.get_one.assert_awaited_once_with(persona_id)
+		created = mock_message_gateway.create.call_args.args[0]
+		assert created.message == "Welcome home, Kael."
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_choose_initial_message_char_placeholder_uses_scene_primary_character(
+		self,
+		chat_service,
+		mock_chat_gateway,
+		mock_initial_message_gateway,
+		mock_message_gateway,
+		mock_character_gateway,
+		sample_chat,
+	):
+		mock_chat_gateway.get_one.return_value = sample_chat
+		mock_character_gateway.get_for_scene.return_value = [
+			Character(name="Aria", system_prompt="A knight."),
+			Character(name="Bram", system_prompt="An innkeeper."),
+		]
+		initial_message = InitialMessage(id=uuid4(), scene_id=sample_chat.scene_id, text="{{char}}: Welcome, {{user}}!")
+		mock_initial_message_gateway.get_one.return_value = initial_message
+
+		await chat_service.choose_initial_message(sample_chat.id, initial_message.id, sample_chat.user_id)
+
+		mock_character_gateway.get_for_scene.assert_awaited_once_with(sample_chat.scene_id)
+		created = mock_message_gateway.create.call_args.args[0]
+		assert created.message == "Aria: Welcome, You!"
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_choose_initial_message_deleted_persona_degrades_to_you(
+		self,
+		chat_service,
+		mock_chat_gateway,
+		mock_initial_message_gateway,
+		mock_message_gateway,
+		mock_character_gateway,
+		sample_chat,
+	):
+		chat = Chat(
+			id=sample_chat.id,
+			title=sample_chat.title,
+			user_id=sample_chat.user_id,
+			scene_id=sample_chat.scene_id,
+			user_character_id=uuid4(),
+		)
+		mock_chat_gateway.get_one.return_value = chat
+		mock_character_gateway.get_one.side_effect = NoResultFound("persona deleted")
+		mock_character_gateway.get_for_scene.return_value = []
+		initial_message = InitialMessage(id=uuid4(), scene_id=chat.scene_id, text="Welcome home, {{user}}.")
+		mock_initial_message_gateway.get_one.return_value = initial_message
+
+		await chat_service.choose_initial_message(chat.id, initial_message.id, chat.user_id)
+
+		created = mock_message_gateway.create.call_args.args[0]
+		assert created.message == "Welcome home, You."
+
+	@pytest.mark.unit
+	@pytest.mark.asyncio
+	async def test_choose_initial_message_greeting_defaults_placeholder_to_you(
+		self,
+		chat_service,
+		mock_chat_gateway,
+		mock_initial_message_gateway,
+		mock_message_gateway,
+		mock_character_gateway,
+		sample_chat,
+	):
+		mock_chat_gateway.get_one.return_value = sample_chat
+		mock_character_gateway.get_for_scene.return_value = []
+		initial_message = InitialMessage(id=uuid4(), scene_id=sample_chat.scene_id, text="Welcome, {{user}}.")
+		mock_initial_message_gateway.get_one.return_value = initial_message
+
+		await chat_service.choose_initial_message(sample_chat.id, initial_message.id, sample_chat.user_id)
+
+		mock_character_gateway.get_one.assert_not_called()
+		created = mock_message_gateway.create.call_args.args[0]
+		assert created.message == "Welcome, You."
 
 	@pytest.mark.unit
 	@pytest.mark.asyncio
