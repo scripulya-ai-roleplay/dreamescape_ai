@@ -30,6 +30,13 @@ class Settings(BaseSettings):
 	LLM_AGENT_RESULT_QUEUE: str = "llm.agent.result"
 	LLM_AGENT_TIMEOUT: float = 60.0
 
+	SUMMARY_AGENT_REQUEST_QUEUE: str = "llm.agent.summary.request"
+	SUMMARY_AGENT_RESULT_QUEUE: str = "llm.agent.summary.result"
+	SUMMARY_CHUNK_TOKENS: int = 5000
+	SUMMARY_TARGET_RATIO: float = 0.25
+	SUMMARY_MIN_TARGET_TOKENS: int = 200
+	SUMMARY_PENDING_TIMEOUT_SECONDS: int = 600
+
 	REDIS_URL: str = "redis://redis:6379/0"
 	LLM_HEARTBEAT_ALIVE_TTL: int = 30
 	LLM_HEARTBEAT_GRACE_TTL: int = 45

@@ -27,8 +27,10 @@ from src.application.ports.llm import (
 )
 from src.application.ports.messages import IMessageService
 from src.application.ports.scenes import ISceneGateway
+from src.application.ports.summarization import ISummarizationService
+from src.application.summarization.prompts import format_recap
 from src.conf import settings
-from src.domain.models import Chat, ChatRoles, Message, MessageStatus
+from src.domain.models import Chat, ChatRoles, ChatSummary, Message, MessageStatus
 from src.infrastructure.exceptions import (
 	BaseAPIException,
 	ChatReadOnlyException,
@@ -55,6 +57,7 @@ class LLMChatsService(IChatsService):
 	token_counter: ITokenCounter
 	authz: IAuthorizationService
 	_events: IChatEventGateway
+	summarization_service: ISummarizationService
 	context_windows: dict[LLMModelType, int] = field(default_factory=lambda: dict(LLM_MODEL_CONTEXT_WINDOWS))
 	safety_factor: float = CONTEXT_WINDOW_SAFETY_FACTOR
 	_cached_base_prompt_tokens: int | None = None
@@ -68,8 +71,7 @@ class LLMChatsService(IChatsService):
 		self.authz.require_owned(owner_id=chat.user_id, actor_id=actor_id, noun="chat")
 		if chat.scene_id is None:
 			raise ChatReadOnlyException()
-		history_page = await self._search_history(chat_dto.chat_id, chat.user_id)
-		history = self._page_to_history(history_page, chat_dto.chat_id, chat_dto.llm_model)
+		history, _ = await self._load_history(chat_dto.chat_id, chat.user_id, chat_dto.llm_model)
 		if not history and chat.initial_message_id is None:
 			raise InitialMessageRequiredException()
 		system_prompt, chat_settings = await self._assemble_prompt(chat)
@@ -138,8 +140,7 @@ class LLMChatsService(IChatsService):
 	async def get_context_usage(self, chat_id: UUID, actor_id: UUID) -> ContextUsage:
 		chat = await self.chat_gateway.get_one(chat_id)
 		self.authz.require_owned(owner_id=chat.user_id, actor_id=actor_id, noun="chat")
-		history_page = await self._search_history(chat_id, chat.user_id)
-		history = self._page_to_history(history_page, chat_id, None)
+		history, summaries_count = await self._load_history(chat_id, chat.user_id, None)
 		system_prompt, chat_settings = await self._assemble_prompt(chat)
 
 		cards_tokens, history_tokens = await asyncio.to_thread(
@@ -163,7 +164,8 @@ class LLMChatsService(IChatsService):
 		return ContextUsage(
 			cards_tokens=cards_tokens,
 			history_tokens=history_tokens,
-			history_messages_count=len(history),
+			history_messages_count=len(history) - summaries_count,
+			summaries_count=summaries_count,
 			total_tokens=total_tokens,
 			estimated=True,
 			models=models,
@@ -229,8 +231,40 @@ class LLMChatsService(IChatsService):
 
 	async def _search_history(self, chat_id: UUID, owner_id: UUID) -> Page[Message]:
 		return await self.message_service.search(
-			MessagesFilterDto(chats_ids=[chat_id], limit=self.MAX_SEARCH_LIMIT), owner_id
+			MessagesFilterDto(chats_ids=[chat_id], is_archived=False, limit=self.MAX_SEARCH_LIMIT), owner_id
 		)
+
+	async def _load_history(
+		self, chat_id: UUID, owner_id: UUID, llm_model: LLMModelType | None
+	) -> tuple[list[UserMessageDTO], int]:
+		page = await self._search_history(chat_id, owner_id)
+		summaries = [s for s in await self.summarization_service.prompt_summaries(chat_id) if s.content]
+		return self._merge_history(page, summaries, chat_id, llm_model), len(summaries)
+
+	@classmethod
+	def _merge_history(
+		cls, page: Page[Message], summaries: list[ChatSummary], chat_id: UUID, llm_model: LLMModelType | None
+	) -> list[UserMessageDTO]:
+		messages = cls._page_to_history(page, chat_id, llm_model)
+		if not summaries:
+			return messages
+		recaps = [
+			UserMessageDTO(
+				message=format_recap(s.content or ""), chat_id=chat_id, llm_model=llm_model, role=ChatRoles.USER
+			)
+			for s in sorted(summaries, key=lambda s: s.covered_from_at)
+		]
+		boundaries = [s.covered_until_at for s in sorted(summaries, key=lambda s: s.covered_from_at)]
+		created = [m.date_created for m in reversed(page.items)]
+		merged: list[UserMessageDTO] = []
+		next_recap = 0
+		for message, created_at in zip(messages, created, strict=True):
+			while next_recap < len(recaps) and created_at is not None and boundaries[next_recap] < created_at:
+				merged.append(recaps[next_recap])
+				next_recap += 1
+			merged.append(message)
+		merged.extend(recaps[next_recap:])
+		return merged
 
 	@staticmethod
 	def _page_to_history(page: Page[Message], chat_id: UUID, llm_model: LLMModelType | None) -> list[UserMessageDTO]:

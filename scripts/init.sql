@@ -2,6 +2,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 DROP TABLE IF EXISTS media_assets CASCADE;
 DROP TABLE IF EXISTS messages CASCADE;
+DROP TABLE IF EXISTS chat_summaries CASCADE;
 DROP TABLE IF EXISTS chat_settings CASCADE;
 DROP TABLE IF EXISTS chats CASCADE;
 DROP TABLE IF EXISTS scene_initial_messages CASCADE;
@@ -103,6 +104,26 @@ CREATE TABLE chat_settings (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+CREATE TABLE chat_summaries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    content TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'pending', 'completed', 'failed')),
+    llm_model VARCHAR(100) NOT NULL,
+    from_message_id UUID,
+    until_message_id UUID,
+    covered_from_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    covered_until_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    messages_count INTEGER NOT NULL,
+    source_tokens INTEGER NOT NULL,
+    summary_tokens INTEGER,
+    error TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_chat_summaries_chat_id ON chat_summaries(chat_id, covered_from_at);
+
 CREATE TABLE messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
@@ -111,11 +132,19 @@ CREATE TABLE messages (
     status VARCHAR(20) NOT NULL DEFAULT 'completed' CHECK (status IN ('pending', 'completed', 'failed')),
     cost_crystals INTEGER DEFAULT 0,
     reasoning TEXT,
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE,
+    summary_id UUID REFERENCES chat_summaries(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE INDEX idx_messages_chat_id ON messages(chat_id);
+
+CREATE INDEX idx_messages_summary_id ON messages(summary_id);
+
+ALTER TABLE chat_summaries
+    ADD CONSTRAINT fk_chat_summaries_from_message FOREIGN KEY (from_message_id) REFERENCES messages(id) ON DELETE SET NULL,
+    ADD CONSTRAINT fk_chat_summaries_until_message FOREIGN KEY (until_message_id) REFERENCES messages(id) ON DELETE SET NULL;
 
 CREATE TABLE media_assets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -380,4 +409,5 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 INSERT INTO schema_migrations (filename) VALUES
     ('2026-08-media-ordering.sql'),
     ('2026-08-30-mobile-login.sql'),
-    ('2026-08-31-password-env.sql');
+    ('2026-08-31-password-env.sql'),
+    ('2026-10-05-chat-summaries.sql');

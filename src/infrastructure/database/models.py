@@ -178,10 +178,48 @@ class Message(Base):
 	status: Mapped[str] = mapped_column(String(20), server_default="completed", default="completed")
 	cost_crystals: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
 	reasoning: Mapped[str | None] = mapped_column(Text)
+	is_archived: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
+	summary_id: Mapped[uuid.UUID | None] = mapped_column(
+		ForeignKey("chat_summaries.id", ondelete="SET NULL"), index=True, nullable=True
+	)
 	created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 	updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 	chat: Mapped["Chat"] = relationship(back_populates="messages")
+
+
+class ChatSummary(Base):
+	__tablename__ = "chat_summaries"
+	__table_args__ = (
+		CheckConstraint(
+			"status IN ('queued', 'pending', 'completed', 'failed')", name="check_chat_summary_status_valid"
+		),
+		Index("idx_chat_summaries_chat_id", "chat_id", "covered_from_at"),
+	)
+
+	id: Mapped[uuid.UUID] = mapped_column(
+		UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+	)
+	chat_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chats.id", ondelete="CASCADE"))
+	content: Mapped[str | None] = mapped_column(Text)
+	status: Mapped[str] = mapped_column(String(20), server_default="queued", default="queued")
+	llm_model: Mapped[str] = mapped_column(String(100))
+	from_message_id: Mapped[uuid.UUID | None] = mapped_column(
+		ForeignKey("messages.id", ondelete="SET NULL", use_alter=True), nullable=True
+	)
+	until_message_id: Mapped[uuid.UUID | None] = mapped_column(
+		ForeignKey("messages.id", ondelete="SET NULL", use_alter=True), nullable=True
+	)
+	covered_from_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+	covered_until_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+	messages_count: Mapped[int] = mapped_column(Integer)
+	source_tokens: Mapped[int] = mapped_column(Integer)
+	summary_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+	error: Mapped[str | None] = mapped_column(Text)
+	created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+	updated_at: Mapped[datetime] = mapped_column(
+		DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+	)
 
 
 class MediaAsset(Base):

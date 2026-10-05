@@ -42,10 +42,16 @@ from src.application.ports.llm import (
 from src.application.ports.media import IImageReader, IMediaGateway, IMediaService, IObjectStorageGateway
 from src.application.ports.messages import IGenerationHeartbeat, IMessageGateway, IMessageService, IServerEventsService
 from src.application.ports.scenes import IInitialMessageGateway, IInitialMessageService, ISceneGateway, ISceneService
+from src.application.ports.summarization import (
+	ISummarizationAgentGateway,
+	ISummarizationService,
+	ISummaryRepository,
+)
 from src.application.ports.user import IUserGateway, IUserService
 from src.application.scene.initial_message_service import InitialMessageService
 from src.application.scene.service import SceneService
 from src.application.streaming.llm_watchdog import GenerationWatchdog
+from src.application.summarization.service import SummarizationService
 from src.application.user.user_service import UserService
 from src.conf import settings
 from src.controllers.rabbit.v1.broker import broker
@@ -66,10 +72,16 @@ from src.infrastructure.gateways.object_storage_gateway import MinioObjectStorag
 from src.infrastructure.gateways.redis_heartbeat import RedisGenerationHeartbeat
 from src.infrastructure.gateways.scenes_gateway import SceneGateway
 from src.infrastructure.gateways.scripulya_agent_gateway import ScripulyaAgentClient, ScripulyaAgentGateway
+from src.infrastructure.gateways.summarization_agent_gateway import (
+	DisabledSummarizationAgentGateway,
+	MockSummarizationGateway,
+	SummarizationAgentGateway,
+)
 from src.infrastructure.gateways.token_counter import TiktokenTokenCounter
 from src.infrastructure.gateways.user_gateway import UserGateway
 from src.infrastructure.gateways.visibility import VisibilityGateway
 from src.infrastructure.logging.logger import Logger
+from src.infrastructure.repositories.summary_repository import SummaryRepository
 
 
 class GatewayProvider(Provider):
@@ -200,6 +212,25 @@ class GatewayProvider(Provider):
 	def provide_chat_event_gateway(self, logger: logging.Logger) -> IChatEventGateway:
 		return ChatEventGateway(logger=logger)
 
+	@provide(scope=Scope.REQUEST)
+	def provide_summary_repository(self, session: AsyncSession, logger: logging.Logger) -> ISummaryRepository:
+		return SummaryRepository(session, logger=logger)
+
+	@provide(scope=Scope.APP)
+	def provide_summarization_agent_gateway(self, logger: logging.Logger) -> ISummarizationAgentGateway:
+		if settings.LLM_AGENT_ENABLED:
+			return SummarizationAgentGateway(
+				broker=broker,
+				request_queue=settings.SUMMARY_AGENT_REQUEST_QUEUE,
+				timeout=settings.LLM_AGENT_TIMEOUT,
+				logger=logger,
+			)
+		return DisabledSummarizationAgentGateway(logger=logger)
+
+	@provide(scope=Scope.APP)
+	def provide_mock_summarization_gateway(self, logger: logging.Logger) -> MockSummarizationGateway:
+		return MockSummarizationGateway(logger=logger)
+
 
 class ServiceProvider(Provider):
 	@provide(scope=Scope.REQUEST)
@@ -256,6 +287,7 @@ class ServiceProvider(Provider):
 		token_counter: ITokenCounter,
 		authorization_service: IAuthorizationService,
 		events: IChatEventGateway,
+		summarization_service: ISummarizationService,
 		logger: logging.Logger,
 	) -> IChatsService:
 		return LLMChatsService(
@@ -269,6 +301,34 @@ class ServiceProvider(Provider):
 			token_counter=token_counter,
 			authz=authorization_service,
 			_events=events,
+			summarization_service=summarization_service,
+			logger=logger,
+		)
+
+	@provide(scope=Scope.REQUEST)
+	def provide_summarization_service(
+		self,
+		repository: ISummaryRepository,
+		agent_gateway: ISummarizationAgentGateway,
+		mock_gateway: MockSummarizationGateway,
+		chat_gateway: IChatGateway,
+		character_gateway: ICharacterGateway,
+		token_counter: ITokenCounter,
+		authorization_service: IAuthorizationService,
+		events: IChatEventGateway,
+		uow: PostgresqlUOW,
+		logger: logging.Logger,
+	) -> ISummarizationService:
+		return SummarizationService(
+			repository=repository,
+			agent_gateway=agent_gateway,
+			mock_gateway=mock_gateway,
+			chat_gateway=chat_gateway,
+			character_gateway=character_gateway,
+			token_counter=token_counter,
+			authz=authorization_service,
+			events=events,
+			uow=uow,
 			logger=logger,
 		)
 
