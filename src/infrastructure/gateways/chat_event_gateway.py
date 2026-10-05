@@ -5,7 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from src.application.ports.chats import IChatEventGateway
-from src.domain.models import Message
+from src.domain.models import ChatSummary, Message
 from src.infrastructure.logging.logger import Logger
 
 # Bounded so a slow/stalled SSE client can't accumulate unbounded memory.
@@ -64,3 +64,6 @@ class ChatEventGateway(IChatEventGateway):
 
 	def publish_generation_error(self, chat_id: UUID, request_id: UUID) -> None:
 		self.publish(chat_id, {"_sse_event": "generation_error", "request_id": str(request_id)})
+
+	def publish_summary(self, chat_id: UUID, summary: ChatSummary) -> None:
+		self.publish(chat_id, {"_sse_event": "summary", "summary": summary.model_dump(mode="json")})

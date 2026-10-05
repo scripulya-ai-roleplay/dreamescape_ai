@@ -110,3 +110,37 @@ class InvalidLorebookException(BaseAPIException):
 			error_code="INVALID_LOREBOOK",
 			**kwargs,
 		)
+
+
+class SummaryNotFoundException(BaseAPIException):
+	def __init__(self, message: str = "Summary not found", **kwargs):
+		super().__init__(
+			message=message,
+			status_code=status.HTTP_404_NOT_FOUND,
+			error_code="SUMMARY_NOT_FOUND",
+			**kwargs,
+		)
+
+
+class SummaryChapterStaleException(BaseAPIException):
+	def __init__(
+		self,
+		message: str = "The requested chapter no longer matches the chat; reload the chapter list and retry",
+		**kwargs,
+	):
+		super().__init__(
+			message=message,
+			status_code=status.HTTP_409_CONFLICT,
+			error_code="SUMMARY_CHAPTER_STALE",
+			**kwargs,
+		)
+
+
+class SummaryNotEditableException(BaseAPIException):
+	def __init__(self, message: str = "Only a completed summary can be edited", **kwargs):
+		super().__init__(
+			message=message,
+			status_code=status.HTTP_409_CONFLICT,
+			error_code="SUMMARY_NOT_EDITABLE",
+			**kwargs,
+		)

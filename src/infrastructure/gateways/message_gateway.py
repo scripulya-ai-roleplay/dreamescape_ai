@@ -28,6 +28,8 @@ class MessageGateway(IMessageGateway):
 			status=message.status.value,
 			cost_crystals=0,
 			reasoning=message.reasoning,
+			is_archived=message.is_archived,
+			summary_id=message.summary_id,
 		)
 
 		self._session.add(message_model)
@@ -60,6 +62,9 @@ class MessageGateway(IMessageGateway):
 		if dto.roles:
 			role_values = [role.value for role in dto.roles]
 			conditions.append(MessageModel.role.in_(role_values))
+
+		if dto.is_archived is not None:
+			conditions.append(MessageModel.is_archived.is_(dto.is_archived))
 
 		query = query.where(and_(*conditions))
 
@@ -172,4 +177,6 @@ class MessageGateway(IMessageGateway):
 			date_created=message_model.created_at,  # Convert DB 'created_at' to domain 'date_created'
 			date_edited=message_model.updated_at,  # Convert DB 'updated_at' to domain 'date_edited'
 			reasoning=message_model.reasoning,
+			is_archived=message_model.is_archived,
+			summary_id=message_model.summary_id,
 		)

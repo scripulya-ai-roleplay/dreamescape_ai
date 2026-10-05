@@ -41,6 +41,7 @@ class ContextUsage(BaseModel):
 	cards_tokens: int
 	history_tokens: int
 	history_messages_count: int
+	summaries_count: int = 0
 	total_tokens: int
 	estimated: bool
 	models: list[ModelContextUsage]

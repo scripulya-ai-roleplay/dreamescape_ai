@@ -6,7 +6,7 @@ from src.application.chats.schemas import ChatFilterDTO, ContextUsage
 from src.application.chats.settings import ChatSettings
 from src.application.ports.common import Page
 from src.application.ports.llm import UserMessageDTO
-from src.domain.models import Chat, Message
+from src.domain.models import Chat, ChatSummary, Message
 
 
 class IChatsService(abc.ABC):
@@ -103,3 +103,6 @@ class IChatEventGateway(abc.ABC):
 
 	@abc.abstractmethod
 	def publish_generation_error(self, chat_id: UUID, request_id: UUID) -> None: ...
+
+	@abc.abstractmethod
+	def publish_summary(self, chat_id: UUID, summary: ChatSummary) -> None: ...
