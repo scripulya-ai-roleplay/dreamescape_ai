@@ -36,6 +36,7 @@ from src.application.ports.llm import (
 )
 from src.application.ports.messages import IMessageService
 from src.application.ports.scenes import ISceneGateway
+from src.application.ports.summarization import ISummarizationService
 from src.conf import settings
 from src.domain.models import Character, Chat, ChatRoles, Message, MessageStatus, Scene
 from src.infrastructure.exceptions import (
@@ -56,6 +57,12 @@ def _persist(message: Message) -> Message:
 		role=message.role,
 		status=message.status,
 	)
+
+
+def _no_summaries():
+	service = AsyncMock(spec=ISummarizationService)
+	service.prompt_summaries.return_value = []
+	return service
 
 
 class TestChatsService:
@@ -149,6 +156,7 @@ class TestChatsService:
 			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
+			summarization_service=_no_summaries(),
 		)
 
 	@pytest.fixture
@@ -255,6 +263,7 @@ class TestChatsService:
 			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
+			summarization_service=_no_summaries(),
 		)
 
 		await chats_service.send_message(sample_user_message_dto, sample_user_id)
@@ -287,6 +296,7 @@ class TestChatsService:
 			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=Mock(spec=IChatEventGateway),
+			summarization_service=_no_summaries(),
 		)
 
 		with pytest.raises(HTTPException) as exc:
@@ -327,6 +337,7 @@ class TestChatsService:
 			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=Mock(spec=IChatEventGateway),
+			summarization_service=_no_summaries(),
 		)
 
 		with pytest.raises(InitialMessageRequiredException):
@@ -366,6 +377,7 @@ class TestChatsService:
 			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=Mock(spec=IChatEventGateway),
+			summarization_service=_no_summaries(),
 		)
 
 		with pytest.raises(ChatReadOnlyException):
@@ -410,6 +422,7 @@ class TestChatsService:
 			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
+			summarization_service=_no_summaries(),
 		)
 
 		usage = await chats_service.get_context_usage(sample_chat_id, sample_user_id)
@@ -445,6 +458,7 @@ class TestChatsService:
 			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
+			summarization_service=_no_summaries(),
 		)
 
 		with pytest.raises(Exception, match="Gateway creation failed"):
@@ -491,6 +505,7 @@ class TestChatsService:
 			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
+			summarization_service=_no_summaries(),
 		)
 
 		await chats_service.send_message(sample_user_message_dto, sample_user_id)
@@ -823,6 +838,7 @@ class TestChatsService:
 			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
+			summarization_service=_no_summaries(),
 			context_windows={LLMModelType.gemini_flash_preview: 10_000_000, LLMModelType.qwen_max: 12},
 		)
 
@@ -876,6 +892,7 @@ class TestChatsService:
 			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
+			summarization_service=_no_summaries(),
 			context_windows={LLMModelType.glm_4_5: 128_000},
 		)
 
@@ -918,6 +935,7 @@ class TestChatsService:
 			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
+			summarization_service=_no_summaries(),
 			context_windows={LLMModelType.gemini_flash_preview: 500},
 		)
 		mock_gateway_factory.create_gateway.return_value = Mock()
@@ -977,6 +995,7 @@ class TestChatsService:
 			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
+			summarization_service=_no_summaries(),
 			context_windows={LLMModelType.claude_sonnet: 200_000},
 		)
 
@@ -1017,6 +1036,7 @@ class TestChatsService:
 			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
+			summarization_service=_no_summaries(),
 			context_windows={LLMModelType.gemini_flash_preview: 1_000_000},
 		)
 
@@ -1066,6 +1086,7 @@ class TestChatsService:
 			token_counter=stub_token_counter,
 			authz=AuthorizationService(),
 			_events=mock_events,
+			summarization_service=_no_summaries(),
 			context_windows={LLMModelType.claude_sonnet: 200_000},
 		)
 

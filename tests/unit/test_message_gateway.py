@@ -38,6 +38,8 @@ class TestMessageGateway:
 		model.status = "completed"
 		model.cost_crystals = 0
 		model.reasoning = None
+		model.is_archived = False
+		model.summary_id = None
 		model.created_at = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
 		model.updated_at = datetime(2024, 1, 2, 15, 30, 0, tzinfo=UTC)
 		return model
@@ -65,6 +67,8 @@ class TestMessageGateway:
 		row.status = status
 		row.cost_crystals = 0
 		row.reasoning = None
+		row.is_archived = False
+		row.summary_id = None
 		row.created_at = datetime(2024, 3, 10, 8, 0, 0, tzinfo=UTC)
 		row.updated_at = datetime(2024, 3, 11, 9, 0, 0, tzinfo=UTC)
 		return row
@@ -319,6 +323,8 @@ class TestMessageGateway:
 		message_model.content = "AI response"
 		message_model.status = "completed"
 		message_model.reasoning = "deliberating over the reply"
+		message_model.is_archived = False
+		message_model.summary_id = None
 		message_model.created_at = datetime(2024, 3, 10, 8, 0, 0, tzinfo=UTC)
 		message_model.updated_at = datetime(2024, 3, 11, 9, 0, 0, tzinfo=UTC)
 

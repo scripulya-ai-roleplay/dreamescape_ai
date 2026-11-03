@@ -9,6 +9,7 @@ class MessagesFilterDto(BaseModel):
 	ids: None | list[UUID] = None
 	chats_ids: None | list[UUID] = None
 	roles: None | list[ChatRoles] = None
+	is_archived: None | bool = None
 
 	limit: int = Field(default=50, ge=0)
 	offset: int = Field(default=0, ge=0)

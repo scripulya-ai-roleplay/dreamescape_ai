@@ -98,6 +98,35 @@ class Message(BaseModel):
 	date_created: None | datetime = None
 	date_edited: None | datetime = None
 	reasoning: None | str = None
+	is_archived: bool = False
+	summary_id: None | UUID = None
+
+
+class SummaryStatus(StrEnum):
+	QUEUED = "queued"
+	PENDING = "pending"
+	COMPLETED = "completed"
+	FAILED = "failed"
+
+
+class ChatSummary(BaseModel):
+	model_config = ConfigDict(frozen=True)
+
+	id: None | UUID = None
+	chat_id: UUID
+	content: None | str = None
+	status: SummaryStatus = SummaryStatus.QUEUED
+	llm_model: str
+	from_message_id: None | UUID = None
+	until_message_id: None | UUID = None
+	covered_from_at: datetime
+	covered_until_at: datetime
+	messages_count: int
+	source_tokens: int
+	summary_tokens: None | int = None
+	error: None | str = None
+	date_created: None | datetime = None
+	date_edited: None | datetime = None
 
 
 class MediaEntityType(StrEnum):

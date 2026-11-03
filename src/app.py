@@ -20,8 +20,10 @@ from src.controllers.api.v1.imports import router as imports_router
 from src.controllers.api.v1.media import router as media_router
 from src.controllers.api.v1.messages import router as message_router
 from src.controllers.api.v1.scenes import router as scenes_router
+from src.controllers.api.v1.summarization import router as summarization_router
 from src.controllers.api.v1.users import router as users_router
 from src.controllers.rabbit.v1 import llm as rabbit_llm  # noqa: F401  registers the result subscriber
+from src.controllers.rabbit.v1 import summarization as rabbit_summarization  # noqa: F401
 from src.controllers.rabbit.v1.broker import broker
 from src.infrastructure.web.global_exceptions_handler import register_exception_handlers
 from src.infrastructure.web.middlewares import TraceAndLogRequestsMiddleware
@@ -107,6 +109,7 @@ def create_app() -> FastAPI:
 	app.include_router(users_router)
 	app.include_router(message_router)
 	app.include_router(media_router)
+	app.include_router(summarization_router)
 	logger.info("API routes registered")
 
 	return app
