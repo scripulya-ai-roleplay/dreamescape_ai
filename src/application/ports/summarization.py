@@ -10,6 +10,7 @@ from src.application.ports.llm import LLMErrorResponse, LLMModelType
 from src.application.summarization.schemas import (
 	CreateSummariesDTO,
 	SummariesFilterDTO,
+	SummarizationStatusDTO,
 	SummaryChapter,
 	UpdateSummaryDTO,
 )
@@ -101,6 +102,9 @@ class ITextCompleter(abc.ABC):
 class ISummarizationService(abc.ABC):
 	@abc.abstractmethod
 	async def list_chapters(self, chat_id: UUID, actor_id: UUID) -> list[SummaryChapter]: ...
+
+	@abc.abstractmethod
+	async def get_status(self, chat_id: UUID, actor_id: UUID) -> SummarizationStatusDTO: ...
 
 	@abc.abstractmethod
 	async def summarize(self, dto: CreateSummariesDTO, actor_id: UUID) -> list[ChatSummary]: ...

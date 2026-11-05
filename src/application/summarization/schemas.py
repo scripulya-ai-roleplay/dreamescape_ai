@@ -36,6 +36,21 @@ class UpdateSummaryDTO(BaseModel):
 	content: str = Field(min_length=1)
 
 
+class SummarizationStatusDTO(BaseModel):
+	model_config = ConfigDict(frozen=True)
+
+	chat_id: UUID
+	queued: int
+	pending: int
+	completed: int
+	failed: int
+	active_summary_id: UUID | None
+	chapters: list[SummaryChapter]
+	original_context_tokens: int
+	current_context_tokens: int
+	estimated: bool
+
+
 class SummariesFilterDTO(BaseModel):
 	chat_id: UUID
 	limit: int = Field(default=50, ge=0)

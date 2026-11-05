@@ -17,6 +17,7 @@ from src.application.ports.summarization import (
 	SummaryResult,
 	SummarySourceMessage,
 )
+from src.application.summarization.prompts import format_recap
 from src.application.summarization.schemas import ChapterRange, CreateSummariesDTO, UpdateSummaryDTO
 from src.application.summarization.service import SUMMARY_CHAT_SETTINGS, SummarizationService
 from src.domain.models import Character, Chat, ChatRoles, ChatSummary, MessageStatus, SummaryStatus
@@ -150,6 +151,44 @@ class TestSummarizationService:
 	async def test_list_chapters_rejects_foreign_chat(self, service, chat):
 		with pytest.raises(HTTPException) as exc:
 			await service.list_chapters(chat.id, uuid4())
+
+		assert exc.value.status_code == 403
+
+	@pytest.mark.asyncio
+	async def test_get_status_reports_progress_chapters_and_tokens(self, service, repository, messages, chat, owner_id):
+		archived = _source(-1, "Forgotten prologue.", ChatRoles.MODEL).model_copy(update={"is_archived": True})
+		repository.list_source_messages.return_value = [archived, *messages]
+		completed = _summary(
+			chat.id,
+			status=SummaryStatus.COMPLETED,
+			content="They entered.",
+			covered_from_at=BASE - timedelta(hours=1),
+			covered_until_at=BASE - timedelta(minutes=30),
+		)
+		pending = _summary(chat.id)
+		repository.list_for_chat.return_value = [
+			completed,
+			pending,
+			_summary(chat.id, status=SummaryStatus.QUEUED),
+			_summary(chat.id, status=SummaryStatus.FAILED),
+		]
+
+		status = await service.get_status(chat.id, owner_id)
+
+		assert status.chat_id == chat.id
+		assert (status.queued, status.pending, status.completed, status.failed) == (1, 1, 1, 1)
+		assert status.active_summary_id == pending.id
+		assert [c.messages_count for c in status.chapters] == [2, 1]
+		assert status.original_context_tokens == len("Forgotten prologue.") + sum(len(m.content) for m in messages)
+		assert status.current_context_tokens == sum(len(m.content) for m in messages) + len(
+			format_recap("They entered.")
+		)
+		repository.list_for_chat.assert_awaited_once_with(chat.id, list(SummaryStatus))
+
+	@pytest.mark.asyncio
+	async def test_get_status_rejects_foreign_chat(self, service, chat):
+		with pytest.raises(HTTPException) as exc:
+			await service.get_status(chat.id, uuid4())
 
 		assert exc.value.status_code == 403
 

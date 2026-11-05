@@ -11,6 +11,7 @@ from src.application.ports.summarization import ISummarizationService
 from src.application.summarization.schemas import (
 	CreateSummariesDTO,
 	SummariesFilterDTO,
+	SummarizationStatusDTO,
 	SummaryChapter,
 	UpdateSummaryDTO,
 )
@@ -30,6 +31,17 @@ async def list_chapters(
 	current_user: User = Depends(get_current_user),
 ) -> ApiResponse[list[SummaryChapter]]:
 	result = await service.list_chapters(chat_id, current_user.id)
+	return ApiResponse(result=result, correlation_id=correlation_id.get())
+
+
+@router.get("/status")
+@inject
+async def get_summarization_status(
+	service: FromDishka[ISummarizationService],
+	chat_id: UUID = Query(),
+	current_user: User = Depends(get_current_user),
+) -> ApiResponse[SummarizationStatusDTO]:
+	result = await service.get_status(chat_id, current_user.id)
 	return ApiResponse(result=result, correlation_id=correlation_id.get())
 
 
