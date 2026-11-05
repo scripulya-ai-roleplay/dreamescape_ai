@@ -109,6 +109,25 @@ class TestSummarizationAPI:
 		)
 		assert response.status_code == 403
 
+	def test_status_reports_progress_chapters_and_tokens(self, client, auth_headers, summarizable_chat):
+		response = client.get(
+			"/api/v1/summarization/status", params={"chat_id": summarizable_chat}, headers=auth_headers
+		)
+		assert response.status_code == 200
+		result = response.json()["result"]
+		assert result["chat_id"] == summarizable_chat
+		assert (result["queued"], result["pending"], result["completed"], result["failed"]) == (0, 0, 0, 0)
+		assert result["active_summary_id"] is None
+		assert len(result["chapters"]) == 1
+		assert result["original_context_tokens"] > 0
+		assert result["current_context_tokens"] == result["original_context_tokens"]
+
+	def test_other_user_cannot_read_status(self, client, other_auth_headers, summarizable_chat):
+		response = client.get(
+			"/api/v1/summarization/status", params={"chat_id": summarizable_chat}, headers=other_auth_headers
+		)
+		assert response.status_code == 403
+
 	def test_unknown_range_is_rejected(self, client, auth_headers, summarizable_chat):
 		response = client.post(
 			"/api/v1/summarization/",

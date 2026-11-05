@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -31,6 +32,7 @@ from src.application.summarization.chapters import PlannedChapter, plan_chapters
 from src.application.summarization.schemas import (
 	CreateSummariesDTO,
 	SummariesFilterDTO,
+	SummarizationStatusDTO,
 	SummaryChapter,
 	UpdateSummaryDTO,
 )
@@ -78,6 +80,28 @@ class SummarizationService(ISummarizationService):
 		await self._expire_stale(chat_id)
 		planned = await self._plan(chat)
 		return [chapter.to_chapter() for chapter in planned]
+
+	async def get_status(self, chat_id: UUID, actor_id: UUID) -> SummarizationStatusDTO:
+		chat = await self._require_owned_chat(chat_id, actor_id)
+		await self._expire_stale(chat_id)
+		messages = await self.repository.list_source_messages(chat.id)
+		planned = await self._plan(chat, messages)
+		summaries = await self.repository.list_for_chat(chat_id, list(SummaryStatus))
+		original, current = await asyncio.to_thread(self._context_tokens, messages, summaries)
+		counts = Counter(summary.status for summary in summaries)
+		active = next((s for s in summaries if s.status == SummaryStatus.PENDING), None)
+		return SummarizationStatusDTO(
+			chat_id=chat.id,
+			queued=counts[SummaryStatus.QUEUED],
+			pending=counts[SummaryStatus.PENDING],
+			completed=counts[SummaryStatus.COMPLETED],
+			failed=counts[SummaryStatus.FAILED],
+			active_summary_id=active.id if active is not None else None,
+			chapters=[chapter.to_chapter() for chapter in planned],
+			original_context_tokens=original,
+			current_context_tokens=current,
+			estimated=True,
+		)
 
 	async def summarize(self, dto: CreateSummariesDTO, actor_id: UUID) -> list[ChatSummary]:
 		chat = await self._require_owned_chat(dto.chat_id, actor_id)
@@ -200,12 +224,28 @@ class SummarizationService(ISummarizationService):
 		persona = await self.character_gateway.get_one(chat.user_character_id)
 		return prompts.player_label(persona.name)
 
-	async def _plan(self, chat: Chat) -> list[PlannedChapter]:
+	async def _plan(self, chat: Chat, messages: list[SummarySourceMessage] | None = None) -> list[PlannedChapter]:
 		player = await self._player(chat)
-		messages = await self.repository.list_source_messages(chat.id)
+		if messages is None:
+			messages = await self.repository.list_source_messages(chat.id)
 		return await asyncio.to_thread(
 			plan_chapters, messages, lambda m: self._line_tokens(m, player), self.chunk_tokens
 		)
+
+	def _context_tokens(self, messages: list[SummarySourceMessage], summaries: list[ChatSummary]) -> tuple[int, int]:
+		original = 0
+		live = 0
+		for message in messages:
+			tokens = self.token_counter.count(message.content)
+			original += tokens
+			if not message.is_archived:
+				live += tokens
+		recaps = sum(
+			self.token_counter.count(prompts.format_recap(summary.content or ""))
+			for summary in summaries
+			if summary.status == SummaryStatus.COMPLETED
+		)
+		return original, live + recaps
 
 	def _line_tokens(self, message: SummarySourceMessage, player: str) -> int:
 		line = prompts.format_line(message, player)
